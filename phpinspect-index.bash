@@ -9,7 +9,7 @@
 # TODO: remove whatever functionality is not required for phpinspect.el
 
 # shellcheck disable=SC2155
-declare CACHE_DIR=./.cache/phpns
+declare CACHE_DIR=./.cache/phpinspect
 declare INFO=1
 
 # Cache locations
