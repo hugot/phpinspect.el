@@ -1,4 +1,28 @@
-;; -*- lexical-binding: t; -*-
+;;; phpinspect.el --- PHP parsing and IntelliSense package  -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2021  Free Software Foundation, Inc
+
+;; Author: Hugo Thunnissen <devel@hugot.nl>
+;; Keywords: php, languages, tools, convenience
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;;
+
+;;; Code:
 
 (require 'php-project)
 (require 'cl-lib)
@@ -368,7 +392,7 @@ when one of them matches."
        (when (phpinspect-incomplete-token-p (car (last token)))
          (setcar token :incomplete-const))
        token)))
-  
+
   (phpinspect-defhandler
    phpinspect--string-handler "\"\\|'"
    "Handler for strings"
@@ -860,7 +884,7 @@ ARG-LIST. ARG-LIST should be a list token as returned by
 
 Ignores `eldoc-argument-case` and `eldoc-echo-area-use-multiline-p`.
 
-TODO: 
+TODO:
  - Respect `eldoc-echo-area-use-multiline-p`
  - This function is too big and has repetitive code. Split up and simplify.
 "
@@ -1023,7 +1047,7 @@ $variable = $variable->method();"
                           php-block
                           type-resolver
                           function-arg-list))))
-      
+
       (phpinspect--log "Statement: %s" statement)
       (phpinspect--log "Starting attribute type: %s" previous-attribute-type)
       (while (setq current-token (pop statement))
@@ -1035,7 +1059,7 @@ $variable = $variable->method();"
                        (progn
                          (pop statement)
                          (setq previous-attribute-type
-                               (or 
+                               (or
                                 (phpinspect-get-cached-project-class-method-type
                                  (phpinspect--get-project-root)
                                  (funcall type-resolver previous-attribute-type)
@@ -1664,7 +1688,7 @@ level of a token. Nested variables are ignored."
                 (not (phpinspect-variable-p
                       (car (last token i)))))
       (setq i (- i 1)))
-    
+
     (if (not (= i 0))(- (length token)  i))))
 
 (defun phpinspect--make-method-lister (buffer-classes &optional static)
@@ -1886,7 +1910,7 @@ level of a token. Nested variables are ignored."
         (phpinspect--completion-list-add
          completion-list
          (phpinspect--make-completion completion)))
-      
+
       (setq candidates
             (seq-filter (lambda (completion)
                           (when completion
@@ -2139,7 +2163,7 @@ indexed classes in the project"))
     (insert-file-contents-literally
      (concat (phpinspect--get-project-root) "/.cache/phpinspect/" fqn-file))
     (split-string (buffer-string) (char-to-string ?\n))))
-      
+
 ;;;###autoload
 (defun phpinspect-find-class-file (class)
   (interactive (list (completing-read "Class: " (phpinspect-get-all-fqns))))
@@ -2204,3 +2228,4 @@ indexed classes in the project"))
     (insert (string-join unique-lines "\n"))))
 
 (provide 'phpinspect)
+;;; phpinspect.el ends here
