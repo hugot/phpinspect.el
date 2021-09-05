@@ -657,6 +657,7 @@ fillIndex() {
         echo > "$USES"
         echo > "$USES_LOOKUP"
         echo > "$FILE_PATHS"
+        echo > "$USES_OWN"
         echo > "$USES_LOOKUP_OWN"
         echo > "$NAMESPACE_FILE_PATHS"
         echo > "$INDEXED"
