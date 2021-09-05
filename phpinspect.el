@@ -89,7 +89,9 @@ candidate. Candidates can be indexed functions and variables.")
     (message "Disabled phpinspect logging.")))
 
 (defconst phpinspect-native-types
-  '("int" "string" "bool" "boolean" "iterator" "array" "float" "void"))
+  ;; self, parent and resource are not valid type name.
+  ;; see https://www.php.net/manual/ja/language.types.declarations.php
+  '("array" "bool" "callable" "float" "int" "iterable" "mixed" "object" "string" "void"))
 
 (eval-when-compile
   (defun phpinspect--word-end-regex ()
