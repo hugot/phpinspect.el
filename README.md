@@ -23,3 +23,13 @@ Example config:
 
 (add-hook 'php-mode-hook #'my-php-personal-hook)
 ```
+
+## Development
+
+### Running tests
+Tests are implemented using `ert`. You can run them in batch mode with the following
+command:
+
+```bash
+emacs -batch -l ert -l ./phpinspect.el -l ./test/phpinspect-test.el -f ert-run-tests-batch-and-exit
+```

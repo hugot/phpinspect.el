@@ -706,6 +706,12 @@ the properties of the class"
       (goto-char (buffer-end 1))
       (insert (concat (apply 'format args) "\n")))))
 
+(defun phpinspect-parse-file (file)
+  (with-temp-buffer
+    (insert-file-contents-literally file)
+    (phpinspect-parse-current-buffer)))
+
+
 (defun phpinspect-parse-current-buffer ()
   (phpinspect-parse-buffer-until-point
    (current-buffer)
@@ -1507,6 +1513,9 @@ namespace if not provided"
    (phpinspect--get-project-root)
    class-fqn))
 
+(defun phpinspect-index-file (file-name)
+  (phpinspect--index-tokens (phpinspect-parse-file file-name)))
+
 (defun phpinspect-get-or-create-cached-project-class (project-root class-fqn)
   (let ((existing-index (phpinspect-get-cached-project-class
                          project-root
@@ -1524,9 +1533,7 @@ namespace if not provided"
            (if visited-buffer
                (setq new-index (with-current-buffer visited-buffer
                                  (phpinspect--index-current-buffer)))
-             (setq new-index (with-temp-buffer
-                               (insert-file-contents-literally class-file)
-                               (phpinspect--index-current-buffer))))
+             (setq new-index (phpinspect-index-file class-file)))
            (phpinspect--log "New index: %s" new-index)
            (dolist (class (alist-get 'classes new-index))
              (when class
@@ -2136,7 +2143,8 @@ level of START-FILE in stead of `default-directory`."
 
 ;; Use statements
 ;;;###autoload
-(defun phpinspect-fix-uses-interactive () "Add missing use statements to a php file"
+(defun phpinspect-fix-uses-interactive ()
+  "Add missing use statements to the currently visited PHP file."
        (interactive)
        (save-buffer)
        (let* ((project-root (phpinspect--get-project-root))
