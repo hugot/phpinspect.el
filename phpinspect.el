@@ -24,7 +24,6 @@
 
 ;;; Code:
 
-(require 'php-project)
 (require 'cl-lib)
 (require 'json)
 
@@ -105,6 +104,10 @@ candidate. Candidates can be indexed functions and variables.")
 
 (defvar phpinspect--debug nil
   "Enable debug logs for phpinspect by setting this variable to true")
+
+(defvar phpinspect-project-root-file-list
+  '("composer.json" "composer.lock" ".git" ".svn" ".hg")
+  "List of files that could indicate a project root directory.")
 
 (defun phpinspect-toggle-logging ()
   (interactive)
@@ -2091,18 +2094,45 @@ indexed classes in the project"))
            (or load-file-name
                buffer-file-name))
           "/phpinspect-index.bash")
-  "The path to the exexutable file that indexes class file names
-  for phpinspect. Should normally be set to
-  \"phpinspect-index.bash\" in the source file directory.")
+  "The path to the exexutable file that indexes class file names.
+Should normally be set to \"phpinspect-index.bash\" in the source
+  file directory.")
 
-(defun phpinspect--get-project-root ()
-  (let ((project-root-slugs (split-string (php-project-get-root-dir) "/")))
-    (expand-file-name (string-join
-                       (if (member "vendor" project-root-slugs)
-                           (seq-take-while (lambda (elt) (not (string= elt "vendor")))
-                                           project-root-slugs)
-                         project-root-slugs)
-                       "/"))))
+(defun phpinspect--locate-dominating-project-file (start-file)
+  "Locate the first dominating file in `phpinspect-project-root-file-list`.
+Starts looking at START-FILE and then recurses up the directory
+hierarchy as long as no matching files are found.  See also
+`locate-dominating-file`."
+  (let ((dominating-file))
+    (seq-find (lambda (file)
+                (setq dominating-file (locate-dominating-file start-file file)))
+              phpinspect-project-root-file-list)
+    dominating-file))
+
+(defun phpinspect--get-project-root (&optional start-file)
+  "(Attempt to) Find the root directory of the visited PHP project.
+If a found project root has a parent directory called \"vendor\",
+the search continues upwards. See also
+`phpinspect--locate-dominating-project-file`.
+
+If START-FILE is provided, searching starts at the directory
+level of START-FILE in stead of `default-directory`."
+  (let ((project-file (phpinspect--locate-dominating-project-file
+                       (or start-file default-directory))))
+    (phpinspect--log "Checking for project root at  %s" start-file)
+    (when project-file
+      (let* ((directory (file-name-directory project-file))
+             (directory-slugs (split-string (expand-file-name directory) "/")))
+        (if (not (member "vendor" directory-slugs))
+            (expand-file-name directory)
+          ;; else. Only continue if the parent directory is not "/"
+          (let ((parent-without-vendor
+                 (string-join (seq-take-while (lambda (s) (not (string= s "vendor" )))
+                                              directory-slugs)
+                              "/")))
+            (when (not (or (string= parent-without-vendor "/")
+                           (string= parent-without-vendor "")))
+              (phpinspect--get-project-root parent-without-vendor))))))))
 
 ;; Use statements
 ;;;###autoload
