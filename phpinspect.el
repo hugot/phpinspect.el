@@ -26,696 +26,60 @@
 
 (require 'cl-lib)
 (require 'json)
+(require 'obarray)
 
-(cl-defstruct (phpinspect--function (:constructor phpinspect--make-function))
-  "A PHP function."
-  (name nil
-        :type string
-        :documentation
-        "A string containing the name of the function")
-  (scope nil
-         :type phpinspect-scope
-         :documentation
-         "When the function is a method, this should contain the
-scope of the function as returned by `phpinspect-parse-scope`.")
-  (arguments nil
-             :type list
-             :documentation
-             "A simple list with function arguments and their
-types in tuples. Each list should have the name of the variable
-as first element and the type as second element.")
-  (return-type nil
-               :type string
-               :documentation
-               "A string containing the FQN of the return value
-of the function."))
+(defvar phpinspect-parser-obarray (obarray-make)
+  "An obarray containing symbols for all phpinspect (sub)parsers.")
 
-(cl-defstruct (phpinspect--variable (:constructor phpinspect--make-variable))
-  "A PHP Variable."
-  (name nil
-        :type string
-        :documentation
-        "A string containing the name of the variable.")
-  (scope nil
-         :type phpinspect-scope
-         :documentation
-         "When the variable is an object attribute, this should
-contain the scope of the variable as returned by
-`phpinspect-parse-scope`")
-  (type nil
-        :type string
-        :documentation
-        "A string containing the FQN of the variable's type"))
+(defvar phpinspect-handler-obarray (obarray-make)
+  "An obarray containing symbols for all phpinspect parser handlers.")
 
-(cl-defstruct (phpinspect--completion
-               (:constructor phpinspect--construct-completion))
-  "Contains a possible completion value with all it's attributes."
-  (value nil :type string)
-  (meta nil :type string)
-  (annotation nil :type string)
-  (kind nil :type symbol))
+(defvar-local phpinspect--buffer-index nil
+  "The result of the last successfull parse + index action
+  executed by phpinspect for the current buffer")
 
-(defun phpinspect--format-type-name (name)
-  (string-remove-prefix "\\" name))
-
-(cl-defgeneric phpinspect--make-completion (completion-candidate)
-  "Creates a `phpinspect--completion` for a possible completion
-candidate. Candidates can be indexed functions and variables.")
-
-(cl-defmethod phpinspect--make-completion
-  ((completion-candidate phpinspect--function))
-  "Create a `phpinspect--completion` for COMPLETION-CANDIDATE."
-  (phpinspect--construct-completion
-   :value (phpinspect--function-name completion-candidate)
-   :meta (concat "(" (mapconcat (lambda (arg)
-                                  (concat (phpinspect--format-type-name (cadr arg)) " "
-                                          "$" (if (> (length (car arg)) 8)
-                                                  (truncate-string-to-width (car arg) 8 nil)
-                                                (car arg))))
-                                (phpinspect--function-arguments completion-candidate)
-                                ", ")
-                 ") "
-                 (phpinspect--format-type-name (phpinspect--function-return-type completion-candidate)))
-   :annotation (concat " "
-                       (phpinspect--get-bare-class-name-from-fqn
-                        (or (phpinspect--function-return-type completion-candidate)
-                            "")))
-   :kind 'function))
+(defvar phpinspect-projects '()
+  "Currently active phpinspect projects and their buffers")
 
 (defvar phpinspect--debug nil
   "Enable debug logs for phpinspect by setting this variable to true")
+
+(defvar phpinspect-cache ()
+  "In-memory nested key-value store used for caching by
+phpinspect")
 
 (defvar phpinspect-project-root-file-list
   '("composer.json" "composer.lock" ".git" ".svn" ".hg")
   "List of files that could indicate a project root directory.")
 
-(defun phpinspect-toggle-logging ()
-  (interactive)
-  (if (setq phpinspect--debug (not phpinspect--debug))
-      (message "Enabled phpinspect logging.")
-    (message "Disabled phpinspect logging.")))
+(defvar phpinspect--last-completion-list nil
+  "Used internally to save metadata about completion options
+  between company backend calls")
 
-(defconst phpinspect-native-types
-  ;; self, parent and resource are not valid type name.
-  ;; see https://www.php.net/manual/ja/language.types.declarations.php
-  '("array" "bool" "callable" "float" "int" "iterable" "mixed" "object" "string" "void"))
+(defvar phpinspect-index-executable
+  (concat (file-name-directory
+           (or load-file-name
+               buffer-file-name))
+          "/phpinspect-index.bash")
+  "The path to the exexutable file that indexes class file names.
+Should normally be set to \"phpinspect-index.bash\" in the source
+  file directory.")
 
 (eval-when-compile
-  (defun phpinspect--word-end-regex ()
-    "[[:blank:]]")
+  (define-inline phpinspect--word-end-regex ()
+    (inline-quote "[[:blank:]]")))
 
-  (defsubst phpinspect--strip-last-char (string)
-    (substring string 0 (- (length string) 1)))
+(defsubst phpinspect--strip-last-char (string)
+  (substring string 0 (- (length string) 1)))
 
-  (defmacro phpinspect--handler (regex function)
-    (list 'cons regex (list 'quote function))))
-
-(defmacro phpinspect-defhandler (name regex docstring function)
-  ;; Lets make sure that defuns and substs are only referenced by
-  ;; their name and not their entire definitions.
-  (let ((function-name (cond ((and (listp function)
-                                   (or (eq (car function) 'defun)
-                                       (eq (car function) 'defsubst)
-                                       (and (eq (car function) 'quote)
-                                            (symbolp (car (last function))))))
-                              (eval function))
-                             (t (error (concat "`phpinspect-defhandler`: function must "
-                                               "be a quoted function name, a `defun` "
-                                               "or a `defsubst` %S provided")
-                                       function)))))
-    `(progn
-       ;; If function is a defun, we'll need to have evaluated it.
-       ,function
-       (defmacro ,name ()
-         ,(concat "This is a generated macro, see `phpinspect-defhandler`\n\n"
-                  "ATTRIBUTES:\n"
-                  "Token regex: " (eval regex) "\n\n"
-                  "Parser function:\n" (with-output-to-string (pp (list 'quote function-name)))
-                  "\n\n"
-                  "DESCRIPTION\n"
-                  docstring)
-         (list 'phpinspect--handler ,regex (quote ,function-name))))))
-
-(defmacro phpinspect-munch-token-without-attribs (text-object token-keyword)
-  "Return a token by name of `token-keyword` with the contents of
-the passed text object as value. The text object will be
-stripped of all text attributes"
-  `(let ((text ,text-object) (length (length ,text-object)))
-     (forward-char length)
-     (set-text-properties 0 length nil text)
-     (list ,token-keyword text)))
-
-(defmacro phpinspect-parse
-    (buffer tree-type handler-list max-point &optional continue-condition delimiter-predicate)
-  "Parse the current buffer using the handler macros provided in
-`handler-list`, unrolling them in a `cond` statement which checks
-their token regexes one by one and runs their parser functions
-when one of them matches."
-  (unless continue-condition (setq continue-condition t))
-  `(with-current-buffer ,buffer
-     (let ((tokens (list)))
-       (while ,(append `(and (< (point) ,max-point))
-                       (list continue-condition)
-                       `((not ,(if (functionp (eval delimiter-predicate))
-                                   (list (eval delimiter-predicate)
-                                         '(car (last tokens)))
-                                 nil))))
-         ,(append `(cond)
-                  (mapcar
-                   (lambda (handler)
-                     `((looking-at ,(car (eval handler)))
-                       (let ((token (,(cdr (eval handler))
-                                     (match-string 0)
-                                     ,max-point)))
-                         (unless (null token)
-                           (if (null tokens)
-                               (setq tokens (list token))
-                             (nconc tokens (list token)))))))
-                   handler-list)
-                  '((t (forward-char)))))
-       (push ,tree-type tokens))))
-
-(eval-and-compile
-  ;; Because some of the handler macros are mutually dependent on each
-  ;; other, we need to wrap their definition in an eval-and-compile
-  ;; body.
-
-  (phpinspect-defhandler
-   phpinspect--comma-handler ","
-   "Handler for comma tokens"
-   (defun phpinspect--munch-comma (comma &rest ignored)
-     (phpinspect-munch-token-without-attribs comma :comma)))
-
-  (phpinspect-defhandler
-   phpinspect--word-handler "[A-Za-z_\\][\\A-Za-z_0-9]*"
-   "Handler for bareword tokens"
-   (defun phpinspect--munch-word (word &rest ignored)
-     (let ((length (length word)))
-       (forward-char length)
-       (set-text-properties 0 length nil word)
-       (list :word word))))
-
-
-  (defun phpinspect--parse-annotation-parameters (parameter-amount)
-    (let (words)
-      (while (not (or (looking-at "\\*/") (= (length words) parameter-amount)))
-        (forward-char)
-        (cond ((looking-at (car (phpinspect--word-handler)))
-               (push (phpinspect--munch-word (match-string 0)) words))
-              ((looking-at (car (phpinspect--variable-handler)))
-               (push (phpinspect--parse-variable (match-string 0)) words))))
-      (nreverse words)))
-
-  (phpinspect-defhandler
-   phpinspect--annotation-handler "@"
-   "Handler for in-comment @annotations"
-   (defun phpinspect--parse-var-annotation (start-token max-point)
-     (forward-char (length start-token))
-     (if (looking-at (car (phpinspect--word-handler)))
-         (let ((annotation-name (match-string 0)))
-           (forward-char (length annotation-name))
-           (cond ((string= annotation-name "var")
-                  ;; The @var annotation accepts 2 parameters:
-                  ;; the type and the $variable name
-                  (append (list :var-annotation)
-                          (phpinspect--parse-annotation-parameters 2)))
-                 ((string= annotation-name "return")
-                  ;; The @return annotation only accepts 1 word as parameter:
-                  ;; The return type
-                  (append (list :return-annotation)
-                          (phpinspect--parse-annotation-parameters 1)))
-                 ((string= annotation-name "param")
-                  (let ((word-count 0))
-                    ;; The @param annotation accepts 2 parameters:
-                    ;; The type of the param, and the param's $name
-                    (append (list :param-annotation)
-                            (phpinspect--parse-annotation-parameters 2))))
-                 (t
-                  (list :annotation annotation-name))))
-       (list :annotation nil))))
-
-  (phpinspect-defhandler
-   phpinspect--tag-handler "\\?>"
-   "Handler that discards any inline HTML it encounters"
-   (defun phpinspect--discard-html (start-token max-point)
-     (forward-char (length start-token))
-     (or (re-search-forward "<\\?php\\|<\\?" nil t)
-         (goto-char max-point))
-     (list :html)))
-
-  (phpinspect-defhandler
-   phpinspect--comment-handler "#\\|//\\|/\\*"
-   "Handler for comments and doc blocks"
-   (defun phpinspect--parse-comment (start-token max-point)
-     (forward-char (length start-token))
-     (cond ((string-match "/\\*" start-token)
-            (let ((doc-block (phpinspect-parse
-                              (current-buffer)
-                              :doc-block
-                              ((phpinspect--annotation-handler)
-                               (phpinspect--whitespace-handler))
-                              max-point
-                              (not (looking-at "\\*/")))))
-              (forward-char 2)
-              doc-block))
-           (t
-            (let ((end-position (line-end-position)))
-              (phpinspect-parse
-               (current-buffer)
-               :comment
-               ((phpinspect--tag-handler))
-               end-position
-               t
-               'phpinspect-html-p))))))
-
-  (phpinspect-defhandler
-   phpinspect--variable-handler "\\$"
-   "Handler for tokens indicating reference to a variable"
-   (defun phpinspect--parse-variable (start-token &rest ignored)
-     (forward-char (length start-token))
-     (if (looking-at (car (phpinspect--word-handler)))
-         (phpinspect-munch-token-without-attribs (match-string 0) :variable)
-       (list :variable nil))))
-
-
-  (phpinspect-defhandler
-   phpinspect--whitespace-handler "[[:blank:]]+"
-   "Handler that discards whitespace"
-   (defun phpinspect--discard-whitespace (whitespace &rest ignored)
-     (forward-char (length whitespace))))
-
-  (phpinspect-defhandler
-   phpinspect--equals-handler "===?"
-   "Handler for strict and unstrict equality comparison tokens"
-   (defun phpinspect--munch-equals (equals &rest ignored)
-     (phpinspect-munch-token-without-attribs equals :equals)))
-
-  (phpinspect-defhandler
-   phpinspect--assignment-operator-handler "[+-]?="
-   "Handler for tokens indicating that an assignment is taking place"
-   (defun phpinspect--munch-assignment-operator (operator &rest ignored)
-     (phpinspect-munch-token-without-attribs operator :assignment)))
-
-  (phpinspect-defhandler
-   phpinspect--statement-terminator-handler ";"
-   "Handler for statement terminators"
-   (defun phpinspect--munch-statement-terminator (terminator &rest ignored)
-     (phpinspect-munch-token-without-attribs terminator :terminator)))
-
-  (phpinspect-defhandler
-   phpinspect--use-keyword-handler (concat "use" (phpinspect--word-end-regex))
-   "Handler for the use keyword and tokens that might follow to give it meaning"
-   (defun phpinspect--parse-use (start-token max-point)
-     (setq start-token (phpinspect--strip-last-char start-token))
-     (forward-char (length start-token))
-     (phpinspect-parse
-      (current-buffer)
-      :use
-      ((phpinspect--word-handler)
-       (phpinspect--tag-handler)
-       (phpinspect--block-without-classes-handler)
-       (phpinspect--statement-terminator-handler))
-      max-point
-      t
-      'phpinspect-end-of-use-p)))
-
-  (phpinspect-defhandler
-   phpinspect--attribute-reference-handler "->\\|::"
-   "Handler for references to object attributes, or static class attributes"
-   (defun phpinspect--parse-attribute-reference (start-token &rest ignored)
-     (forward-char (length start-token))
-     (looking-at (car (phpinspect--word-handler)))
-     (let ((name (if (looking-at (car (phpinspect--word-handler)))
-                     (phpinspect--munch-word (match-string 0))
-                   nil)))
-       (cond
-        ((string= start-token "::")
-         (list :static-attrib name))
-        ((string= start-token "->")
-         (list :object-attrib name))))))
-
-  (phpinspect-defhandler
-   phpinspect--namespace-keyword-handler (concat "namespace" (phpinspect--word-end-regex))
-   "Handler for the namespace keyword. This is a special one
- because it is not always delimited by a block like classes or
- functions. This handler parses the namespace declaration, and
- then continues to parse subsequent tokens, only stopping when
- either a block has been parsed or another namespace keyword has
- been encountered."
-   (defun phpinspect--parse-namespace (start-token max-point)
-     "Nest all statements after a 'namespace' keyword in its own token"
-     (setq start-token (phpinspect--strip-last-char start-token))
-     (forward-char (length start-token))
-     (phpinspect--parse-with-handler-alist
-      (current-buffer)
-      :namespace
-      max-point
-      (not (looking-at (car (phpinspect--namespace-keyword-handler))))
-      'phpinspect-block-p)))
-
-  (phpinspect-defhandler
-   phpinspect--const-keyword-handler (concat "const" (phpinspect--word-end-regex))
-   "Handler for the const keyword"
-   (defun phpinspect--parse-const (start-token max-point)
-     (setq start-token (phpinspect--strip-last-char start-token))
-     (forward-char (length start-token))
-     (let ((token (phpinspect-parse
-                   (current-buffer)
-                   :const
-                   ((phpinspect--word-handler)
-                    (phpinspect--comment-handler)
-                    (phpinspect--assignment-operator-handler)
-                    (phpinspect--string-handler)
-                    (phpinspect--array-handler)
-                    (phpinspect--statement-terminator-handler))
-                   max-point
-                   t
-                   'phpinspect-end-of-statement-p)))
-
-       (when (phpinspect-incomplete-token-p (car (last token)))
-         (setcar token :incomplete-const))
-       token)))
-
-  (phpinspect-defhandler
-   phpinspect--string-handler "\"\\|'"
-   "Handler for strings"
-   (defun phpinspect--parse-string (start-token &rest ignored)
-     (list :string (phpinspect--munch-string start-token))))
-
-  (phpinspect-defhandler
-   phpinspect--block-without-classes-handler "{"
-   "Handler for code blocks that cannot contain classes"
-   (defun phpinspect--parse-block-without-classes (start-token max-point)
-     (forward-char (length start-token))
-     (let* ((complete-block nil)
-            (parsed (phpinspect-parse
-                     (current-buffer)
-                     :block
-                     ((phpinspect--array-handler)
-                      (phpinspect--tag-handler)
-                      (phpinspect--equals-handler)
-                      (phpinspect--list-handler)
-                      (phpinspect--comma-handler)
-                      (phpinspect--attribute-reference-handler)
-                      (phpinspect--variable-handler)
-                      (phpinspect--assignment-operator-handler)
-                      (phpinspect--whitespace-handler)
-                      (phpinspect--scope-keyword-handler)
-                      (phpinspect--static-keyword-handler)
-                      (phpinspect--const-keyword-handler)
-                      (phpinspect--use-keyword-handler)
-                      (phpinspect--function-keyword-handler)
-                      (phpinspect--word-handler)
-                      (phpinspect--statement-terminator-handler)
-                      (phpinspect--here-doc-handler)
-                      (phpinspect--string-handler)
-                      (phpinspect--comment-handler)
-                      (phpinspect--block-handler))
-                     max-point
-                     (not (and (char-equal (char-after) ?}) (setq complete-block t))))))
-       (if complete-block
-           (forward-char)
-         (setcar parsed :incomplete-block))
-       parsed)))
-
-
-  (phpinspect-defhandler
-   phpinspect--block-handler "{"
-   "Handler for code blocks"
-   (defun phpinspect--parse-block (start-token max-point)
-     (forward-char (length start-token))
-     (let* ((complete-block nil)
-            (parsed (phpinspect--parse-with-handler-alist
-                     (current-buffer)
-                     :block
-                     max-point
-                     ;; When we encounter a closing brace for this
-                     ;; block, we can mark the block as complete.
-                     (not (and (char-equal (char-after) ?}) (setq complete-block t))))))
-
-       (if complete-block
-           ;; After meeting the char-after requirement above, we need to move
-           ;; one char forward to prevent parent-blocks from exiting because
-           ;; of the same char.
-           (forward-char)
-         (setcar parsed :incomplete-block))
-       parsed)))
-
-  (phpinspect-defhandler
-   phpinspect--here-doc-handler "<<<"
-   "Handler for heredocs"
-   (defun phpinspect--discard-heredoc (start-token point-max)
-     (forward-char (length start-token))
-     (if (looking-at "[A-Za-z0-9'\"\\_]+")
-         (re-search-forward (concat "^" (regexp-quote (match-string 0))) nil t))
-     (list :here-doc)))
-
-
-  (defun phpinspect--munch-string (start-token)
-    (forward-char (length start-token))
-    (let ((start-point (point)))
-      (cond ((looking-at start-token)
-             (forward-char)
-             "")
-            ((looking-at (concat "\\([\\][\\]\\)+" (regexp-quote start-token)))
-             (let ((match (match-string 0)))
-               (forward-char (length match))
-               (buffer-substring-no-properties start-point
-                                               (+ start-point (- (length match)
-                                                                 (length start-token))))))
-            (t
-             (re-search-forward (format "\\([^\\]\\([\\][\\]\\)+\\|[^\\]\\)%s"
-                                        (regexp-quote start-token))
-                                nil t)
-             (buffer-substring-no-properties start-point (- (point) 1))))))
-
-  (phpinspect-defhandler
-   phpinspect--list-handler "("
-   "Handler for php syntactic lists (Note: this does not include
- datatypes like arrays, merely lists that are of a syntactic
- nature like argument lists"
-   (defun phpinspect--parse-list (start-token max-point)
-     (forward-char (length start-token))
-     (let* ((complete-list nil)
-            (php-list (phpinspect--parse-with-handler-alist
-                       (current-buffer)
-                       :list
-                       max-point
-                       (not (and (char-equal (char-after) ?\)) (setq complete-list t))))))
-
-       (if complete-list
-           ;; Prevent parent-lists (if any) from exiting by skipping over the
-           ;; ")" character
-           (forward-char)
-         (setcar php-list :incomplete-list))
-       php-list)))
-
-  (phpinspect-defhandler
-   phpinspect--function-keyword-handler (concat "function" (phpinspect--word-end-regex))
-   "Handler for the function keyword and tokens that follow to give it meaning"
-   (defun phpinspect--parse-function (start-token max-point)
-     (setq start-token (phpinspect--strip-last-char start-token))
-     (let ((declaration (phpinspect-parse
-                         (current-buffer)
-                         :declaration
-                         ((phpinspect--comment-handler)
-                          (phpinspect--word-handler)
-                          (phpinspect--list-handler)
-                          (phpinspect--statement-terminator-handler)
-                          (phpinspect--tag-handler))
-                         max-point
-                         (not (char-equal (char-after) ?{))
-                         'phpinspect-end-of-statement-p)))
-       (if (phpinspect-end-of-statement-p (car (last declaration)))
-           (list :function declaration)
-         (list :function
-               declaration
-               (phpinspect--parse-block (char-to-string (char-after)) max-point))))))
-
-  (phpinspect-defhandler
-   phpinspect--scope-keyword-handler (mapconcat (lambda (word)
-                                                  (concat word (phpinspect--word-end-regex)))
-                                                (list "public" "private" "protected")
-                                                "\\|")
-   "Handler for scope keywords"
-   (defun phpinspect--parse-scope (start-token max-point)
-     (setq start-token (phpinspect--strip-last-char start-token))
-     (forward-char (length start-token))
-     (phpinspect-parse
-      (current-buffer)
-      (cond ((string= start-token "public") :public)
-            ((string= start-token "private") :private)
-            ((string= start-token "protected") :protected))
-      ((phpinspect--function-keyword-handler)
-       (phpinspect--static-keyword-handler)
-       (phpinspect--const-keyword-handler)
-       (phpinspect--variable-handler)
-       (phpinspect--here-doc-handler)
-       (phpinspect--string-handler)
-       (phpinspect--statement-terminator-handler)
-       (phpinspect--tag-handler)
-       (phpinspect--comment-handler))
-      max-point
-      nil
-      'phpinspect--scope-terminator-p)))
-
-  (phpinspect-defhandler
-   phpinspect--static-keyword-handler (concat "static" (phpinspect--word-end-regex))
-   "Handler for the static keyword"
-   (defun phpinspect--parse-static (start-token max-point)
-     (setq start-token (phpinspect--strip-last-char start-token))
-     (forward-char (length start-token))
-     (phpinspect-parse
-      (current-buffer)
-      :static
-      ((phpinspect--comment-handler)
-       (phpinspect--function-keyword-handler)
-       (phpinspect--variable-handler)
-       (phpinspect--array-handler)
-       (phpinspect--word-handler)
-       (phpinspect--statement-terminator-handler)
-       (phpinspect--tag-handler))
-      max-point
-      t
-      'phpinspect--static-terminator-p)))
-
-  (phpinspect-defhandler
-   phpinspect--fat-arrow-handler "=>"
-   "Handler for the \"fat arrow\" in arrays and foreach expressions"
-   (defun phpinspect--munch-fat-arrow (arrow &rest ignored)
-     (phpinspect-munch-token-without-attribs arrow :fat-arrow)))
-
-  (phpinspect-defhandler
-   phpinspect--array-handler "\\[\\|array("
-   "Handler for arrays, in the bracketet as well as the list notation"
-   (defun phpinspect--parse-array (start-token max-point)
-     (forward-char (length start-token))
-     (let* ((end-char (cond ((string= start-token "[") ?\])
-                            ((string= start-token "array(") ?\))))
-            (end-char-reached nil)
-            (token (phpinspect-parse
-                    (current-buffer)
-                    :array
-                    ((phpinspect--comment-handler)
-                     (phpinspect--comma-handler)
-                     (phpinspect--list-handler)
-                     (phpinspect--here-doc-handler)
-                     (phpinspect--string-handler)
-                     (phpinspect--array-handler)
-                     (phpinspect--variable-handler)
-                     (phpinspect--attribute-reference-handler)
-                     (phpinspect--word-handler)
-                     (phpinspect--fat-arrow-handler))
-                    max-point
-                    (not (and (char-equal (char-after) end-char) (setq end-char-reached t))))))
-
-       ;; Skip over the end char to prevent enclosing arrays or lists
-       ;; from terminating.
-       (if end-char-reached
-           (forward-char)
-         ;; Signal incompleteness when terminated because of max-point
-         (setcar token :incomplete-array))
-       token)))
-
-  (phpinspect-defhandler
-   phpinspect--class-keyword-handler (concat "\\(abstract\\|final\\|class\\|interface\\|trait\\)"
-                                             (phpinspect--word-end-regex))
-   "Handler for the class keyword, and tokens that follow to define
-the properties of the class"
-   (defun phpinspect--parse-class (start-token max-point)
-     (setq start-token (phpinspect--strip-last-char start-token))
-     (list :class (phpinspect-parse
-                   (current-buffer)
-                   :declaration
-                   ((phpinspect--comment-handler)
-                    (phpinspect--word-handler)
-                    (phpinspect--tag-handler))
-                   max-point
-                   (not (char-equal (char-after) ?{)))
-           (phpinspect--parse-block-without-classes (char-to-string (char-after)) max-point))))
-
-  (defmacro phpinspect--parse-with-handler-alist
-      (buffer tree-type max-point &optional continue-condition delimiter-predicate)
-    (list 'phpinspect-parse
-          buffer
-          tree-type
-          '((phpinspect--array-handler)
-            (phpinspect--tag-handler)
-            (phpinspect--equals-handler)
-            (phpinspect--list-handler)
-            (phpinspect--comma-handler)
-            (phpinspect--attribute-reference-handler)
-            (phpinspect--variable-handler)
-            (phpinspect--assignment-operator-handler)
-            (phpinspect--whitespace-handler)
-            (phpinspect--scope-keyword-handler)
-            (phpinspect--static-keyword-handler)
-            (phpinspect--const-keyword-handler)
-            (phpinspect--use-keyword-handler)
-            (phpinspect--class-keyword-handler)
-            (phpinspect--function-keyword-handler)
-            (phpinspect--word-handler)
-            (phpinspect--statement-terminator-handler)
-            (phpinspect--here-doc-handler)
-            (phpinspect--string-handler)
-            (phpinspect--comment-handler)
-            (phpinspect--block-handler))
-          max-point
-          continue-condition
-          delimiter-predicate))
-
-
-  (defun phpinspect-parse-buffer-until-point (buffer point)
-    (with-current-buffer buffer
-      (save-excursion
-        (goto-char (point-min))
-        (re-search-forward "<\\?php\\|<\\?" nil t)
-        (phpinspect-parse
-         (current-buffer)
-         :root
-         ((phpinspect--namespace-keyword-handler)
-          (phpinspect--array-handler)
-          (phpinspect--equals-handler)
-          (phpinspect--list-handler)
-          (phpinspect--comma-handler)
-          (phpinspect--attribute-reference-handler)
-          (phpinspect--variable-handler)
-          (phpinspect--assignment-operator-handler)
-          (phpinspect--whitespace-handler)
-          (phpinspect--scope-keyword-handler)
-          (phpinspect--static-keyword-handler)
-          (phpinspect--const-keyword-handler)
-          (phpinspect--use-keyword-handler)
-          (phpinspect--class-keyword-handler)
-          (phpinspect--function-keyword-handler)
-          (phpinspect--word-handler)
-          (phpinspect--statement-terminator-handler)
-          (phpinspect--here-doc-handler)
-          (phpinspect--string-handler)
-          (phpinspect--comment-handler)
-          (phpinspect--tag-handler)
-          (phpinspect--block-handler))
-         point))))
-
-  ;; End of eval-and-compile body
-  )
-
-(defsubst phpinspect--log (&rest args)
-  (when phpinspect--debug
-    (with-current-buffer (get-buffer-create "**phpinspect-logs**")
-      (goto-char (buffer-end 1))
-      (insert (concat (apply 'format args) "\n")))))
-
-(defun phpinspect-parse-file (file)
-  (with-temp-buffer
-    (insert-file-contents-literally file)
-    (phpinspect-parse-current-buffer)))
-
-
-(defun phpinspect-parse-current-buffer ()
-  (phpinspect-parse-buffer-until-point
-   (current-buffer)
-   (point-max)))
+(defsubst phpinspect-munch-token-without-attribs (string token-keyword)
+  "Return a token of type TOKEN-KEYWORD with STRING as value.
+If STRING has text properties, they are stripped."
+  (let ((value (copy-sequence string))
+        (length (length string)))
+    (forward-char length)
+    (set-text-properties 0 length nil value)
+    (list token-keyword value)))
 
 
 (defsubst phpinspect-type-p (object type)
@@ -831,22 +195,6 @@ Type can be any of the token types returned by
       (phpinspect-incomplete-method-p token)
       (phpinspect-incomplete-namespace-p token)))
 
-(defun phpinspect-get-variable-type-in-function-arg-list (variable-name arg-list)
-  "Infer VARIABLE-NAME's type from typehints in
-ARG-LIST. ARG-LIST should be a list token as returned by
-`phpinspect--list-handler` (see also `phpinspect-list-p`)"
-  (let ((arg-no (seq-position arg-list
-                              variable-name
-                              (lambda (token variable-name)
-                                (and (phpinspect-variable-p token)
-                                     (string= (car (last token)) variable-name))))))
-    (if (and arg-no
-             (> arg-no 0))
-        (let ((arg (elt arg-list (- arg-no 1))))
-          (if (phpinspect-word-p arg)
-              (car (last arg))
-            nil)))))
-
 (defun phpinspect--static-terminator-p (token)
   (or (phpinspect-function-p token)
       (phpinspect-end-of-statement-p token)))
@@ -875,6 +223,655 @@ ARG-LIST. ARG-LIST should be a list token as returned by
 (defun phpinspect-comment-p (token)
   (phpinspect-type-p token :comment))
 
+(defmacro phpinspect-defhandler (name arguments docstring attribute-plist &rest body)
+  "Define a parser handler that becomes available for use with phpinspect-parse.
+
+A parser handler is a function that is able to identify and parse
+tokens from PHP code at `point` in the current buffer.  It's
+return value must be the resulting token.  Aside from parsing it
+has to manage the state of `point` in a way that it skips over
+the tokens it has parsed.  That way the next handler can
+correctly pick up from where it has left off.
+
+Parser handlers are unrolled in a `cond` statement by
+`phpinspect-make-parser`.  The resulting code is something akin
+to the following:
+
+(while ...
+  (cond (((looking-at \"{\")
+          (funcall block-handler (match-string 0) max-point)
+         ((looking-at \"\\$\")
+          (funcall variable-handler ...
+etc.
+
+NAME must be a symbol.  It does not need to be prefixed with a
+\"namespace\" because parser handlers are stored in their own
+obarray (`phpinspect-handler-obarray`).
+
+ARGUMENTS must an argument list as accepted by `lambda`.  A
+handler must be able to accept 2 arguments: START-TOKEN and
+MAX-POINT.  START-TOKEN is the match string that resulted from
+the comparison of the handlers' `regexp` attribute with the text
+at `point`.  MAX-POINT is the point in the current buffer up
+until which the parser is supposed to parse.  For some tokens you
+may not want/need to respect MAX-POINT, in which case you can
+ignore it.
+
+DOCSTRING is mandatory.  It should contain a description of the
+tokens the handler is able to process and (if present) any
+particularities of the handler.
+
+ATTRIBUTE-PLIST is a plist that must contain at least a `regexp` key.
+    Possible keys:
+        - regexp: The regular expression that marks the start of the token.
+
+BODY is a function body as accepted by `lambda` that parses the
+text at point and returns the resulting token."
+  (declare (indent defun))
+  (when (not (symbolp name))
+    (error "In definition of phpinspect handler %s: NAME bust be a symbol" name))
+
+  (when (not (plist-member attribute-plist 'regexp))
+    (error "In definition of phpinspect handler %s ATTRIBUTE-PLIST must contain key `regexp`"
+           name))
+
+  ;; Eval regexp. It might be a `concat` statement and we don't want to be executing that
+  ;; every time the parser advances one character and has to check for the regexp
+  ;; occurence.
+  (setq attribute-plist (plist-put attribute-plist 'regexp
+                                   (eval (plist-get attribute-plist 'regexp))))
+  (let ((name (symbol-name name)))
+    `(progn
+       (set (intern ,name phpinspect-handler-obarray) (quote ,attribute-plist))
+       (defalias (intern ,name phpinspect-handler-obarray)
+         #'(lambda (,@arguments)
+             ,docstring
+             ,@body))
+       (byte-compile (intern ,name phpinspect-handler-obarray)))))
+
+(defun phpinspect-get-parser-create (tree-type &rest parser-parameters)
+  "Retrieve a parser for TREE-TYPE from `phpinspect-parser-obarray`.
+
+TREE-TYPE must be a symbol or keyword representing the type of
+the token the parser is able to parse.
+
+If a parser by TREE-TYPE doesn't exist, it is created by callng
+`phpinspect-make-parser` with TREE-TYPE as first argument and
+PARSER-PARAMETERS as the rest of the arguments.  The resulting
+parser function is then returned in byte-compiled form."
+  (let ((parser-name (symbol-name tree-type)))
+    (or (intern-soft parser-name phpinspect-parser-obarray)
+         (defalias (intern parser-name phpinspect-parser-obarray)
+           (byte-compile (apply 'phpinspect-make-parser `(,tree-type ,@parser-parameters)))))))
+
+(defun phpinspect-purge-parser-cache ()
+  "Empty `phpinspect-parser-obarray`.
+
+This is useful when you need to change parser handlers or parsers
+during runtime.  Parsers are implemented with macros, so changing
+handler functions without calling this function will often not
+have any effect."
+  (interactive)
+  (setq phpinspect-parser-obarray (obarray-make)))
+
+(defun phpinspect-make-parser (tree-type handler-list &optional delimiter-predicate)
+  "Create a parser function using the handlers by names defined in HANDLER-LIST.
+
+See also `phpinspect-defhandler`.
+
+TREE-TYPE must be a symbol or a keyword representing the token
+type.
+
+HANDLER-LIST must be a list of either symbol or string
+representation of handler symbols which can be found in
+`phpinspect-handler-obarray`.
+
+DELIMITER-PREDICATE must be a function.  It is passed the last
+parsed token after every handler iteration.  If it evaluates to
+something other than nil, parsing is deemed completed and the
+loop exits.  An example use case of this is to determine the end
+of a statement.  You can use `phpinspect-terminator-p` as
+delimiter predicate and have parsing stop when the last parsed
+token is \";\", which marks the end of a statement in PHP."
+  (let ((handlers (mapcar
+                   (lambda (handler-name)
+                     (let* ((handler-name (symbol-name handler-name))
+                            (handler (intern-soft handler-name phpinspect-handler-obarray)))
+                       (if handler
+                           handler
+                         (error "No handler found by name \"%s\"" handler-name))))
+                   handler-list))
+        (delimiter-predicate (if (symbolp delimiter-predicate)
+                                 `(quote ,delimiter-predicate)
+                               delimiter-predicate)))
+    `(lambda (buffer max-point &optional continue-condition)
+       (with-current-buffer buffer
+         (let ((tokens)
+               (delimiter-predicate (when (functionp ,delimiter-predicate) ,delimiter-predicate)))
+           (while (and (< (point) max-point)
+                       (if continue-condition (funcall continue-condition) t)
+                       (not (if delimiter-predicate
+                                (funcall delimiter-predicate (car (last tokens)))
+                              nil)))
+             (cond ,@(mapcar
+                      (lambda (handler)
+                        `((looking-at ,(plist-get (symbol-value handler) 'regexp))
+                          (let ((token (funcall ,(symbol-function handler)
+                                                (match-string 0)
+                                                max-point)))
+                            (when token
+                              (if (null tokens)
+                                  (setq tokens (list token))
+                                (nconc tokens (list token)))))))
+                      handlers)
+                   (t (forward-char))))
+           (push ,tree-type tokens))))))
+
+(phpinspect-defhandler comma (comma &rest ignored)
+  "Handler for comma tokens"
+  (regexp ",")
+  (phpinspect-munch-token-without-attribs comma :comma))
+
+(phpinspect-defhandler word (word &rest ignored)
+  "Handler for bareword tokens"
+  (regexp "[A-Za-z_\\][\\A-Za-z_0-9]*")
+  (let ((length (length word)))
+    (forward-char length)
+    (set-text-properties 0 length nil word)
+    (list :word word)))
+
+(defsubst phpinspect-handler (handler-name)
+  (intern-soft (symbol-name handler-name) phpinspect-handler-obarray))
+
+(defsubst phpinspect-handler-regexp (handler-name)
+  (plist-get (symbol-value (phpinspect-handler handler-name)) 'regexp))
+
+(defsubst phpinspect--parse-annotation-parameters (parameter-amount)
+  (let* ((words)
+         (word-handler (phpinspect-handler 'word))
+         (word-regexp (phpinspect-handler-regexp 'word))
+         (variable-handler (phpinspect-handler 'variable))
+         (variable-regexp (phpinspect-handler-regexp 'variable)))
+    (while (not (or (looking-at "\\*/") (= (length words) parameter-amount)))
+      (forward-char)
+      (cond ((looking-at word-regexp)
+             (push (funcall word-handler (match-string 0)) words))
+            ((looking-at variable-regexp)
+             (push (funcall variable-handler (match-string 0)) words))))
+    (nreverse words)))
+
+(phpinspect-defhandler annotation (start-token &rest ignored)
+  "Handler for in-comment @annotations"
+  (regexp "@")
+  (forward-char (length start-token))
+  (if (looking-at (phpinspect-handler-regexp 'word))
+      (let ((annotation-name (match-string 0)))
+        (forward-char (length annotation-name))
+        (cond ((string= annotation-name "var")
+               ;; The @var annotation accepts 2 parameters:
+               ;; the type and the $variable name
+               (append (list :var-annotation)
+                       (phpinspect--parse-annotation-parameters 2)))
+              ((string= annotation-name "return")
+               ;; The @return annotation only accepts 1 word as parameter:
+               ;; The return type
+               (append (list :return-annotation)
+                       (phpinspect--parse-annotation-parameters 1)))
+              ((string= annotation-name "param")
+                 ;; The @param annotation accepts 2 parameters:
+                 ;; The type of the param, and the param's $name
+                 (append (list :param-annotation)
+                         (phpinspect--parse-annotation-parameters 2)))
+              (t
+               (list :annotation annotation-name))))
+    (list :annotation nil)))
+
+(phpinspect-defhandler tag (start-token max-point)
+  "Handler that discards any inline HTML it encounters"
+  (regexp "\\?>")
+  (forward-char (length start-token))
+  (or (re-search-forward "<\\?php\\|<\\?" nil t)
+      (goto-char max-point))
+  (list :html))
+
+(phpinspect-defhandler comment (start-token max-point)
+  "Handler for comments and doc blocks"
+  (regexp "#\\|//\\|/\\*")
+  (forward-char (length start-token))
+
+  (cond ((string-match "/\\*" start-token)
+         (let* ((continue-condition (lambda () (not (looking-at "\\*/"))))
+                (parser (phpinspect-get-parser-create
+                         :doc-block
+                         '(annotation whitespace)))
+                (doc-block (funcall parser (current-buffer) max-point continue-condition)))
+           (forward-char 2)
+           doc-block))
+        (t
+         (let ((parser (phpinspect-get-parser-create :comment '(tag) 'phpinspect-html-p))
+               (end-position (line-end-position)))
+           (funcall parser (current-buffer) end-position)))))
+
+(phpinspect-defhandler variable (start-token &rest ignored)
+  "Handler for tokens indicating reference to a variable"
+  (regexp "\\$")
+  (forward-char (length start-token))
+  (if (looking-at (phpinspect-handler-regexp 'word))
+      (phpinspect-munch-token-without-attribs (match-string 0) :variable)
+    (list :variable nil)))
+
+(phpinspect-defhandler whitespace (whitespace &rest ignored)
+  "Handler that discards whitespace"
+  (regexp "[[:blank:]]+")
+  (forward-char (length whitespace)))
+
+(phpinspect-defhandler equals (equals &rest ignored)
+  "Handler for strict and unstrict equality comparison tokens."
+  (regexp "===?")
+  (phpinspect-munch-token-without-attribs equals :equals))
+
+(phpinspect-defhandler assignment-operator (operator &rest ignored)
+  "Handler for tokens indicating that an assignment is taking place"
+  (regexp "[+-]?=")
+  (phpinspect-munch-token-without-attribs operator :assignment))
+
+(phpinspect-defhandler terminator (terminator &rest ignored)
+  "Handler for statement terminators."
+  (regexp ";")
+  (phpinspect-munch-token-without-attribs terminator :terminator))
+
+(phpinspect-defhandler use-keyword (start-token max-point)
+  "Handler for the use keyword and tokens that might follow to give it meaning"
+  (regexp (concat "use" (phpinspect--word-end-regex)))
+  (setq start-token (phpinspect--strip-last-char start-token))
+  (forward-char (length start-token))
+
+  (let ((parser (phpinspect-get-parser-create
+                 :use
+                 '(word tag block-without-classes terminator)
+                 'phpinspect-end-of-use-p)))
+    (funcall parser (current-buffer) max-point)))
+
+(phpinspect-defhandler attribute-reference (start-token &rest ignored)
+  "Handler for references to object attributes, or static class attributes."
+  (regexp "->\\|::")
+  (forward-char (length start-token))
+  (looking-at (phpinspect-handler-regexp 'word))
+  (let ((name (if (looking-at (phpinspect-handler-regexp 'word))
+                  (funcall (phpinspect-handler 'word) (match-string 0))
+                nil)))
+    (cond
+     ((string= start-token "::")
+      (list :static-attrib name))
+     ((string= start-token "->")
+      (list :object-attrib name)))))
+
+(phpinspect-defhandler namespace (start-token max-point)
+  "Handler for the namespace keyword. This is a special one
+ because it is not always delimited by a block like classes or
+ functions. This handler parses the namespace declaration, and
+ then continues to parse subsequent tokens, only stopping when
+ either a block has been parsed or another namespace keyword has
+ been encountered."
+  (regexp (concat "namespace" (phpinspect--word-end-regex)))
+  (setq start-token (phpinspect--strip-last-char start-token))
+  (forward-char (length start-token))
+  (phpinspect-parse-with-handler-list
+   (current-buffer)
+   :namespace
+   max-point
+   (lambda () (not (looking-at (phpinspect-handler-regexp 'namespace))))
+   'phpinspect-block-p))
+
+(phpinspect-defhandler const-keyword (start-token max-point)
+  "Handler for the const keyword."
+  (regexp (concat "const" (phpinspect--word-end-regex)))
+  (setq start-token (phpinspect--strip-last-char start-token))
+  (forward-char (length start-token))
+  (let* ((parser (phpinspect-get-parser-create
+                  :const
+                  '(word comment assignment-operator string array
+                         terminator)
+                  'phpinspect-end-of-statement-p))
+         (token (funcall parser (current-buffer) max-point)))
+    (when (phpinspect-incomplete-token-p (car (last token)))
+      (setcar token :incomplete-const))
+    token))
+
+(phpinspect-defhandler string (start-token &rest ignored)
+  "Handler for strings"
+  (regexp "\"\\|'")
+  (list :string (phpinspect--munch-string start-token)))
+
+(phpinspect-defhandler block-without-classes (start-token max-point)
+  "Handler for code blocks that cannot contain classes"
+  (regexp "{")
+  (forward-char (length start-token))
+  (let* ((complete-block nil)
+         (parser (phpinspect-get-parser-create
+                  :block
+                  '(array tag equals list comma
+                          attribute-reference variable
+                          assignment-operator whitespace scope-keyword
+                          static-keyword const-keyword use-keyword
+                          function-keyword word terminator here-doc
+                          string comment block)))
+         (continue-condition (lambda ()
+                               (not (and (char-equal (char-after) ?})
+                                         (setq complete-block t)))))
+         (parsed (funcall parser (current-buffer) max-point continue-condition)))
+    (if complete-block
+        (forward-char)
+      (setcar parsed :incomplete-block))
+    parsed))
+
+(phpinspect-defhandler block (start-token max-point)
+  "Handler for code blocks"
+  (regexp "{")
+  (forward-char (length start-token))
+  (let* ((complete-block nil)
+         (continue-condition (lambda ()
+                               ;; When we encounter a closing brace for this
+                               ;; block, we can mark the block as complete.
+                               (not (and (char-equal (char-after) ?})
+                                         (setq complete-block t)))))
+         (parsed (phpinspect-parse-with-handler-list
+                  (current-buffer) :block max-point continue-condition)))
+    (if complete-block
+        ;; After meeting the char-after requirement above, we need to move
+        ;; one char forward to prevent parent-blocks from exiting because
+        ;; of the same char.
+        (forward-char)
+      (setcar parsed :incomplete-block))
+    parsed))
+
+(phpinspect-defhandler here-doc (start-token &rest ignored)
+  "Handler for heredocs. Discards their contents."
+  (regexp "<<<")
+  (forward-char (length start-token))
+  (if (looking-at "[A-Za-z0-9'\"\\_]+")
+      (re-search-forward (concat "^" (regexp-quote (match-string 0))) nil t))
+  (list :here-doc))
+
+
+(defun phpinspect--munch-string (start-token)
+  "Consume text at point until a non-escaped `START-TOKEN` is found.
+
+Returns the consumed text string without face properties."
+  (forward-char (length start-token))
+  (let ((start-point (point)))
+    (cond ((looking-at start-token)
+           (forward-char)
+           "")
+          ((looking-at (concat "\\([\\][\\]\\)+" (regexp-quote start-token)))
+           (let ((match (match-string 0)))
+             (forward-char (length match))
+             (buffer-substring-no-properties start-point
+                                             (+ start-point (- (length match)
+                                                               (length start-token))))))
+          (t
+           (re-search-forward (format "\\([^\\]\\([\\][\\]\\)+\\|[^\\]\\)%s"
+                                      (regexp-quote start-token))
+                              nil t)
+           (buffer-substring-no-properties start-point (- (point) 1))))))
+
+(phpinspect-defhandler list (start-token max-point)
+  "Handler for php syntactic lists (Note: this does not include
+datatypes like arrays, merely lists that are of a syntactic
+nature like argument lists"
+  (regexp "(")
+  (forward-char (length start-token))
+  (let* ((complete-list nil)
+         (php-list (phpinspect-parse-with-handler-list
+                    (current-buffer)
+                    :list
+                    max-point
+                    (lambda () (not (and (char-equal (char-after) ?\)) (setq complete-list t)))))))
+
+    (if complete-list
+        ;; Prevent parent-lists (if any) from exiting by skipping over the
+        ;; ")" character
+        (forward-char)
+      (setcar php-list :incomplete-list))
+    php-list))
+
+;; TODO: Look into using different names for function and class :declaration tokens. They
+;; don't necessarily require the same handlers to parse.
+(defsubst phpinspect-get-or-create-declaration-parser ()
+  (phpinspect-get-parser-create :declaration
+                                '(comment word list terminator tag)
+                                'phpinspect-end-of-statement-p))
+
+
+(phpinspect-defhandler function-keyword (start-token max-point)
+  "Handler for the function keyword and tokens that follow to give it meaning"
+  (regexp (concat "function" (phpinspect--word-end-regex)))
+  (setq start-token (phpinspect--strip-last-char start-token))
+  (let* ((parser (phpinspect-get-or-create-declaration-parser))
+         (continue-condition (lambda () (not (char-equal (char-after) ?{))))
+         (declaration (funcall parser (current-buffer) max-point continue-condition)))
+    (if (phpinspect-end-of-statement-p (car (last declaration)))
+        (list :function declaration)
+      (list :function
+            declaration
+            (funcall (phpinspect-handler 'block)
+                     (char-to-string (char-after)) max-point)))))
+
+(phpinspect-defhandler scope-keyword (start-token max-point)
+  "Handler for scope keywords"
+  (regexp (mapconcat (lambda (word)
+                       (concat word (phpinspect--word-end-regex)))
+                     (list "public" "private" "protected")
+                     "\\|"))
+  (setq start-token (phpinspect--strip-last-char start-token))
+  (forward-char (length start-token))
+  (funcall (phpinspect-get-parser-create
+            (cond ((string= start-token "public") :public)
+                  ((string= start-token "private") :private)
+                  ((string= start-token "protected") :protected))
+            '(function-keyword static-keyword const-keyword
+                               variable here-doc string terminator tag comment)
+            'phpinspect--scope-terminator-p)
+           (current-buffer)
+           max-point))
+
+(phpinspect-defhandler static-keyword (start-token max-point)
+  "Handler for the static keyword"
+  (regexp (concat "static" (phpinspect--word-end-regex)))
+  (setq start-token (phpinspect--strip-last-char start-token))
+  (forward-char (length start-token))
+  (funcall (phpinspect-get-parser-create
+            :static
+            '(comment function-keyword variable array word
+                      terminator tag)
+            'phpinspect--static-terminator-p)
+           (current-buffer)
+           max-point))
+
+(phpinspect-defhandler fat-arrow (arrow &rest ignored)
+  "Handler for the \"fat arrow\" in arrays and foreach expressions"
+  (regexp "=>")
+  (phpinspect-munch-token-without-attribs arrow :fat-arrow))
+
+(phpinspect-defhandler array (start-token max-point)
+  "Handler for arrays, in the bracketet as well as the list notation"
+  (regexp "\\[\\|array(")
+  (forward-char (length start-token))
+  (let* ((end-char (cond ((string= start-token "[") ?\])
+                         ((string= start-token "array(") ?\))))
+         (end-char-reached nil)
+         (token (funcall (phpinspect-get-parser-create
+                          :array
+                          '(comment comma list here-doc string
+                                    array variable attribute-reference
+                                    word fat-arrow))
+                         (current-buffer)
+                         max-point
+                         (lambda () (not (and (char-equal (char-after) end-char)
+                                              (setq end-char-reached t)))))))
+
+    ;; Skip over the end char to prevent enclosing arrays or lists
+    ;; from terminating.
+    (if end-char-reached
+        (forward-char)
+      ;; Signal incompleteness when terminated because of max-point
+      (setcar token :incomplete-array))
+    token))
+
+(phpinspect-defhandler class-keyword (start-token max-point)
+  "Handler for the class keyword, and tokens that follow to define
+the properties of the class"
+  (regexp (concat "\\(abstract\\|final\\|class\\|interface\\|trait\\)"
+                  (phpinspect--word-end-regex)))
+  (setq start-token (phpinspect--strip-last-char start-token))
+  (list :class (funcall (phpinspect-get-or-create-declaration-parser)
+                        (current-buffer)
+                        max-point
+                        (lambda () (not (char-equal (char-after) ?{))))
+        (funcall (phpinspect-handler 'block-without-classes)
+                 (char-to-string (char-after)) max-point)))
+
+(defun phpinspect-parse-with-handler-list
+    (buffer tree-type max-point &optional continue-condition delimiter-predicate)
+  "Parse BUFFER for TREE-TYPE tokens until MAX-POINT.
+
+Stop at CONTINUE-CONDITION or DELIMITER-PREDICATE.
+
+This just calls `phpinspect-get-parser-create` to make a parser
+that contains all handlers necessary to parse code."
+  (let ((parser (phpinspect-get-parser-create
+                 tree-type
+                 '(array tag equals list comma
+                         attribute-reference variable
+                         assignment-operator whitespace scope-keyword
+                         static-keyword const-keyword use-keyword
+                         class-keyword function-keyword word terminator
+                         here-doc string comment block)
+                 delimiter-predicate)))
+    (funcall parser buffer max-point continue-condition)))
+
+
+(defun phpinspect-parse-buffer-until-point (buffer point)
+  (with-current-buffer buffer
+    (save-excursion
+      (goto-char (point-min))
+      (re-search-forward "<\\?php\\|<\\?" nil t)
+      (funcall (phpinspect-get-parser-create
+                :root
+                '(namespace array equals list comma
+                            attribute-reference variable assignment-operator
+                            whitespace scope-keyword static-keyword
+                            const-keyword use-keyword class-keyword
+                            function-keyword word terminator here-doc string
+                            comment tag block))
+               (current-buffer)
+               point))))
+
+(cl-defstruct (phpinspect--function (:constructor phpinspect--make-function))
+  "A PHP function."
+  (name nil
+        :type string
+        :documentation
+        "A string containing the name of the function")
+  (scope nil
+         :type phpinspect-scope
+         :documentation
+         "When the function is a method, this should contain the
+scope of the function as returned by `phpinspect-parse-scope`.")
+  (arguments nil
+             :type list
+             :documentation
+             "A simple list with function arguments and their
+types in tuples. Each list should have the name of the variable
+as first element and the type as second element.")
+  (return-type nil
+               :type string
+               :documentation
+               "A string containing the FQN of the return value
+of the function."))
+
+(cl-defstruct (phpinspect--variable (:constructor phpinspect--make-variable))
+  "A PHP Variable."
+  (name nil
+        :type string
+        :documentation
+        "A string containing the name of the variable.")
+  (scope nil
+         :type phpinspect-scope
+         :documentation
+         "When the variable is an object attribute, this should
+contain the scope of the variable as returned by
+`phpinspect-parse-scope`")
+  (type nil
+        :type string
+        :documentation
+        "A string containing the FQN of the variable's type"))
+
+(cl-defstruct (phpinspect--completion
+               (:constructor phpinspect--construct-completion))
+  "Contains a possible completion value with all it's attributes."
+  (value nil :type string)
+  (meta nil :type string)
+  (annotation nil :type string)
+  (kind nil :type symbol))
+
+(defun phpinspect--format-type-name (name)
+  (string-remove-prefix "\\" name))
+
+(cl-defgeneric phpinspect--make-completion (completion-candidate)
+  "Creates a `phpinspect--completion` for a possible completion
+candidate. Candidates can be indexed functions and variables.")
+
+(cl-defmethod phpinspect--make-completion
+  ((completion-candidate phpinspect--function))
+  "Create a `phpinspect--completion` for COMPLETION-CANDIDATE."
+  (phpinspect--construct-completion
+   :value (phpinspect--function-name completion-candidate)
+   :meta (concat "(" (mapconcat (lambda (arg)
+                                  (concat (phpinspect--format-type-name (cadr arg)) " "
+                                          "$" (if (> (length (car arg)) 8)
+                                                  (truncate-string-to-width (car arg) 8 nil)
+                                                (car arg))))
+                                (phpinspect--function-arguments completion-candidate)
+                                ", ")
+                 ") "
+                 (phpinspect--format-type-name (phpinspect--function-return-type completion-candidate)))
+   :annotation (concat " "
+                       (phpinspect--get-bare-class-name-from-fqn
+                        (or (phpinspect--function-return-type completion-candidate)
+                            "")))
+   :kind 'function))
+
+
+(defun phpinspect-toggle-logging ()
+  (interactive)
+  (if (setq phpinspect--debug (not phpinspect--debug))
+      (message "Enabled phpinspect logging.")
+    (message "Disabled phpinspect logging.")))
+
+(defconst phpinspect-native-types
+  ;; self, parent and resource are not valid type name.
+  ;; see https://www.php.net/manual/ja/language.types.declarations.php
+  '("array" "bool" "callable" "float" "int" "iterable" "mixed" "object" "string" "void"))
+
+(defsubst phpinspect--log (&rest args)
+  (when phpinspect--debug
+    (with-current-buffer (get-buffer-create "**phpinspect-logs**")
+      (goto-char (buffer-end 1))
+      (insert (concat (apply 'format args) "\n")))))
+
+(defun phpinspect-parse-file (file)
+  (with-temp-buffer
+    (insert-file-contents-literally file)
+    (phpinspect-parse-current-buffer)))
+
+
+(defun phpinspect-parse-current-buffer ()
+  (phpinspect-parse-buffer-until-point
+   (current-buffer)
+   (point-max)))
+
+
 (defun phpinspect--split-list (predicate list)
   (seq-reduce (let ((current-sublist))
                 (lambda (result elt)
@@ -887,6 +884,23 @@ ARG-LIST. ARG-LIST should be a list token as returned by
                   result))
               list
               nil))
+
+
+(defun phpinspect-get-variable-type-in-function-arg-list (variable-name arg-list)
+  "Infer VARIABLE-NAME's type from typehints in
+ARG-LIST. ARG-LIST should be a list token as returned by
+`phpinspect--list-handler` (see also `phpinspect-list-p`)"
+  (let ((arg-no (seq-position arg-list
+                              variable-name
+                              (lambda (token variable-name)
+                                (and (phpinspect-variable-p token)
+                                     (string= (car (last token)) variable-name))))))
+    (if (and arg-no
+             (> arg-no 0))
+        (let ((arg (elt arg-list (- arg-no 1))))
+          (if (phpinspect-word-p arg)
+              (car (last arg))
+            nil)))))
 
 (defun phpinspect-eldoc-function ()
   "An `eldoc-documentation-function` implementation for PHP files.
@@ -998,7 +1012,7 @@ TODO:
                       (seq-take-while 'phpinspect-not-assignment-p
                                       assignment))
               (and (phpinspect-list-p (car assignment))
-                   ((member `(:variable ,variable-name) (car assignment)))))
+                   (member `(:variable ,variable-name) (car assignment))))
           (push assignment variable-assignments)))
     (nreverse variable-assignments)))
 
@@ -1337,7 +1351,7 @@ said FQN's by class name"
   (let ((subtoken (seq-find (lambda (word)
                               (and (phpinspect-word-p word)
                                    (not (string-match
-                                         (concat "^" (car (phpinspect--class-keyword-handler)))
+                                         (concat "^" (phpinspect-handler-regexp 'class-keyword))
                                          (concat (cadr word) " ")))))
                             (cadr class-token))))
     (cadr subtoken)))
@@ -1592,13 +1606,13 @@ more recent"
 (defun phpinspect--init-mode ()
   "Initialize the phpinspect minor mode for the current buffer."
 
-  (make-variable-buffer-local 'company-backends)
+  (make-local-variable 'company-backends company-backends)
   (add-to-list 'company-backends 'phpinspect-company-backend)
 
-  (make-variable-buffer-local 'eldoc-documentation-function)
+  (make-local-variable 'eldoc-documentation-function)
   (setq eldoc-documentation-function 'phpinspect-eldoc-function)
 
-  (make-variable-buffer-local 'eldoc-message-commands)
+  (make-local-variable 'eldoc-message-commands)
   (eldoc-add-command 'c-electric-paren)
   (eldoc-add-command 'c-electric-backspace)
 
@@ -1683,12 +1697,6 @@ project-wide index afterwards."
         (phpinspect--find-innermost-incomplete-token last-token)
       token)))
 
-(defvar-local phpinspect--buffer-index nil
-  "The result of the last successfull parse + index action
-  executed by phpinspect for the current buffer")
-
-(defvar phpinspect-projects '()
-  "Currently active phpinspect projects and their buffers")
 
 (defun phpinspect--find-last-variable-position-in-token (token)
   "Find the last variable that can be encountered in the top
@@ -1889,9 +1897,6 @@ level of a token. Nested variables are ignored."
           ((phpinspect-variable-p (cadr last-tokens))
            (phpinspect--suggest-variables-at-point token-tree incomplete-token)))))
 
-(defvar phpinspect--last-completion-list nil
-  "Used internally to save metadata about completion options
-  between company backend calls")
 
 (defun phpinspect-company-backend (command &optional arg &rest ignored)
   (interactive (list 'interactive))
@@ -1945,9 +1950,6 @@ level of a token. Nested variables are ignored."
      (gethash arg
               (phpinspect--completion-list-metadata phpinspect--last-completion-list))))))
 
-(defvar phpinspect-cache ()
-  "In-memory nested key-value store used for caching by
-phpinspect")
 
 (cl-defstruct (phpinspect--cache (:constructor phpinspect--make-cache))
   (active-projects nil
@@ -2096,14 +2098,6 @@ indexed classes in the project"))
   (setq phpinspect-cache (phpinspect--make-cache)))
 
 
-(defvar phpinspect-index-executable
-  (concat (file-name-directory
-           (or load-file-name
-               buffer-file-name))
-          "/phpinspect-index.bash")
-  "The path to the exexutable file that indexes class file names.
-Should normally be set to \"phpinspect-index.bash\" in the source
-  file directory.")
 
 (defun phpinspect--locate-dominating-project-file (start-file)
   "Locate the first dominating file in `phpinspect-project-root-file-list`.
