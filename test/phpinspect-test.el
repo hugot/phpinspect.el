@@ -45,7 +45,7 @@
 
 (ert-deftest phpinspect-parse-namespaced-class ()
   "Test phpinspect-parse on a namespaced class"
-    (should
+  (should
    (equal (phpinspect-test-read-fixture-tree "NamespacedClass")
           (phpinspect-test-parse-fixture-code "NamespacedClass"))))
 
@@ -66,6 +66,44 @@
   (should
    (equal (phpinspect-test-read-fixture-tree "NamespacedFunctions")
           (phpinspect-test-parse-fixture-code "NamespacedFunctions"))))
+
+(ert-deftest phpinspect-parse-variable ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-tree "Variable")
+          (phpinspect-test-parse-fixture-code "Variable"))))
+
+(ert-deftest phpinspect-parse-word ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-tree "Word")
+          (phpinspect-test-parse-fixture-code "Word"))))
+
+(ert-deftest phpinspect-parse-array ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-tree "Array")
+          (phpinspect-test-parse-fixture-code "Array"))))
+
+
+(ert-deftest phpinspect-parse-short-function ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-tree "ShortFunction")
+          (phpinspect-test-parse-fixture-code "ShortFunction"))))
+
+(ert-deftest phpinspect-parse-two-short-functions ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-tree "TwoShortFunctions")
+          (phpinspect-test-parse-fixture-code "TwoShortFunctions"))))
+
+(ert-deftest phpinspect-parse-small-namespaced-class ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-tree "SmallNamespacedClass")
+          (phpinspect-test-parse-fixture-code "SmallNamespacedClass"))))
+
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here
