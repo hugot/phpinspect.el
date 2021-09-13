@@ -1,0 +1,1 @@
+(:root (:word "bareword"))

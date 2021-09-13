@@ -1,1 +1,0 @@
-(:root (:variable "variable"))

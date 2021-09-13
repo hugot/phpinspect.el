@@ -1,1 +1,0 @@
-(:root (:array (:string "item1") (:comma ",") (:string "item2") (:comma ",") (:string "item3")) (:terminator ";") (:array (:string "item1") (:fat-arrow "=>") (:string "item2") (:comma ",") (:string "item3") (:fat-arrow "=>") (:string "item4")))

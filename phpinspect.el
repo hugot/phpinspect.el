@@ -4,6 +4,7 @@
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
+;; Version: 0
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -37,9 +38,6 @@
 (defvar-local phpinspect--buffer-index nil
   "The result of the last successfull parse + index action
   executed by phpinspect for the current buffer")
-
-(defvar phpinspect-projects '()
-  "Currently active phpinspect projects and their buffers")
 
 (defvar phpinspect--debug nil
   "Enable debug logs for phpinspect by setting this variable to true")
@@ -183,7 +181,7 @@ Type can be any of the token types returned by
 
 (defun phpinspect-function-argument-list (php-func)
   "Get the argument list of a function"
-  (seq-find 'phpinspect-list-p (seq-find 'phpinspect-declaration-p php-func nil) nil))
+  (seq-find #'phpinspect-list-p (seq-find #'phpinspect-declaration-p php-func nil) nil))
 
 (defsubst phpinspect-variable-p (token)
   (phpinspect-type-p token :variable))
@@ -293,7 +291,8 @@ text at point and returns the resulting token."
   ;; every time the parser advances one character and has to check for the regexp
   ;; occurence.
   (setq attribute-plist (plist-put attribute-plist 'regexp
-                                   (eval (plist-get attribute-plist 'regexp))))
+                                   (eval (plist-get attribute-plist 'regexp)
+                                         t)))
   (let ((name (symbol-name name)))
     `(progn
        (set (intern ,name phpinspect-handler-obarray) (quote ,attribute-plist))
@@ -316,7 +315,8 @@ parser function is then returned in byte-compiled form."
   (let ((parser-name (symbol-name tree-type)))
     (or (intern-soft parser-name phpinspect-parser-obarray)
          (defalias (intern parser-name phpinspect-parser-obarray)
-           (byte-compile (apply 'phpinspect-make-parser `(,tree-type ,@parser-parameters)))))))
+           (byte-compile (apply #'phpinspect-make-parser
+                                `(,tree-type ,@parser-parameters)))))))
 
 (defun phpinspect-purge-parser-cache ()
   "Empty `phpinspect-parser-obarray`.
@@ -381,12 +381,12 @@ token is \";\", which marks the end of a statement in PHP."
                    (t (forward-char))))
            (push ,tree-type tokens))))))
 
-(phpinspect-defhandler comma (comma &rest ignored)
+(phpinspect-defhandler comma (comma &rest _ignored)
   "Handler for comma tokens"
   (regexp ",")
   (phpinspect-munch-token-without-attribs comma :comma))
 
-(phpinspect-defhandler word (word &rest ignored)
+(phpinspect-defhandler word (word &rest _ignored)
   "Handler for bareword tokens"
   (regexp "[A-Za-z_\\][\\A-Za-z_0-9]*")
   (let ((length (length word)))
@@ -414,7 +414,7 @@ token is \";\", which marks the end of a statement in PHP."
              (push (funcall variable-handler (match-string 0)) words))))
     (nreverse words)))
 
-(phpinspect-defhandler annotation (start-token &rest ignored)
+(phpinspect-defhandler annotation (start-token &rest _ignored)
   "Handler for in-comment @annotations"
   (regexp "@")
   (forward-char (length start-token))
@@ -462,11 +462,11 @@ token is \";\", which marks the end of a statement in PHP."
            (forward-char 2)
            doc-block))
         (t
-         (let ((parser (phpinspect-get-parser-create :comment '(tag) 'phpinspect-html-p))
+         (let ((parser (phpinspect-get-parser-create :comment '(tag) #'phpinspect-html-p))
                (end-position (line-end-position)))
            (funcall parser (current-buffer) end-position)))))
 
-(phpinspect-defhandler variable (start-token &rest ignored)
+(phpinspect-defhandler variable (start-token &rest _ignored)
   "Handler for tokens indicating reference to a variable"
   (regexp "\\$")
   (forward-char (length start-token))
@@ -474,22 +474,22 @@ token is \";\", which marks the end of a statement in PHP."
       (phpinspect-munch-token-without-attribs (match-string 0) :variable)
     (list :variable nil)))
 
-(phpinspect-defhandler whitespace (whitespace &rest ignored)
+(phpinspect-defhandler whitespace (whitespace &rest _ignored)
   "Handler that discards whitespace"
   (regexp "[[:blank:]]+")
   (forward-char (length whitespace)))
 
-(phpinspect-defhandler equals (equals &rest ignored)
+(phpinspect-defhandler equals (equals &rest _ignored)
   "Handler for strict and unstrict equality comparison tokens."
   (regexp "===?")
   (phpinspect-munch-token-without-attribs equals :equals))
 
-(phpinspect-defhandler assignment-operator (operator &rest ignored)
+(phpinspect-defhandler assignment-operator (operator &rest _ignored)
   "Handler for tokens indicating that an assignment is taking place"
   (regexp "[+-]?=")
   (phpinspect-munch-token-without-attribs operator :assignment))
 
-(phpinspect-defhandler terminator (terminator &rest ignored)
+(phpinspect-defhandler terminator (terminator &rest _ignored)
   "Handler for statement terminators."
   (regexp ";")
   (phpinspect-munch-token-without-attribs terminator :terminator))
@@ -503,10 +503,10 @@ token is \";\", which marks the end of a statement in PHP."
   (let ((parser (phpinspect-get-parser-create
                  :use
                  '(word tag block-without-classes terminator)
-                 'phpinspect-end-of-use-p)))
+                 #'phpinspect-end-of-use-p)))
     (funcall parser (current-buffer) max-point)))
 
-(phpinspect-defhandler attribute-reference (start-token &rest ignored)
+(phpinspect-defhandler attribute-reference (start-token &rest _ignored)
   "Handler for references to object attributes, or static class attributes."
   (regexp "->\\|::")
   (forward-char (length start-token))
@@ -535,7 +535,7 @@ token is \";\", which marks the end of a statement in PHP."
    :namespace
    max-point
    (lambda () (not (looking-at (phpinspect-handler-regexp 'namespace))))
-   'phpinspect-block-p))
+   #'phpinspect-block-p))
 
 (phpinspect-defhandler const-keyword (start-token max-point)
   "Handler for the const keyword."
@@ -546,13 +546,13 @@ token is \";\", which marks the end of a statement in PHP."
                   :const
                   '(word comment assignment-operator string array
                          terminator)
-                  'phpinspect-end-of-statement-p))
+                  #'phpinspect-end-of-statement-p))
          (token (funcall parser (current-buffer) max-point)))
     (when (phpinspect-incomplete-token-p (car (last token)))
       (setcar token :incomplete-const))
     token))
 
-(phpinspect-defhandler string (start-token &rest ignored)
+(phpinspect-defhandler string (start-token &rest _ignored)
   "Handler for strings"
   (regexp "\"\\|'")
   (list :string (phpinspect--munch-string start-token)))
@@ -599,7 +599,7 @@ token is \";\", which marks the end of a statement in PHP."
       (setcar parsed :incomplete-block))
     parsed))
 
-(phpinspect-defhandler here-doc (start-token &rest ignored)
+(phpinspect-defhandler here-doc (start-token &rest _ignored)
   "Handler for heredocs. Discards their contents."
   (regexp "<<<")
   (forward-char (length start-token))
@@ -654,7 +654,7 @@ nature like argument lists"
 (defsubst phpinspect-get-or-create-declaration-parser ()
   (phpinspect-get-parser-create :declaration
                                 '(comment word list terminator tag)
-                                'phpinspect-end-of-statement-p))
+                                #'phpinspect-end-of-statement-p))
 
 
 (phpinspect-defhandler function-keyword (start-token max-point)
@@ -685,7 +685,7 @@ nature like argument lists"
                   ((string= start-token "protected") :protected))
             '(function-keyword static-keyword const-keyword
                                variable here-doc string terminator tag comment)
-            'phpinspect--scope-terminator-p)
+            #'phpinspect--scope-terminator-p)
            (current-buffer)
            max-point))
 
@@ -698,11 +698,11 @@ nature like argument lists"
             :static
             '(comment function-keyword variable array word
                       terminator tag)
-            'phpinspect--static-terminator-p)
+            #'phpinspect--static-terminator-p)
            (current-buffer)
            max-point))
 
-(phpinspect-defhandler fat-arrow (arrow &rest ignored)
+(phpinspect-defhandler fat-arrow (arrow &rest _ignored)
   "Handler for the \"fat arrow\" in arrays and foreach expressions"
   (regexp "=>")
   (phpinspect-munch-token-without-attribs arrow :fat-arrow))
@@ -868,7 +868,7 @@ candidate. Candidates can be indexed functions and variables.")
   (when phpinspect--debug
     (with-current-buffer (get-buffer-create "**phpinspect-logs**")
       (goto-char (buffer-end 1))
-      (insert (concat (apply 'format args) "\n")))))
+      (insert (concat (apply #'format args) "\n")))))
 
 (defsubst phpinspect-cache-project-class (project-root indexed-class)
   (phpinspect--project-add-class
@@ -897,7 +897,7 @@ candidate. Candidates can be indexed functions and variables.")
       (nreverse
        (append (alist-get (if static 'static-methods 'methods)
                           index)
-               (apply 'append
+               (apply #'append
                       (mapcar (lambda (class-fqn)
                                 (phpinspect-get-cached-project-class-methods
                                  project-root class-fqn static))
@@ -1015,7 +1015,7 @@ TODO:
         ;; else
         (setq type-resolver (phpinspect--make-type-resolver
                              (phpinspect--uses-to-types
-                              (seq-filter 'phpinspect-use-p token-tree)))))
+                              (seq-filter #'phpinspect-use-p token-tree)))))
       (let* ((previous-statement (phpinspect--get-last-statement-in-token (butlast enclosing-token 2)))
              (type-of-previous-statement
               (phpinspect-get-type-of-derived-statement-in-token
@@ -1039,7 +1039,7 @@ TODO:
         (when method
           (let ((arg-count -1)
                 (comma-count
-                 (length (seq-filter 'phpinspect-comma-p incomplete-token))))
+                 (length (seq-filter #'phpinspect-comma-p incomplete-token))))
             (concat (truncate-string-to-width
                      (phpinspect--function-name method) 14) ": ("
                      (mapconcat
@@ -1073,10 +1073,10 @@ TODO:
                            (phpinspect-block-p elt)))
                      token)))
     (dolist (statement statements)
-      (cond ((seq-find 'phpinspect-assignment-p statement)
+      (cond ((seq-find #'phpinspect-assignment-p statement)
              (phpinspect--log "Found assignment statement")
              (push statement assignments))
-            ((setq code-block (seq-find 'phpinspect-block-p statement))
+            ((setq code-block (seq-find #'phpinspect-block-p statement))
              (setq assignments
                    (append
                     (phpinspect--find-assignments-in-token code-block)
@@ -1095,7 +1095,7 @@ TODO:
         (all-assignments (phpinspect--find-assignments-in-token token)))
     (dolist (assignment all-assignments)
       (if (or (member `(:variable ,variable-name)
-                      (seq-take-while 'phpinspect-not-assignment-p
+                      (seq-take-while #'phpinspect-not-assignment-p
                                       assignment))
               (and (phpinspect-list-p (car assignment))
                    (member `(:variable ,variable-name) (car assignment))))
@@ -1118,9 +1118,9 @@ ClassName::method();
 $variable = ClassName::method();
 $variable = $variable->method();"
   ;; A derived statement can be an assignment itself.
-  (when (seq-find 'phpinspect-assignment-p statement)
+  (when (seq-find #'phpinspect-assignment-p statement)
     (phpinspect--log "Derived statement is an assignment: %s" statement)
-    (setq statement (cdr (seq-drop-while 'phpinspect-not-assignment-p statement))))
+    (setq statement (cdr (seq-drop-while #'phpinspect-not-assignment-p statement))))
   (phpinspect--log "Get derived statement type in block: %s" statement)
   (let* ((first-token (pop statement))
          (current-token)
@@ -1134,7 +1134,7 @@ $variable = $variable->method();"
                      ;; that the caller is trying to derive. Therefore we just try to
                      ;; resolve the type of the last bare word in the statement.
                      (or (when (and (phpinspect-word-p first-token)
-                                    (seq-every-p 'phpinspect-word-p statement))
+                                    (seq-every-p #'phpinspect-word-p statement))
                            (setq statement (last statement))
                            (funcall type-resolver (cadr (pop statement))))
 
@@ -1222,7 +1222,7 @@ resolve types of function argument variables."
     (let* ((assignments
             (phpinspect--find-assignments-of-variable-in-token variable-name php-block))
            (last-assignment (when assignments (car (last assignments))))
-           (right-of-assignment (when assignments (cdr (seq-drop-while 'phpinspect-not-assignment-p
+           (right-of-assignment (when assignments (cdr (seq-drop-while #'phpinspect-not-assignment-p
                                                                        last-assignment)))))
       (phpinspect--log "Assignments: %s" assignments)
       (phpinspect--log "Last assignment: %s" right-of-assignment)
@@ -1234,7 +1234,7 @@ resolve types of function argument variables."
                   (string= (cadar right-of-assignment) "new"))
              (funcall type-resolver (cadadr right-of-assignment)))
             ((and (> (length right-of-assignment) 2)
-                  (seq-find 'phpinspect-attrib-p right-of-assignment))
+                  (seq-find #'phpinspect-attrib-p right-of-assignment))
              (phpinspect--log "Variable was assigned with a derived statement")
              (phpinspect-get-derived-statement-type-in-block right-of-assignment
                                                              php-block
@@ -1364,7 +1364,7 @@ said FQN's by class name"
          (concat "\\" namespace "\\" type))
 
         ;; Clas|interface|trait name
-        (t (concat "\\" (or (assoc-default type types 'string=) (concat namespace "\\" type))))))
+        (t (concat "\\" (or (assoc-default type types #'string=) (concat namespace "\\" type))))))
 
 (defun phpinspect-var-annotation-p (token)
   (phpinspect-type-p token :var-annotation))
@@ -1395,7 +1395,7 @@ said FQN's by class name"
                    (cadar (last declaration))
                  ;; @return annotation
                  (cadadr
-                  (seq-find 'phpinspect-return-annotation-p
+                  (seq-find #'phpinspect-return-annotation-p
                             comment-before)))))
     (phpinspect--make-function
      :scope `(,(car scope))
@@ -1411,7 +1411,7 @@ said FQN's by class name"
    :name (cadr (cadr (cadr scope)))))
 
 (defun phpinspect--var-annotations-from-token (token)
-  (seq-filter 'phpinspect-var-annotation-p token))
+  (seq-filter #'phpinspect-var-annotation-p token))
 
 (defun phpinspect--index-variable-from-scope (type-resolver scope comment-before)
   "Index the variable inside `scope`."
@@ -1535,7 +1535,7 @@ said FQN's by class name"
             (let ((constructor-parameter-type
                    (car (alist-get (phpinspect--variable-name variable)
                                    (phpinspect--function-arguments constructor)
-                                   nil nil 'string=))))
+                                   nil nil #'string=))))
               (if constructor-parameter-type
                   (setf (phpinspect--variable-type variable)
                         (funcall type-resolver constructor-parameter-type))))))))
@@ -1576,12 +1576,12 @@ namespace if not provided"
     (cons type-name fqn)))
 
 (defun phpinspect--uses-to-types (uses)
-  (mapcar 'phpinspect--use-to-type uses))
+  (mapcar #'phpinspect--use-to-type uses))
 
 (defun phpinspect--index-namespace (namespace)
   (phpinspect--index-classes
-   (phpinspect--uses-to-types (seq-filter 'phpinspect-use-p namespace))
-   (seq-filter 'phpinspect-class-p namespace)
+   (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p namespace))
+   (seq-filter #'phpinspect-class-p namespace)
    (cadadr namespace)))
 
 (defun phpinspect--index-namespaces (namespaces &optional indexed)
@@ -1589,9 +1589,9 @@ namespace if not provided"
       (progn
         (push (phpinspect--index-namespace (pop namespaces)) indexed)
         (phpinspect--index-namespaces namespaces indexed))
-    (apply 'append (nreverse indexed))))
+    (apply #'append (nreverse indexed))))
 
-(defun phpinspect--index-functions (&rest args)
+(defun phpinspect--index-functions (&rest _args)
   "TODO: implement function indexation. This is a stub function.")
 
 (defun phpinspect--index-tokens (tokens)
@@ -1599,10 +1599,10 @@ namespace if not provided"
   `(phpinspect--root-index
     ,(append
       (append '(classes)
-              (phpinspect--index-namespaces (seq-filter 'phpinspect-namespace-p tokens))
+              (phpinspect--index-namespaces (seq-filter #'phpinspect-namespace-p tokens))
               (phpinspect--index-classes
-               (phpinspect--uses-to-types (seq-filter 'phpinspect-use-p tokens))
-               (seq-filter 'phpinspect-class-p tokens))))
+               (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p tokens))
+               (seq-filter #'phpinspect-class-p tokens))))
     (functions))
   ;; TODO: Implement function indexation
   )
@@ -1643,7 +1643,7 @@ namespace if not provided"
            (alist-get class-fqn (alist-get 'classes new-index)
                       nil
                       nil
-                      'string=)))))))
+                      #'string=)))))))
 
 
 (defun phpinspect--index-current-buffer ()
@@ -1654,7 +1654,7 @@ namespace if not provided"
   (phpinspect--index-tokens (phpinspect-parse-current-buffer)))
 
 (defun phpinspect--get-variables-for-class (buffer-classes class &optional static)
-  (let ((class-index (or (assoc-default class buffer-classes 'string=)
+  (let ((class-index (or (assoc-default class buffer-classes #'string=)
                          (phpinspect--get-or-create-index-for-class-file class))))
     (when class-index
       (if static
@@ -1667,7 +1667,7 @@ namespace if not provided"
   "Extract all possible methods for a class from `buffer-classes` and the class index.
 `buffer-classes` will be preferred because their data should be
 more recent"
-  (let ((class-index (or (alist-get class buffer-classes nil nil 'string=)
+  (let ((class-index (or (alist-get class buffer-classes nil nil #'string=)
                          (phpinspect--get-or-create-index-for-class-file class))))
     (phpinspect--log "Getting methods for class (%s)" class)
     (phpinspect--log "index: %s" class-index)
@@ -1677,7 +1677,7 @@ more recent"
         ;; TODO: Merge this somehow with phpinspect-get-cached-project-class-methods
         (nreverse
          (append (alist-get (if static 'static-methods 'methods) class-index)
-                 (apply 'append
+                 (apply #'append
                         (mapcar (lambda (inherit-class)
                                   (phpinspect--log "Inherit class: %s" inherit-class)
                                   (phpinspect--get-methods-for-class
@@ -1693,24 +1693,29 @@ more recent"
   "Initialize the phpinspect minor mode for the current buffer."
 
   (make-local-variable 'company-backends)
-  (add-to-list 'company-backends 'phpinspect-company-backend)
+  (add-to-list 'company-backends #'phpinspect-company-backend)
 
-  (make-local-variable 'eldoc-documentation-function)
-  (setq eldoc-documentation-function 'phpinspect-eldoc-function)
+
+  (set (make-local-variable 'eldoc-documentation-function)
+       #'phpinspect-eldoc-function)
 
   (make-local-variable 'eldoc-message-commands)
   (eldoc-add-command 'c-electric-paren)
   (eldoc-add-command 'c-electric-backspace)
 
   (phpinspect--after-save-action)
-  (add-hook 'after-save-hook 'phpinspect--after-save-action nil 'local))
+  (add-hook 'after-save-hook #'phpinspect--after-save-action nil 'local))
 
 (defun phpinspect--after-save-action ()
-  "Hook that should be run after saving a buffer that has
-phpinspect-mode enabled. Indexes the entire buffer and updates
-`phpinspect--buffer-index`. Merges the buffer index into the
-project-wide index afterwards."
-  (when (and (boundp phpinspect-mode) phpinspect-mode)
+  "This is intended to be run every time a phpinspect buffer is saved.
+
+It indexes the entire buffer and updates
+`phpinspect--buffer-index'.  The buffer index is merged into the
+project-wide index (stored in `phpinspect-cache') afterwards.
+Assuming that files are only changed from within Emacs, this
+keeps the cache valid.  If changes are made outside of Emacs,
+users will have to use \\[phpinspect-purge-cache]."
+  (when (and (boundp 'phpinspect-mode) phpinspect-mode)
     (setq phpinspect--buffer-index (phpinspect--index-current-buffer))
     (dolist (class (alist-get 'classes phpinspect--buffer-index))
       (when class
@@ -1725,7 +1730,7 @@ project-wide index afterwards."
   (kill-local-variable 'eldoc-message-commands))
 
 (defun phpinspect--mode-function ()
-  (if (and (boundp phpinspect-mode) phpinspect-mode)
+  (if (and (boundp 'phpinspect-mode) phpinspect-mode)
       (phpinspect--init-mode)
     (phpinspect--disable-mode)))
 
@@ -1812,11 +1817,11 @@ level of a token. Nested variables are ignored."
   (let* ((class1-methods (alist-get 'methods (cdr class1)))
          (class1-variables (alist-get 'variables (cdr class1))))
     (dolist (method (alist-get 'methods (cdr class2)))
-      (add-to-list 'class1-methods method))
+      (cl-pushnew method class1-methods :test #'equal))
     (setf (alist-get 'methods (cdr class1)) class1-methods)
 
     (dolist (variable (alist-get 'variables (cdr class2)))
-      (add-to-list 'class1-variables variable))
+      (cl-pushnew variable class1-variables :test #'equal))
     (setf (alist-get 'variables (cdr class1)) class1-variables))
   class1)
 
@@ -1907,7 +1912,7 @@ level of a token. Nested variables are ignored."
 (defun phpinspect--make-type-resolver-for-namespace (namespace-token &optional token-tree)
   (phpinspect--make-type-resolver
    (phpinspect--uses-to-types
-    (seq-filter 'phpinspect-use-p namespace-token))
+    (seq-filter #'phpinspect-use-p namespace-token))
    token-tree
    (cadadr namespace-token)))
 
@@ -1967,7 +1972,7 @@ level of a token. Nested variables are ignored."
            (phpinspect--suggest-variables-at-point token-tree incomplete-token)))))
 
 
-(defun phpinspect-company-backend (command &optional arg &rest ignored)
+(defun phpinspect-company-backend (command &optional arg &rest _ignored)
   (interactive (list 'interactive))
   (cond
    ((eq command 'interactive)
@@ -2002,7 +2007,7 @@ level of a token. Nested variables are ignored."
                                           completion)))
                         (seq-uniq (phpinspect--completion-list-completions
                                    completion-list)
-                                  'string=)))
+                                  #'string=)))
       (setq phpinspect--last-completion-list completion-list)
       candidates))
    ((eq command 'annotation)
@@ -2042,7 +2047,7 @@ indexed classes in the project"))
 
 (cl-defgeneric phpinspect--cache-getproject
     ((cache phpinspect--cache) (project-name string))
-  "Get project that is located in `project-root`.")
+  "Get project by PROJECT-NAME that is located in CACHE.")
 
 (cl-defmethod phpinspect--cache-getproject
   ((cache phpinspect--cache) (project-root string))
@@ -2050,7 +2055,9 @@ indexed classes in the project"))
 
 (cl-defgeneric phpinspect--cache-get-project-create
     ((cache phpinspect--cache) (project-root string))
-  "Get a project that is located in `project-root` from the cache. If no such project exists in the cache yet, it is created and then returned.")
+  "Get a project that is located in PROJECT-ROOT from CACHE.
+If no such project exists in the cache yet, it is created and
+then returned.")
 
 (cl-defmethod phpinspect--cache-get-project-create
   ((cache phpinspect--cache) (project-root string))
@@ -2061,7 +2068,7 @@ indexed classes in the project"))
 
 (cl-defgeneric phpinspect--project-add-class
     ((project phpinspect--project) (class (head phpinspect--class)))
-  "Add an indexed class to a `phpinspect--project`")
+  "Add an indexed CLASS to PROJECT.")
 
 (cl-defmethod phpinspect--project-add-class
   ((project phpinspect--project) (class (head phpinspect--class)))
@@ -2076,7 +2083,7 @@ indexed classes in the project"))
 
 (cl-defgeneric phpinspect--project-get-class
     ((project phpinspect--project) (class-fqn string))
-  "Get indexed class by name of CLASS-FQN stored in PROJECT")
+  "Get indexed class by name of CLASS-FQN stored in PROJECT.")
 
 (cl-defmethod phpinspect--project-get-class
   ((project phpinspect--project) (class-fqn string))
@@ -2084,21 +2091,24 @@ indexed classes in the project"))
            (phpinspect--project-class-index project)))
 
 (defun phpinspect--get-or-create-global-cache ()
+  "Get `phpinspect-cache'.
+If its value is nil, it is created and then returned."
   (or phpinspect-cache
       (setq phpinspect-cache (phpinspect--make-cache))))
 
 
 (defun phpinspect-purge-cache ()
+  "Assign a fresh, empty cache object to `phpinspect-cache'.
+This effectively purges any cached code information from all
+currently opened projects."
   (interactive)
   (setq phpinspect-cache (phpinspect--make-cache)))
-
-
 
 (defun phpinspect--locate-dominating-project-file (start-file)
   "Locate the first dominating file in `phpinspect-project-root-file-list`.
 Starts looking at START-FILE and then recurses up the directory
 hierarchy as long as no matching files are found.  See also
-`locate-dominating-file`."
+`locate-dominating-file'."
   (let ((dominating-file))
     (seq-find (lambda (file)
                 (setq dominating-file (locate-dominating-file start-file file)))
@@ -2109,7 +2119,7 @@ hierarchy as long as no matching files are found.  See also
   "(Attempt to) Find the root directory of the visited PHP project.
 If a found project root has a parent directory called \"vendor\",
 the search continues upwards. See also
-`phpinspect--locate-dominating-project-file`.
+`phpinspect--locate-dominating-project-file'.
 
 If START-FILE is provided, searching starts at the directory
 level of START-FILE in stead of `default-directory`."
@@ -2134,18 +2144,18 @@ level of START-FILE in stead of `default-directory`."
 ;;;###autoload
 (defun phpinspect-fix-uses-interactive ()
   "Add missing use statements to the currently visited PHP file."
-       (interactive)
-       (save-buffer)
-       (let* ((phpinspect-json (shell-command-to-string
-			                    (format "cd %s && %s fxu --json %s"
-				                        (shell-quote-argument (phpinspect--get-project-root))
-                                        (shell-quote-argument phpinspect-index-executable)
-				                        (shell-quote-argument buffer-file-name)))))
-	     (let* ((json-object-type 'hash-table)
-		        (json-array-type 'list)
-		        (json-key-type 'string)
-		        (phpinspect-json-data (json-read-from-string phpinspect-json)))
-	       (maphash 'phpinspect-handle-phpinspect-json phpinspect-json-data))))
+  (interactive)
+  (save-buffer)
+  (let* ((phpinspect-json (shell-command-to-string
+			               (format "cd %s && %s fxu --json %s"
+				                   (shell-quote-argument (phpinspect--get-project-root))
+                                   (shell-quote-argument phpinspect-index-executable)
+				                   (shell-quote-argument buffer-file-name)))))
+	(let* ((json-object-type 'hash-table)
+		   (json-array-type 'list)
+		   (json-key-type 'string)
+		   (phpinspect-json-data (json-read-from-string phpinspect-json)))
+	  (maphash #'phpinspect-handle-phpinspect-json phpinspect-json-data))))
 
 (defun phpinspect-handle-phpinspect-json (class-name candidates)
   "Handle key value pair of classname and FQN's"
@@ -2157,6 +2167,7 @@ level of START-FILE in stead of `default-directory`."
           (t
            (phpinspect-add-use (completing-read "Class: " candidates))))))
 
+;; TODO: Implement this using the parser in stead of regexes.
 (defun phpinspect-add-use (fqn) "Add use statement to a php file"
        (save-excursion
          (let ((current-char (point)))
