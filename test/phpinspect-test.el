@@ -127,5 +127,30 @@
            (phpinspect-test-read-fixture-data
             "class-index-1-2-undestructive-merge"))))
 
+(ert-deftest phpinspect-find-innermost-incomplete-nested-token ()
+  (let ((resolvecontext (phpinspect--get-resolvecontext
+                         (phpinspect-test-read-fixture-data "IncompleteClass"))))
+
+    (should (equal (phpinspect--resolvecontext-subject resolvecontext)
+                   '((:variable "this")
+                     (:object-attrib (:word "em"))
+                     (:object-attrib nil))))
+
+    (should (phpinspect-root-p
+             (car (last (phpinspect--resolvecontext-enclosing-tokens
+                         resolvecontext)))))
+
+    (should (phpinspect-incomplete-list-p
+             (car (phpinspect--resolvecontext-enclosing-tokens
+                   resolvecontext))))
+
+    (should (phpinspect-incomplete-function-p
+             (cadr (phpinspect--resolvecontext-enclosing-tokens
+                    resolvecontext))))
+
+    (should (phpinspect-incomplete-class-p
+             (cadddr (phpinspect--resolvecontext-enclosing-tokens
+                     resolvecontext))))))
+
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here

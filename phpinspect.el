@@ -1,4 +1,4 @@
-;;; phpinspect.el --- PHP parsing and IntelliSense package  -*- lexical-binding: t; -*-
+;;; phpinspect.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021  Free Software Foundation, Inc
 
@@ -70,7 +70,24 @@ Should normally be set to \"phpinspect-index.bash\" in the source
 
 (eval-when-compile
   (define-inline phpinspect--word-end-regex ()
-    (inline-quote "[[:blank:]]")))
+    (inline-quote "\\([[:blank:]]\\|[^0-9a-zA-Z_]\\)")))
+
+(defun phpinspect-list-handlers ()
+  (let ((handlers))
+    (mapatoms (lambda (handler)
+                (push (symbol-name handler) handlers))
+              phpinspect-handler-obarray)
+    handlers))
+
+(defun phpinspect-describe-handler (handler-name)
+  "Display a buffer containing HANDLER-NAMEs docstring and attribute-plist."
+  (interactive (list (completing-read "Pick a handler:" (phpinspect-list-handlers))))
+  (with-current-buffer (get-buffer-create "phpinspect-handler-description")
+    (insert (concat
+             (pp (symbol-value (intern handler-name phpinspect-handler-obarray)))
+             "\n"
+             (documentation (intern handler-name phpinspect-handler-obarray))))
+    (pop-to-buffer (current-buffer))))
 
 (defsubst phpinspect--strip-last-char (string)
   (substring string 0 (- (length string) 1)))
@@ -112,6 +129,13 @@ Type can be any of the token types returned by
       (phpinspect-comma-p token)
       (phpinspect-html-p token)))
 
+(defsubst phpinspect-incomplete-block-p (token)
+  (phpinspect-type-p token :incomplete-block))
+
+(defsubst phpinspect-block-p (token)
+  (or (phpinspect-type-p token :block)
+      (phpinspect-incomplete-block-p token)))
+
 (defun phpinspect-end-of-use-p (token)
   (or (phpinspect-block-p token)
       (phpinspect-end-of-statement-p token)))
@@ -131,11 +155,8 @@ Type can be any of the token types returned by
       (phpinspect-type-p token :private)
       (phpinspect-type-p token :protected)))
 
-(defun phpinspect-block-p (token)
-  (or (phpinspect-type-p token :block) (phpinspect-incomplete-block-p token)))
-
-(defun phpinspect-incomplete-block-p (token)
-  (phpinspect-type-p token :incomplete-block))
+(defsubst phpinspect-namespace-p (object)
+  (phpinspect-type-p object :namespace))
 
 (defun phpinspect-incomplete-class-p (token)
   (and (phpinspect-class-p token)
@@ -148,6 +169,7 @@ Type can be any of the token types returned by
 
 (defun phpinspect-function-p (token)
   (phpinspect-type-p token :function))
+
 
 (defun phpinspect-class-p (token)
   (phpinspect-type-p token :class))
@@ -196,7 +218,6 @@ Type can be any of the token types returned by
   (or (phpinspect-type-p token :array)
       (phpinspect-incomplete-array-p token)))
 
-
 (defsubst phpinspect-incomplete-token-p (token)
   (or (phpinspect-incomplete-class-p token)
       (phpinspect-incomplete-block-p token)
@@ -226,14 +247,34 @@ Type can be any of the token types returned by
 (defun phpinspect-use-keyword-p (token)
   (and (phpinspect-word-p token) (string= (car (last token)) "use")))
 
-(defun phpinspect-namespace-p (object)
-  (phpinspect-type-p object :namespace))
+
+(defsubst phpinspect-root-p (object)
+  (phpinspect-type-p object :root))
+
+(defsubst phpinspect-namespace-or-root-p (object)
+  (or (phpinspect-namespace-p object)
+      (phpinspect-root-p object)))
 
 (defun phpinspect-use-p (object)
   (phpinspect-type-p object :use))
 
 (defun phpinspect-comment-p (token)
   (phpinspect-type-p token :comment))
+
+(defsubst phpinspect-class-block (class)
+  (caddr class))
+
+(defsubst phpinspect-namespace-block (namespace)
+  (when (and (= (length namespace) 3)
+             (phpinspect-block-p (caddr namespace)))
+    (caddr namespace)))
+
+(defsubst phpinspect-function-block (php-func)
+  (caddr php-func))
+
+(defsubst phpinspect-not-class-p (token)
+  "Apply inverse of `phpinspect-class-p' to TOKEN."
+  (not (phpinspect-class-p token)))
 
 (defmacro phpinspect-defhandler (name arguments docstring attribute-plist &rest body)
   "Define a parser handler that becomes available for use with phpinspect-parse.
@@ -502,7 +543,7 @@ token is \";\", which marks the end of a statement in PHP."
 
   (let ((parser (phpinspect-get-parser-create
                  :use
-                 '(word tag block-without-classes terminator)
+                 '(word tag block-without-scopes terminator)
                  #'phpinspect-end-of-use-p)))
     (funcall parser (current-buffer) max-point)))
 
@@ -557,7 +598,30 @@ token is \";\", which marks the end of a statement in PHP."
   (regexp "\"\\|'")
   (list :string (phpinspect--munch-string start-token)))
 
-(phpinspect-defhandler block-without-classes (start-token max-point)
+(phpinspect-defhandler block-without-scopes (start-token max-point)
+  "Handler for code blocks that cannot contain scope, const or
+static keywords with the same meaning as in a class block."
+  (regexp "{")
+  (forward-char (length start-token))
+  (let* ((complete-block nil)
+         (parser (phpinspect-get-parser-create
+                  :block
+                  '(array tag equals list comma
+                          attribute-reference variable
+                          assignment-operator whitespace
+                          function-keyword word terminator here-doc
+                          string comment block-without-scopes)))
+         (continue-condition (lambda ()
+                               (not (and (char-equal (char-after) ?})
+                                         (setq complete-block t)))))
+         (parsed (funcall parser (current-buffer) max-point continue-condition)))
+    (if complete-block
+        (forward-char)
+      (setcar parsed :incomplete-block))
+    parsed))
+
+
+(phpinspect-defhandler class-block (start-token max-point)
   "Handler for code blocks that cannot contain classes"
   (regexp "{")
   (forward-char (length start-token))
@@ -636,9 +700,15 @@ nature like argument lists"
   (regexp "(")
   (forward-char (length start-token))
   (let* ((complete-list nil)
-         (php-list (phpinspect-parse-with-handler-list
+         (php-list (funcall
+                    (phpinspect-get-parser-create
+                     :list
+                     '(array tag equals list comma
+                             attribute-reference variable
+                             assignment-operator whitespace
+                             function-keyword word terminator here-doc
+                             string comment block-without-scopes))
                     (current-buffer)
-                    :list
                     max-point
                     (lambda () (not (and (char-equal (char-after) ?\)) (setq complete-list t)))))))
 
@@ -668,7 +738,7 @@ nature like argument lists"
         (list :function declaration)
       (list :function
             declaration
-            (funcall (phpinspect-handler 'block)
+            (funcall (phpinspect-handler 'block-without-scopes)
                      (char-to-string (char-after)) max-point)))))
 
 (phpinspect-defhandler scope-keyword (start-token max-point)
@@ -742,7 +812,7 @@ the properties of the class"
                         (current-buffer)
                         max-point
                         (lambda () (not (char-equal (char-after) ?{))))
-        (funcall (phpinspect-handler 'block-without-classes)
+        (funcall (phpinspect-handler 'class-block)
                  (char-to-string (char-after)) max-point)))
 
 (defun phpinspect-parse-with-handler-list
@@ -856,6 +926,59 @@ candidate. Candidates can be indexed functions and variables.")
                             "")))
    :kind 'function))
 
+(cl-defstruct (phpinspect--resolvecontext
+            (:constructor phpinspect--make-resolvecontext))
+  (subject nil
+           :type phpinspect--token
+           :documentation
+           "The statement we're trying to resolve the type of.")
+  (project-root nil
+                :type string
+                :documentation
+                "The root directory of the project we're resolving types for.")
+  (enclosing-tokens nil
+                    :type list
+                    :documentation
+                    "Tokens that enclose the subject."))
+
+(cl-defmethod phpinspect--resolvecontext-push-enclosing-token
+  ((resolvecontext phpinspect--resolvecontext) enclosing-token)
+  "Add ENCLOSING-TOKEN to RESOLVECONTEXTs enclosing token stack."
+  (push enclosing-token (phpinspect--resolvecontext-enclosing-tokens
+                         resolvecontext)))
+
+(defun phpinspect--get-resolvecontext (token &optional resolvecontext)
+  "Find the deepest nested incomplete token in TOKEN.
+If RESOLVECONTEXT is nil, it is created.  Returns RESOLVECONTEXT
+of type `phpinspect--resolvecontext' containing the last
+statement of the innermost incomplete token as subject
+accompanied by all of its enclosing tokens."
+  (unless resolvecontext
+    (setq resolvecontext (phpinspect--make-resolvecontext
+                          :project-root (phpinspect--get-project-root))))
+
+  (let ((last-token (car (last token)))
+        (last-encountered-token (car
+                                 (phpinspect--resolvecontext-enclosing-tokens
+                                  resolvecontext))))
+    (if (and (or (phpinspect-function-p last-encountered-token)
+                 (phpinspect-class-p last-encountered-token))
+             (phpinspect-block-p token))
+        ;; When a class or function has been inserted already, its block
+        ;; doesn't need to be added on top.
+        (phpinspect--resolvecontext-push-enclosing-token resolvecontext nil)
+      (phpinspect--resolvecontext-push-enclosing-token resolvecontext token))
+
+    (if (phpinspect-incomplete-token-p last-token)
+        (phpinspect--get-resolvecontext last-token resolvecontext)
+    ;; else
+    (setf (phpinspect--resolvecontext-subject resolvecontext)
+          (phpinspect--get-last-statement-in-token token))
+
+    ;; Delete all occurences of nil caused higher up in the function.
+    (cl-delete nil (phpinspect--resolvecontext-enclosing-tokens
+                    resolvecontext))
+    resolvecontext)))
 
 (defun phpinspect-toggle-logging ()
   (interactive)
@@ -867,96 +990,124 @@ candidate. Candidates can be indexed functions and variables.")
 (defsubst phpinspect--log (&rest args)
   (when phpinspect--debug
     (with-current-buffer (get-buffer-create "**phpinspect-logs**")
+      (unless window-point-insertion-type
+        (set (make-local-variable 'window-point-insertion-type) t))
       (goto-char (buffer-end 1))
-      (insert (concat (apply #'format args) "\n")))))
+      (insert (concat "[" (format-time-string "%H:%M:%S.%N") "]: "
+                           (apply #'format args) "\n")))))
 
 (defsubst phpinspect-cache-project-class (project-root indexed-class)
-  (phpinspect--project-add-class
-   (phpinspect--cache-get-project-create (phpinspect--get-or-create-global-cache)
-                                         project-root)
-   indexed-class))
+  (when project-root
+    (phpinspect--project-add-class
+     (phpinspect--cache-get-project-create (phpinspect--get-or-create-global-cache)
+                                           project-root)
+     indexed-class)))
 
 (defsubst phpinspect-get-cached-project-class (project-root class-fqn)
-  (phpinspect--project-get-class
-   (phpinspect--cache-get-project-create (phpinspect--get-or-create-global-cache)
-                                         project-root)
-   class-fqn))
+  (when project-root
+    (phpinspect--project-get-class
+     (phpinspect--cache-get-project-create (phpinspect--get-or-create-global-cache)
+                                           project-root)
+     class-fqn)))
+
+(defun phpinspect-get-project-class-inherit-classes (project-root class)
+  (phpinspect--log "Getting inherit classes for %s" class)
+  (let ((classnames `(,@(alist-get 'extends class)
+                      ,@(alist-get 'implements class)))
+        (classes))
+
+    (phpinspect--log "Found inherit classes: %s" classnames)
+    (while classnames
+      (let ((inherit-class (phpinspect-get-or-create-cached-project-class
+                            project-root
+                            (pop classnames))))
+        (push inherit-class classes)
+        (dolist (nested-class (phpinspect-get-project-class-inherit-classes
+                               project-root
+                               inherit-class))
+          (push nested-class classes))))
+
+    (seq-uniq classes #'eq)))
+
 
 (defun phpinspect-get-cached-project-class-methods
     (project-root class-fqn &optional static)
   (phpinspect--log "Getting cached project class methods for %s (%s)"
                    project-root class-fqn)
-  (let ((index (phpinspect-get-or-create-cached-project-class
-                project-root
-                class-fqn)))
-    (when index
-      (phpinspect--log "Retrieved class index, starting method collection %s (%s)"
-                       project-root class-fqn)
-      ;; Use nreverse to give precedence to interface and abstract class return
-      ;; types. Those are usually more well documented.
-      (nreverse
-       (append (alist-get (if static 'static-methods 'methods)
-                          index)
-               (apply #'append
-                      (mapcar (lambda (class-fqn)
-                                (phpinspect-get-cached-project-class-methods
-                                 project-root class-fqn static))
-                              (append
-                               (alist-get 'extends index)
-                               (alist-get 'implements index)))))))))
+  (when project-root
+    (let ((index (phpinspect-get-or-create-cached-project-class
+                  project-root
+                  class-fqn)))
+      (when index
+        (phpinspect--log "Retrieved class index, starting method collection %s (%s)"
+                         project-root class-fqn)
+
+        (let ((methods-key (if static 'static-methods 'methods))
+              (methods))
+
+          (dolist (method (alist-get methods-key index))
+            (push method methods))
+
+          (dolist (class (phpinspect-get-project-class-inherit-classes
+                          project-root
+                          index))
+            (dolist (method (alist-get methods-key class))
+              (push method methods)))
+
+          methods)))))
 
 (defsubst phpinspect-get-cached-project-class-method-type
   (project-root class-fqn method-name)
-  (phpinspect--log "Getting cached project class method type for %s (%s::%s)"
-                   project-root class-fqn method-name)
-  (let ((found-method
-         (seq-find (lambda (method)
-                     (and (string= (phpinspect--function-name method) method-name)
-                          (phpinspect--function-return-type method)))
-                   (phpinspect-get-cached-project-class-methods
-                    project-root
-                    class-fqn))))
-    (when found-method
-      (phpinspect--log "Found method: %s" found-method)
-      (phpinspect--function-return-type found-method))))
+  (when project-root
+    (phpinspect--log "Getting cached project class method type for %s (%s::%s)"
+                     project-root class-fqn method-name)
+    (let ((found-method
+           (seq-find (lambda (method)
+                       (and (string= (phpinspect--function-name method) method-name)
+                            (phpinspect--function-return-type method)))
+                     (phpinspect-get-cached-project-class-methods
+                      project-root
+                      class-fqn))))
+      (when found-method
+        (phpinspect--log "Found method: %s" found-method)
+        (phpinspect--function-return-type found-method)))))
 
 (defsubst phpinspect-get-cached-project-class-variable-type
   (project-root class-fqn variable-name)
-  (let ((found-variable
-         (seq-find (lambda (variable)
-                     (string= (phpinspect--variable-name variable) variable-name))
-                   (alist-get 'variables
-                              (phpinspect-get-or-create-cached-project-class
-                               project-root
-                               class-fqn)))))
-    (when found-variable
-      (phpinspect--variable-type found-variable))))
-
+  (when project-root
+    (let ((found-variable
+           (seq-find (lambda (variable)
+                       (string= (phpinspect--variable-name variable) variable-name))
+                     (alist-get 'variables
+                                (phpinspect-get-or-create-cached-project-class
+                                 project-root
+                                 class-fqn)))))
+      (when found-variable
+        (phpinspect--variable-type found-variable)))))
 
 (defsubst phpinspect-get-cached-project-class-static-method-type
   (project-root class-fqn method-name)
-  (let* ((found-method
-          (seq-find (lambda (method)
-                      (and (string= (phpinspect--function-name method) method-name)
-                           (phpinspect--function-return-type method)))
-                    (phpinspect-get-cached-project-class-methods
-                     project-root
-                     class-fqn
-                     'static))))
-    (when found-method
-      (phpinspect--function-return-type found-method))))
+  (when project-root
+    (let* ((found-method
+            (seq-find (lambda (method)
+                        (and (string= (phpinspect--function-name method) method-name)
+                             (phpinspect--function-return-type method)))
+                      (phpinspect-get-cached-project-class-methods
+                       project-root
+                       class-fqn
+                       'static))))
+      (when found-method
+        (phpinspect--function-return-type found-method)))))
 
 (defun phpinspect-parse-file (file)
   (with-temp-buffer
     (insert-file-contents-literally file)
     (phpinspect-parse-current-buffer)))
 
-
 (defun phpinspect-parse-current-buffer ()
   (phpinspect-parse-buffer-until-point
    (current-buffer)
    (point-max)))
-
 
 (defun phpinspect--split-list (predicate list)
   (seq-reduce (let ((current-sublist))
@@ -999,42 +1150,49 @@ TODO:
 "
   (phpinspect--log "Starting eldoc function execution")
   (let* ((token-tree (phpinspect-parse-buffer-until-point (current-buffer) (point)))
-         (namespace (phpinspect--find-innermost-incomplete-namespace token-tree))
-         (incomplete-token (phpinspect--find-innermost-incomplete-token token-tree))
-         (enclosing-token (phpinspect--find-token-enclosing-innermost-incomplete-token token-tree))
-         (type-resolver)
+         (resolvecontext (phpinspect--get-resolvecontext token-tree))
+         (incomplete-token (car (phpinspect--resolvecontext-enclosing-tokens
+                                 resolvecontext)))
+         (enclosing-token (cadr (phpinspect--resolvecontext-enclosing-tokens
+                                 resolvecontext)))
+         (statement (phpinspect--get-last-statement-in-token
+                     enclosing-token))
+         (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
+                               resolvecontext
+                               token-tree))
          (static))
+    (phpinspect--log "Enclosing token: %s" enclosing-token)
+    (phpinspect--log "reference token: %s" (car (last statement 2)))
+
     (when (and (phpinspect-incomplete-list-p incomplete-token)
                enclosing-token
-               (or (phpinspect-object-attrib-p (car (last enclosing-token 2)))
-                   (setq static (phpinspect-static-attrib-p (car (last enclosing-token 2))))))
-      (if namespace
-          (setq type-resolver (phpinspect--make-type-resolver-for-namespace
-                               namespace
-                               token-tree))
-        ;; else
-        (setq type-resolver (phpinspect--make-type-resolver
-                             (phpinspect--uses-to-types
-                              (seq-filter #'phpinspect-use-p token-tree)))))
-      (let* ((previous-statement (phpinspect--get-last-statement-in-token (butlast enclosing-token 2)))
-             (type-of-previous-statement
-              (phpinspect-get-type-of-derived-statement-in-token
-               previous-statement
-               (or namespace token-tree)
-               type-resolver))
-             (method-name (cadr (cadar (last enclosing-token 2))))
-             (class-index (and type-of-previous-statement
-                               (phpinspect--get-or-create-index-for-class-file
-                                type-of-previous-statement)))
-             (method (and class-index
+               (or (phpinspect-object-attrib-p (car (last statement 2)))
+                   (setq static (phpinspect-static-attrib-p (car (last statement 2))))))
+
+      ;; Set resolvecontext subject to the last statement in the enclosing token, minus
+      ;; the method name. The last enclosing token is an incomplete list, so point is
+      ;; likely to be at a location inside a method call like "$a->b->doSomething(". The
+      ;; resulting subject would be "$a->b".
+      (setf (phpinspect--resolvecontext-subject resolvecontext)
+            (phpinspect--get-last-statement-in-token (butlast statement 2)))
+
+      (let* ((type-of-previous-statement
+              (phpinspect-resolve-type-from-context resolvecontext type-resolver))
+             (method-name (cadr (cadar (last statement 2))))
+             (class-methods (phpinspect-get-cached-project-class-methods
+                            (phpinspect--resolvecontext-project-root resolvecontext)
+                            type-of-previous-statement
+                            static))
+             (method (and class-methods
                           (seq-find
                            (lambda (func)
                              (when func
                                (string= method-name
                                         (phpinspect--function-name func))))
-                           (alist-get (if static 'static-methods 'methods)
-                                      class-index)))))
+                           class-methods))))
         (phpinspect--log "Eldoc method name: %s" method-name)
+        (phpinspect--log "Eldoc type of previous statement: %s"
+                         type-of-previous-statement)
         (phpinspect--log "Eldoc method: %s" method)
         (when method
           (let ((arg-count -1)
@@ -1082,7 +1240,6 @@ TODO:
                     (phpinspect--find-assignments-in-token code-block)
                     assignments)))))
     ;; return
-    (phpinspect--log "assignments: %s" assignments)
     assignments))
 
 (defun phpinspect-not-assignment-p (token)
@@ -1102,12 +1259,11 @@ TODO:
           (push assignment variable-assignments)))
     (nreverse variable-assignments)))
 
-
-
 (defun phpinspect-get-derived-statement-type-in-block
-    (statement php-block type-resolver &optional function-arg-list)
-  "Get type of derived STATEMENT in PHP-BLOCK using
-TYPE-RESOLVER and FUNCTION-ARG-LIST.
+    (resolvecontext statement php-block type-resolver &optional function-arg-list)
+  "Get type of RESOLVECONTEXT subject in PHP-BLOCK.
+
+Use TYPE-RESOLVER and FUNCTION-ARG-LIST in the process.
 
 An example of a derived statement would be the following php code:
 $variable->attribute->method();
@@ -1117,96 +1273,100 @@ self::method();
 ClassName::method();
 $variable = ClassName::method();
 $variable = $variable->method();"
-  ;; A derived statement can be an assignment itself.
-  (when (seq-find #'phpinspect-assignment-p statement)
-    (phpinspect--log "Derived statement is an assignment: %s" statement)
-    (setq statement (cdr (seq-drop-while #'phpinspect-not-assignment-p statement))))
-  (phpinspect--log "Get derived statement type in block: %s" statement)
-  (let* ((first-token (pop statement))
-         (current-token)
-         (previous-attribute-type))
-    ;; No first token means we were passed an empty list.
-    (when (and first-token
-               (setq previous-attribute-type
-                     ;; Statements that are only bare words can be something preceding
-                     ;; a static attribute that is not passed to this function. For
-                     ;; example "return self" could have prefixed another attribute
-                     ;; that the caller is trying to derive. Therefore we just try to
-                     ;; resolve the type of the last bare word in the statement.
-                     (or (when (and (phpinspect-word-p first-token)
-                                    (seq-every-p #'phpinspect-word-p statement))
-                           (setq statement (last statement))
-                           (funcall type-resolver (cadr (pop statement))))
+    ;; A derived statement can be an assignment itself.
+    (when (seq-find #'phpinspect-assignment-p statement)
+      (phpinspect--log "Derived statement is an assignment: %s" statement)
+      (setq statement (cdr (seq-drop-while #'phpinspect-not-assignment-p statement))))
+    (phpinspect--log "Get derived statement type in block: %s" statement)
+    (let* ((first-token (pop statement))
+           (current-token)
+           (previous-attribute-type))
+      ;; No first token means we were passed an empty list.
+      (when (and first-token
+                 (setq previous-attribute-type
+                       ;; Statements that are only bare words can be something preceding
+                       ;; a static attribute that is not passed to this function. For
+                       ;; example "return self" could have prefixed another attribute
+                       ;; that the caller is trying to derive. Therefore we just try to
+                       ;; resolve the type of the last bare word in the statement.
+                       (or (when (and (phpinspect-word-p first-token)
+                                      (seq-every-p #'phpinspect-word-p statement))
+                             (setq statement (last statement))
+                             (funcall type-resolver (cadr (pop statement))))
 
-                         ;; Statements starting with a bare word can indicate a static
-                         ;; method call. These could be statements with "return" or
-                         ;; another bare-word at the start though, so we dop tokens
-                         ;; from the statement until it starts with a static attribute
-                         ;; refererence (::something in PHP code).
-                         (when (phpinspect-word-p first-token)
-                           (while (and first-token
-                                       (not (phpinspect-static-attrib-p
-                                             (car statement))))
-                             (setq first-token (pop statement)))
-                           (funcall type-resolver (cadr first-token)))
+                           ;; Statements starting with a bare word can indicate a static
+                           ;; method call. These could be statements with "return" or
+                           ;; another bare-word at the start though, so we dop tokens
+                           ;; from the statement until it starts with a static attribute
+                           ;; refererence (::something in PHP code).
+                           (when (phpinspect-word-p first-token)
+                             (while (and first-token
+                                         (not (phpinspect-static-attrib-p
+                                               (car statement))))
+                               (setq first-token (pop statement)))
+                             (funcall type-resolver (cadr first-token)))
 
-                         ;; No bare word, assume we're dealing with a variable.
-                         (phpinspect-get-variable-type-in-block
-                          (cadr first-token)
-                          php-block
-                          type-resolver
-                          function-arg-list))))
+                           ;; No bare word, assume we're dealing with a variable.
+                           (phpinspect-get-variable-type-in-block
+                            resolvecontext
+                            (cadr first-token)
+                            php-block
+                            type-resolver
+                            function-arg-list))))
 
-      (phpinspect--log "Statement: %s" statement)
-      (phpinspect--log "Starting attribute type: %s" previous-attribute-type)
-      (while (setq current-token (pop statement))
-        (phpinspect--log "Current derived statement token: %s" current-token)
-        (cond ((phpinspect-object-attrib-p current-token)
-               (let ((attribute-word (cadr current-token)))
-                 (when (phpinspect-word-p attribute-word)
-                   (if (phpinspect-list-p (car statement))
-                       (progn
-                         (pop statement)
-                         (setq previous-attribute-type
-                               (or
-                                (phpinspect-get-cached-project-class-method-type
-                                 (phpinspect--get-project-root)
-                                 (funcall type-resolver previous-attribute-type)
-                                 (cadr attribute-word))
-                                previous-attribute-type)))
-                     (setq previous-attribute-type
-                           (or
-                            (phpinspect-get-cached-project-class-variable-type
-                             (phpinspect--get-project-root)
-                             (funcall type-resolver previous-attribute-type)
-                             (cadr attribute-word))
-                            previous-attribute-type))))))
-              ((phpinspect-static-attrib-p current-token)
-               (let ((attribute-word (cadr current-token)))
-                 (phpinspect--log "Found attribute word: %s" attribute-word)
-                 (phpinspect--log "checking if next token is a list. Token: %s"
-                                  (car statement))
-                 (when (phpinspect-word-p attribute-word)
-                   (if (phpinspect-list-p (car statement))
-                       (progn
-                         (pop statement)
-                         (setq previous-attribute-type
-                               (or
-                                (phpinspect-get-cached-project-class-static-method-type
-                                 (phpinspect--get-project-root)
-                                 (funcall type-resolver previous-attribute-type)
-                                 (cadr attribute-word))
-                                previous-attribute-type)))))))))
-      (phpinspect--log "Found derived type: %s" previous-attribute-type)
-      ;; Make sure to always return a FQN
-      (funcall type-resolver previous-attribute-type))))
+        (phpinspect--log "Statement: %s" statement)
+        (phpinspect--log "Starting attribute type: %s" previous-attribute-type)
+        (while (setq current-token (pop statement))
+          (phpinspect--log "Current derived statement token: %s" current-token)
+          (cond ((phpinspect-object-attrib-p current-token)
+                 (let ((attribute-word (cadr current-token)))
+                   (when (phpinspect-word-p attribute-word)
+                     (if (phpinspect-list-p (car statement))
+                         (progn
+                           (pop statement)
+                           (setq previous-attribute-type
+                                 (or
+                                  (phpinspect-get-cached-project-class-method-type
+                                   (phpinspect--resolvecontext-project-root
+                                    resolvecontext)
+                                   (funcall type-resolver previous-attribute-type)
+                                   (cadr attribute-word))
+                                  previous-attribute-type)))
+                       (setq previous-attribute-type
+                             (or
+                              (phpinspect-get-cached-project-class-variable-type
+                               (phpinspect--resolvecontext-project-root
+                                resolvecontext)
+                               (funcall type-resolver previous-attribute-type)
+                               (cadr attribute-word))
+                              previous-attribute-type))))))
+                ((phpinspect-static-attrib-p current-token)
+                 (let ((attribute-word (cadr current-token)))
+                   (phpinspect--log "Found attribute word: %s" attribute-word)
+                   (phpinspect--log "checking if next token is a list. Token: %s"
+                                    (car statement))
+                   (when (phpinspect-word-p attribute-word)
+                     (if (phpinspect-list-p (car statement))
+                         (progn
+                           (pop statement)
+                           (setq previous-attribute-type
+                                 (or
+                                  (phpinspect-get-cached-project-class-static-method-type
+                                   (phpinspect--resolvecontext-project-root
+                                    resolvecontext)
+                                   (funcall type-resolver previous-attribute-type)
+                                   (cadr attribute-word))
+                                  previous-attribute-type)))))))))
+        (phpinspect--log "Found derived type: %s" previous-attribute-type)
+        ;; Make sure to always return a FQN
+        (funcall type-resolver previous-attribute-type))))
 
 ;;;;
 ;; TODO: since we're passing type-resolver to all of the get-variable-type functions now,
 ;; we may as well always return FQNs in stead of relative type names.
 ;;;;
 (defun phpinspect-get-variable-type-in-block
-    (variable-name php-block type-resolver &optional function-arg-list)
+    (resolvecontext variable-name php-block type-resolver &optional function-arg-list)
   "Find the type of VARIABLE-NAME in PHP-BLOCK using TYPE-RESOLVER.
 
 Returns either a FQN or a relative type name, depending on
@@ -1224,7 +1384,6 @@ resolve types of function argument variables."
            (last-assignment (when assignments (car (last assignments))))
            (right-of-assignment (when assignments (cdr (seq-drop-while #'phpinspect-not-assignment-p
                                                                        last-assignment)))))
-      (phpinspect--log "Assignments: %s" assignments)
       (phpinspect--log "Last assignment: %s" right-of-assignment)
       ;; When the right of an assignment is more than $variable; or "string";(so
       ;; (:variable "variable") (:terminator ";") or (:string "string") (:terminator ";")
@@ -1236,7 +1395,8 @@ resolve types of function argument variables."
             ((and (> (length right-of-assignment) 2)
                   (seq-find #'phpinspect-attrib-p right-of-assignment))
              (phpinspect--log "Variable was assigned with a derived statement")
-             (phpinspect-get-derived-statement-type-in-block right-of-assignment
+             (phpinspect-get-derived-statement-type-in-block resolvecontext
+                                                             right-of-assignment
                                                              php-block
                                                              type-resolver
                                                              function-arg-list))
@@ -1247,7 +1407,8 @@ resolve types of function argument variables."
              (or (when function-arg-list
                    (phpinspect-get-variable-type-in-function-arg-list (cadar right-of-assignment)
                                                                       function-arg-list))
-                 (phpinspect-get-variable-type-in-block (cadar right-of-assignment)
+                 (phpinspect-get-variable-type-in-block resolvecontext
+                                                        (cadar right-of-assignment)
                                                         php-block
                                                         type-resolver
                                                         function-arg-list)))
@@ -1256,67 +1417,47 @@ resolve types of function argument variables."
              (phpinspect-get-variable-type-in-function-arg-list variable-name function-arg-list))))))
 
 
-(defun phpinspect-get-derived-statement-type-in-function (statement php-func type-resolver)
-  "Attempt to find the type of the php statement in php function
-token `php-func`.  If no type can be found, this function
-evaluates to nil."
-  (let* ((arg-list (phpinspect-function-argument-list php-func)))
-    (phpinspect-get-derived-statement-type-in-block statement
-                                                    (car (last php-func))
-                                                    type-resolver
-                                                    arg-list)))
+(defun phpinspect-resolve-type-from-context (resolvecontext type-resolver)
+  (phpinspect--log "Looking for type of statement: %s in nested token"
+                   (phpinspect--resolvecontext-subject resolvecontext))
+  ;; Find all enclosing tokens that aren't classes. Classes do not contain variable
+  ;; assignments which have effect in the current scope, which is what we're trying
+  ;; to find here to infer the statement type.
+  (let ((enclosing-tokens (seq-filter #'phpinspect-not-class-p
+                                       (phpinspect--resolvecontext-enclosing-tokens
+                                        resolvecontext)))
+        (enclosing-token)
+        (type))
+    (while (and enclosing-tokens (not type))
+      ;;(phpinspect--log "Trying to find type in %s" enclosing-token)
+      (setq enclosing-token (pop enclosing-tokens))
 
-(defun phpinspect-get-derived-statement-type-in-method (statement php-method type-resolver)
-  "Find the type of a statement in a php method."
-  (cond ((phpinspect-function-p php-method)
-         (phpinspect-get-derived-statement-type-in-function statement
-                                                            php-method
-                                                            type-resolver))
-        ((phpinspect-scope-p php-method)
-         (phpinspect-get-derived-statement-type-in-method statement
-                                                          (car (last php-method))
-                                                          type-resolver))
-        ((phpinspect-static-p php-method)
-         (phpinspect-get-derived-statement-type-in-method statement
-                                                          (car (last php-method))
-                                                          type-resolver))
-        (t (error (concat "phpinspect-get-derived-statement-type-in-method: "
-                          "php-method must be either a function or a scoped function")))))
-
-(defun phpinspect-get-derived-statement-type-in-class (statement php-class type-resolver)
-  (phpinspect--log "recursing into class")
-  (let ((last-token-in-class-block (car (last (car (last php-class))))))
-    (phpinspect--log "last token in class block: %s" last-token-in-class-block)
-    (cond ((phpinspect-incomplete-method-p last-token-in-class-block)
-           (phpinspect-get-derived-statement-type-in-method statement
-                                                            (car (last (car (last php-class))))
-                                                            type-resolver))
-          ;; We're dealing with a const statement, so not a block, but that doesn't matter
-          ;; much for the outcome. We're not trying to check syntax after all, just trying
-          ;; to guess the type of the statement as well as we can.
-          ((phpinspect-incomplete-const-p last-token-in-class-block)
-           (phpinspect--log "Found incomplete constant")
-           (phpinspect-get-derived-statement-type-in-block
-            statement
-            last-token-in-class-block
-            type-resolver)))))
-
-(defun phpinspect-get-type-of-derived-statement-in-token (statement token type-resolver)
-  (phpinspect--log "Looking for type of statement: %s in token: %s" statement token)
-  (cond ((phpinspect-namespace-p token)
-         (if (phpinspect-incomplete-block-p (car (last token)))
-             (phpinspect-get-type-of-derived-statement-in-token statement
-                                                                (car (last (car (last token))))
-                                                                type-resolver)
-           (phpinspect-get-type-of-derived-statement-in-token statement
-                                                              (car (last token))
-                                                              type-resolver)))
-        ((phpinspect-incomplete-block-p token)
-         (phpinspect-get-derived-statement-type-in-block statement token type-resolver))
-        ((phpinspect-class-p token)
-         (phpinspect-get-derived-statement-type-in-class statement token type-resolver))
-        ((phpinspect-incomplete-function-p token)
-         (phpinspect-get-derived-statement-type-in-function statement token type-resolver))))
+      (setq type
+            (cond ((phpinspect-namespace-p enclosing-token)
+                   (phpinspect-get-derived-statement-type-in-block
+                    resolvecontext
+                    (phpinspect--resolvecontext-subject
+                     resolvecontext)
+                    (or (phpinspect-namespace-block enclosing-token)
+                        enclosing-token)
+                    type-resolver))
+                  ((or (phpinspect-block-p enclosing-token)
+                       (phpinspect-root-p enclosing-token))
+                   (phpinspect-get-derived-statement-type-in-block
+                    resolvecontext
+                    (phpinspect--resolvecontext-subject
+                     resolvecontext)
+                    enclosing-token
+                    type-resolver))
+                  ((phpinspect-function-p enclosing-token)
+                   (phpinspect-get-derived-statement-type-in-block
+                    resolvecontext
+                    (phpinspect--resolvecontext-subject
+                     resolvecontext)
+                    (phpinspect-function-block enclosing-token)
+                    type-resolver
+                    (phpinspect-function-argument-list enclosing-token))))))
+    type))
 
 (defun phpinspect--function-from-scope (scope)
   (cond ((and (phpinspect-static-p (cadr scope))
@@ -1531,7 +1672,8 @@ said FQN's by class name"
         (phpinspect--log "Constructor was found")
         (dolist (variable variables)
           (when (not (phpinspect--variable-type variable))
-            (phpinspect--log "Looking for variable type")
+            (phpinspect--log "Looking for variable type in constructor arguments (%s)"
+                             variable)
             (let ((constructor-parameter-type
                    (car (alist-get (phpinspect--variable-name variable)
                                    (phpinspect--function-arguments constructor)
@@ -1608,7 +1750,7 @@ namespace if not provided"
   )
 
 (defun phpinspect--get-or-create-index-for-class-file (class-fqn)
-  (phpinspect--log "Getting or creating")
+  (phpinspect--log "Getting or creating index for %s" class-fqn)
   (phpinspect-get-or-create-cached-project-class
    (phpinspect--get-project-root)
    class-fqn))
@@ -1617,33 +1759,33 @@ namespace if not provided"
   (phpinspect--index-tokens (phpinspect-parse-file file-name)))
 
 (defun phpinspect-get-or-create-cached-project-class (project-root class-fqn)
-  (let ((existing-index (phpinspect-get-cached-project-class
-                         project-root
-                         class-fqn)))
-    (or
-     existing-index
-     (progn
-       (let* ((class-file (phpinspect-get-class-filepath class-fqn))
-              (visited-buffer (when class-file (find-buffer-visiting class-file)))
-              (new-index))
+  (when project-root
+    (let ((existing-index (phpinspect-get-cached-project-class
+                           project-root
+                           class-fqn)))
+      (or
+       existing-index
+       (progn
+         (let* ((class-file (phpinspect-get-class-filepath class-fqn))
+                (visited-buffer (when class-file (find-buffer-visiting class-file)))
+                (new-index))
 
-         (phpinspect--log "FQN: %s" class-fqn)
-         (phpinspect--log "filepath: %s" class-file)
-         (when class-file
-           (if visited-buffer
-               (setq new-index (with-current-buffer visited-buffer
-                                 (phpinspect--index-current-buffer)))
-             (setq new-index (phpinspect-index-file class-file)))
-           (phpinspect--log "New index: %s" new-index)
-           (dolist (class (alist-get 'classes new-index))
-             (when class
-               (phpinspect-cache-project-class
-                (phpinspect--get-project-root)
-                (cdr class))))
-           (alist-get class-fqn (alist-get 'classes new-index)
-                      nil
-                      nil
-                      #'string=)))))))
+           (phpinspect--log "FQN: %s" class-fqn)
+           (phpinspect--log "filepath: %s" class-file)
+           (when class-file
+             (if visited-buffer
+                 (setq new-index (with-current-buffer visited-buffer
+                                   (phpinspect--index-current-buffer)))
+               (setq new-index (phpinspect-index-file class-file)))
+             (dolist (class (alist-get 'classes new-index))
+               (when class
+                 (phpinspect-cache-project-class
+                  project-root
+                  (cdr class))))
+             (alist-get class-fqn (alist-get 'classes new-index)
+                        nil
+                        nil
+                        #'string=))))))))
 
 
 (defun phpinspect--index-current-buffer ()
@@ -1663,31 +1805,26 @@ namespace if not provided"
         (alist-get 'variables class-index)))))
 
 
-(defun phpinspect--get-methods-for-class (buffer-classes class &optional static)
+(defun phpinspect--get-methods-for-class
+    (resolvecontext buffer-classes class &optional static)
   "Extract all possible methods for a class from `buffer-classes` and the class index.
 `buffer-classes` will be preferred because their data should be
 more recent"
-  (let ((class-index (or (alist-get class buffer-classes nil nil #'string=)
-                         (phpinspect--get-or-create-index-for-class-file class))))
-    (phpinspect--log "Getting methods for class (%s)" class)
-    (phpinspect--log "index: %s" class-index)
-    (if class-index
-        ;; Use nreverse to give precedence to interfaces and abstract class method
-        ;; typehints and doc blocks.
-        ;; TODO: Merge this somehow with phpinspect-get-cached-project-class-methods
-        (nreverse
-         (append (alist-get (if static 'static-methods 'methods) class-index)
-                 (apply #'append
-                        (mapcar (lambda (inherit-class)
-                                  (phpinspect--log "Inherit class: %s" inherit-class)
-                                  (phpinspect--get-methods-for-class
-                                   buffer-classes
-                                   inherit-class
-                                   static))
-                                (append (alist-get 'extends class-index)
-                                        (alist-get 'implements class-index))))))
-      ;; else
-      (phpinspect--log "Unable to complete for %s :(" class) nil)))
+  (let ((methods (phpinspect-get-cached-project-class-methods
+                  (phpinspect--resolvecontext-project-root
+                   resolvecontext)
+                  class
+                  static))
+        (buffer-index (alist-get class buffer-classes nil nil #'string=)))
+      (phpinspect--log "Getting methods for class (%s)" class)
+      (when buffer-index
+          (dolist (method (alist-get (if static 'static-methods 'methods)
+                                     buffer-index))
+            (push method methods)))
+      (unless methods
+        (phpinspect--log "Failed to find metods for class %s :(" class))
+      methods))
+
 
 (defun phpinspect--init-mode ()
   "Initialize the phpinspect minor mode for the current buffer."
@@ -1734,60 +1871,37 @@ users will have to use \\[phpinspect-purge-cache]."
       (phpinspect--init-mode)
     (phpinspect--disable-mode)))
 
-(define-minor-mode phpinspect-mode "Activate phpinspect-mode"
+(define-minor-mode phpinspect-mode
+  "A minor mode for intelligent completion for and interaction
+with PHP files.
+
+For completion see the company-mode backend:
+`phpinspect-company-backend'.
+
+For eldoc see `phpinspect-eldoc-function'.
+
+For finding/opening class files see
+ `phpinspect-find-own-class-file' (bound to \\[phpinspect-find-own-class-file]) and
+ `phpinspect-find-class-file' (bound to \\[phpinspect-find-class-file]).
+
+To automatically add missing use statements for used classes to a
+visited file, use `phpinspect-fix-uses-interactive'
+(bound to \\[phpinspect-fix-uses-interactive]].)"
   :after-hook (phpinspect--mode-function))
-
-(defun phpinspect--find-innermost-incomplete-namespace (token)
-  (let ((last-token (car (last token))))
-    (cond ((phpinspect-incomplete-namespace-p token) token)
-          ((phpinspect-incomplete-token-p last-token)
-           (phpinspect--find-innermost-incomplete-namespace last-token)))))
-
-(defun phpinspect--find-innermost-incomplete-block (token &optional last-block)
-  (when (phpinspect-incomplete-block-p token)
-    (setq last-block token))
-
-  (let ((last-token (car (last token))))
-    (if (phpinspect-incomplete-token-p last-token)
-        (phpinspect--find-innermost-incomplete-block last-token last-block)
-      last-block)))
-
 
 (defun phpinspect--find-class-token (token)
   "Recurse into token tree until a class is found."
-  (let ((last-token (car (last token))))
-    (cond ((phpinspect-class-p token) token)
-          (last-token
-           (phpinspect--find-class-token last-token)))))
-
-(defun phpinspect--find-token-enclosing-innermost-incomplete-token (token &optional enclosing-token)
-  "Like `phpinspect--find-innermost-incomplete-token` but returns
-  the enclosing incomplete token if there is one"
-  (let ((last-token (car (last token))))
-    (if (phpinspect-incomplete-token-p last-token)
-        (phpinspect--find-token-enclosing-innermost-incomplete-token last-token token)
-      enclosing-token)))
-
+  (when (and (listp token) (> 1 (length token)))
+    (let ((last-token (car (last token))))
+      (cond ((phpinspect-class-p token) token)
+            (last-token
+             (phpinspect--find-class-token last-token))))))
 
 (defun phpinspect--find-innermost-incomplete-class (token)
   (let ((last-token (car (last token))))
     (cond ((phpinspect-incomplete-class-p token) token)
           ((phpinspect-incomplete-token-p last-token)
            (phpinspect--find-innermost-incomplete-class last-token)))))
-
-(defun phpinspect--find-innermost-incomplete-function (token)
-  (let ((last-token (car (last token))))
-    (cond ((phpinspect-incomplete-function-p token) token)
-          ((phpinspect-incomplete-token-p last-token)
-           (phpinspect--find-innermost-incomplete-function last-token)))))
-
-(defun phpinspect--find-innermost-incomplete-token (token)
-  (phpinspect--log "Checking token %s" token)
-  (let ((last-token (car (last token))))
-    (if (phpinspect-incomplete-token-p last-token)
-        (phpinspect--find-innermost-incomplete-token last-token)
-      token)))
-
 
 (defun phpinspect--find-last-variable-position-in-token (token)
   "Find the last variable that can be encountered in the top
@@ -1800,9 +1914,9 @@ level of a token. Nested variables are ignored."
 
     (if (not (= i 0))(- (length token)  i))))
 
-(defun phpinspect--make-method-lister (buffer-classes &optional static)
+(defun phpinspect--make-method-lister (resolvecontext buffer-classes &optional static)
   (lambda (fqn)
-    (phpinspect--get-methods-for-class buffer-classes fqn static)))
+    (phpinspect--get-methods-for-class resolvecontext buffer-classes fqn static)))
 
 (defun phpinspect--buffer-index (buffer)
   (with-current-buffer buffer phpinspect--buffer-index))
@@ -1888,18 +2002,31 @@ level of a token. Nested variables are ignored."
              completion
              (phpinspect--completion-list-metadata comp-list))))
 
+(defun phpinspect--suggest-attributes-at-point
+    (token-tree resolvecontext &optional static)
+  "Suggest object or class attributes at point.
 
-(defun phpinspect--suggest-attributes-at-point (token-tree incomplete-token &optional static)
+TOKEN-TREE must be a syntax tree containing enough context to
+infer the types of the preceding statements
+
+RESOLVECONTEXT must be a structure of the type
+`phpinspect--resolvecontext'.  The PHP type of its subject is
+resolved to provide completion candidates.
+
+If STATIC is non-nil, candidates are provided for constants,
+static variables and static methods."
   (let* ((buffer-classes (phpinspect--merge-indexes
                           phpinspect--buffer-index
                           (phpinspect--index-tokens token-tree)))
-         (namespace (phpinspect--find-innermost-incomplete-namespace
-                     token-tree))
-         (type-resolver (phpinspect--make-type-resolver-for-namespace namespace token-tree))
-         (method-lister (phpinspect--make-method-lister buffer-classes static)))
-    (let ((statement-type (phpinspect-get-type-of-derived-statement-in-token
-                           (phpinspect--get-last-statement-in-token incomplete-token)
-                           namespace
+         (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
+                         resolvecontext
+                         token-tree))
+         (method-lister (phpinspect--make-method-lister
+                         resolvecontext
+                         buffer-classes
+                         static)))
+    (let ((statement-type (phpinspect-resolve-type-from-context
+                           resolvecontext
                            type-resolver)))
       (when statement-type
         (let ((type (funcall type-resolver statement-type)))
@@ -1909,14 +2036,25 @@ level of a token. Nested variables are ignored."
                    static)
                   (funcall method-lister type)))))))
 
-(defun phpinspect--make-type-resolver-for-namespace (namespace-token &optional token-tree)
-  (phpinspect--make-type-resolver
-   (phpinspect--uses-to-types
-    (seq-filter #'phpinspect-use-p namespace-token))
-   token-tree
-   (cadadr namespace-token)))
+(defun phpinspect--make-type-resolver-for-resolvecontext
+    (resolvecontext &optional token-tree)
+  (let ((namespace-or-root
+         (seq-find #'phpinspect-namespace-or-root-p
+                   (phpinspect--resolvecontext-enclosing-tokens
+                    resolvecontext))))
+      (phpinspect--make-type-resolver
+       (phpinspect--uses-to-types
+        (seq-filter #'phpinspect-use-p namespace-or-root))
+       token-tree
+       (when (phpinspect-namespace-p namespace-or-root)
+         (cadadr namespace-or-root)))))
 
 (defun phpinspect--get-last-statement-in-token (token)
+  (setq token (cond ((phpinspect-function-p token)
+                     (phpinspect-function-block token))
+                    ((phpinspect-namespace-p token)
+                     (phpinspect-namespace-block token))
+                    (t token)))
   (nreverse
    (seq-take-while
     (let ((keep-taking t) (last-test nil))
@@ -1929,47 +2067,50 @@ level of a token. Nested variables are ignored."
              (listp elt))))
     (reverse token))))
 
-(defun phpinspect--suggest-variables-at-point (token-tree token)
-  (let ((assignments (phpinspect--find-assignments-in-token
-                      (if (phpinspect-incomplete-list-p token)
-                          (phpinspect--find-innermost-incomplete-block token-tree)
-                        token)))
-        (variables)
-        (func (phpinspect--find-innermost-incomplete-function token-tree)))
-    (dolist (assignment assignments)
-      (dolist (token assignment)
-        (when (phpinspect-variable-p token)
-          (push (phpinspect--make-variable
-                 :name (cadr token)
-                 :type "")
-                variables))))
-
-    (when func
-      (dolist (token (phpinspect-function-argument-list func))
-        (when (phpinspect-variable-p token)
-          (push (phpinspect--make-variable
-                 :name (cadr token)
-                 :type "")
-                variables))))
+(defun phpinspect--suggest-variables-at-point (resolvecontext)
+  (phpinspect--log "Suggesting variables at point")
+  (let ((variables))
+    (dolist (token (phpinspect--resolvecontext-enclosing-tokens resolvecontext))
+      (when (phpinspect-not-class-p token)
+        (dolist (potential-variable token)
+          (cond ((phpinspect-variable-p potential-variable)
+                 (phpinspect--log "Pushing variable %s" potential-variable)
+                 (push (phpinspect--make-variable
+                        :name (cadr potential-variable)
+                        :type "")
+                       variables))
+                ((phpinspect-function-p potential-variable)
+                 (dolist (argument (phpinspect-function-argument-list
+                                    potential-variable))
+                   (when (phpinspect-variable-p argument)
+                     (push (phpinspect--make-variable
+                            :name (cadr argument)
+                            :type "")
+                           variables))))))))
     variables))
 
 (defun phpinspect--suggest-at-point ()
+      (phpinspect--log "Entering suggest at point." )
   (let* ((token-tree (phpinspect-parse-buffer-until-point (current-buffer) (point)))
-         (incomplete-token (phpinspect--find-innermost-incomplete-token token-tree))
-         (last-tokens (last incomplete-token 2)))
+         (resolvecontext (phpinspect--get-resolvecontext token-tree))
+         (last-tokens (last (phpinspect--resolvecontext-subject resolvecontext) 2)))
+    (phpinspect--log "Subject: %s" (phpinspect--resolvecontext-subject
+                                    resolvecontext))
+    (phpinspect--log "Last tokens: %s" last-tokens)
     (cond ((and (phpinspect-object-attrib-p (car last-tokens))
                 (phpinspect-word-p (cadr last-tokens)))
            (phpinspect--log "word-attributes")
            (phpinspect--suggest-attributes-at-point token-tree
-                                                    incomplete-token))
+                                                    resolvecontext))
           ((phpinspect-object-attrib-p (cadr last-tokens))
            (phpinspect--log "object-attributes")
-           (phpinspect--suggest-attributes-at-point token-tree incomplete-token))
+           (phpinspect--suggest-attributes-at-point token-tree resolvecontext))
           ((phpinspect-static-attrib-p (cadr last-tokens))
            (phpinspect--log "static-attributes")
-           (phpinspect--suggest-attributes-at-point token-tree incomplete-token t))
-          ((phpinspect-variable-p (cadr last-tokens))
-           (phpinspect--suggest-variables-at-point token-tree incomplete-token)))))
+           (phpinspect--suggest-attributes-at-point token-tree resolvecontext t))
+          ((phpinspect-variable-p (car(phpinspect--resolvecontext-subject
+                                       resolvecontext)))
+           (phpinspect--suggest-variables-at-point resolvecontext)))))
 
 
 (defun phpinspect-company-backend (command &optional arg &rest _ignored)
@@ -2125,7 +2266,7 @@ If START-FILE is provided, searching starts at the directory
 level of START-FILE in stead of `default-directory`."
   (let ((project-file (phpinspect--locate-dominating-project-file
                        (or start-file default-directory))))
-    (phpinspect--log "Checking for project root at  %s" start-file)
+    (phpinspect--log "Checking for project root at  %s" project-file)
     (when project-file
       (let* ((directory (file-name-directory project-file))
              (directory-slugs (split-string (expand-file-name directory) "/")))
@@ -2145,17 +2286,19 @@ level of START-FILE in stead of `default-directory`."
 (defun phpinspect-fix-uses-interactive ()
   "Add missing use statements to the currently visited PHP file."
   (interactive)
-  (save-buffer)
-  (let* ((phpinspect-json (shell-command-to-string
-			               (format "cd %s && %s fxu --json %s"
-				                   (shell-quote-argument (phpinspect--get-project-root))
-                                   (shell-quote-argument phpinspect-index-executable)
-				                   (shell-quote-argument buffer-file-name)))))
-	(let* ((json-object-type 'hash-table)
-		   (json-array-type 'list)
-		   (json-key-type 'string)
-		   (phpinspect-json-data (json-read-from-string phpinspect-json)))
-	  (maphash #'phpinspect-handle-phpinspect-json phpinspect-json-data))))
+  (let ((project-root (phpinspect--get-project-root)))
+    (when project-root
+      (save-buffer)
+      (let* ((phpinspect-json (shell-command-to-string
+			                   (format "cd %s && %s fxu --json %s"
+				                       (shell-quote-argument project-root)
+                                       (shell-quote-argument phpinspect-index-executable)
+				                       (shell-quote-argument buffer-file-name)))))
+	    (let* ((json-object-type 'hash-table)
+		       (json-array-type 'list)
+		       (json-key-type 'string)
+		       (phpinspect-json-data (json-read-from-string phpinspect-json)))
+	      (maphash #'phpinspect-handle-phpinspect-json phpinspect-json-data))))))
 
 (defun phpinspect-handle-phpinspect-json (class-name candidates)
   "Handle key value pair of classname and FQN's"
@@ -2199,16 +2342,31 @@ level of START-FILE in stead of `default-directory`."
     (split-string (buffer-string) (char-to-string ?\n))))
 
 ;;;###autoload
-(defun phpinspect-find-class-file (class)
-  (interactive (list (completing-read "Class: " (phpinspect-get-all-fqns))))
-  (find-file (phpinspect-get-class-filepath class)))
+(defun phpinspect-find-class-file (fqn)
+  "`find-file', but for FQNs of PHP classes.
 
-(defun phpinspect-find-own-class-file (class)
+When called interactively, presents the the user with a list of
+available FQNs in a project.  This may require
+`phpinspect-index-current-project' to have run once for the
+project directory before it can be used."
+  (interactive (list (completing-read "Class: " (phpinspect-get-all-fqns))))
+  (find-file (phpinspect-get-class-filepath fqn)))
+
+(defun phpinspect-find-own-class-file (fqn)
+  "`phpinspect-find-class-file', but for non-vendored classes.
+
+When called interactively, presents the user with a list of
+available FQNs for classes in the current project, which aren't
+located in \"vendor\" folder."
   (interactive (list (completing-read "Class: " (phpinspect-get-all-fqns "uses_own"))))
-  (find-file (phpinspect-get-class-filepath class)))
+  (find-file (phpinspect-get-class-filepath fqn)))
 
 
 (defun phpinspect-get-class-filepath (class &optional index-new)
+  "Retrieve filepath to CLASS definition file.
+
+when INDEX-NEW is non-nil, new files are added to the index
+before the search is executed."
   (phpinspect--log "%s" (phpinspect--get-project-root))
   (when (eq index-new 'index-new)
     (with-temp-buffer
@@ -2243,6 +2401,10 @@ level of START-FILE in stead of `default-directory`."
    strings))
 
 (defun phpinspect-index-current-project ()
+  "Index all available FQNs in the current project.
+
+Index is stored in files in the .cache directory of
+the project root."
   (interactive)
   (let* ((default-directory (phpinspect--get-project-root)))
     (with-current-buffer (get-buffer-create "**phpinspect-index**")
