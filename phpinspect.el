@@ -345,7 +345,10 @@ You can purge the parser cache with \\[phpinspect-purge-parser-cache]."
          #'(lambda (,@arguments)
              ,docstring
              ,@body))
-       (byte-compile (intern ,name phpinspect-handler-obarray)))))
+       (unless (byte-code-function-p
+                (symbol-function
+                 (intern ,name phpinspect-handler-obarray)))
+         (byte-compile (intern ,name phpinspect-handler-obarray))))))
 
 (defun phpinspect-get-parser-create (tree-type &rest parser-parameters)
   "Retrieve a parser for TREE-TYPE from `phpinspect-parser-obarray'.
