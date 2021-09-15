@@ -24,6 +24,17 @@ Example config:
 (add-hook 'php-mode-hook #'my-php-personal-hook)
 ```
 
+## Install
+
+```bash
+git clone https://git.sr.ht/~hugot/phpinspect.el ~/projects/phpinspect.el
+```
+
+```elisp
+(add-to-list 'load-path "~/projects/phpinspect.el")
+(require 'phpinspect)
+```
+
 ## Development
 
 ### Running tests

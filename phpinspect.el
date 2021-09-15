@@ -1882,6 +1882,10 @@ users will have to use \\[phpinspect-purge-cache]."
   "A minor mode for intelligent completion for and interaction
 with PHP files.
 
+To initially index a project, use M-x `phpinspect-index-current-project'
+in a buffer of one of the project files. Project root is detected with
+`phpinspect-project-root-file-list'.
+
 For completion see the company-mode backend:
 `phpinspect-company-backend'.
 
