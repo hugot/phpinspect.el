@@ -21,7 +21,7 @@
 
 ;;; Commentary:
 
-;;
+;; See docstrings for documentation, starting with `phpinspect-mode'.
 
 ;;; Code:
 
@@ -319,7 +319,11 @@ ATTRIBUTE-PLIST is a plist that must contain at least a `regexp` key.
         - regexp: The regular expression that marks the start of the token.
 
 BODY is a function body as accepted by `lambda` that parses the
-text at point and returns the resulting token."
+text at point and returns the resulting token.
+
+When altering/adding handlers during runtime, make sure to purge
+the parser cache to make sure that your new handler functions are used.
+You can purge the parser cache with \\[phpinspect-purge-parser-cache]."
   (declare (indent defun))
   (when (not (symbolp name))
     (error "In definition of phpinspect handler %s: NAME bust be a symbol" name))
@@ -344,7 +348,7 @@ text at point and returns the resulting token."
        (byte-compile (intern ,name phpinspect-handler-obarray)))))
 
 (defun phpinspect-get-parser-create (tree-type &rest parser-parameters)
-  "Retrieve a parser for TREE-TYPE from `phpinspect-parser-obarray`.
+  "Retrieve a parser for TREE-TYPE from `phpinspect-parser-obarray'.
 
 TREE-TYPE must be a symbol or keyword representing the type of
 the token the parser is able to parse.
@@ -1886,8 +1890,43 @@ For finding/opening class files see
 
 To automatically add missing use statements for used classes to a
 visited file, use `phpinspect-fix-uses-interactive'
-(bound to \\[phpinspect-fix-uses-interactive]].)"
-  :after-hook (phpinspect--mode-function))
+(bound to \\[phpinspect-fix-uses-interactive]].)
+
+Example configuration:
+
+  (defun my-php-personal-hook ()
+    ;; Assuming you already have company-mode enabled, these settings
+    ;; add some IDE-like flair to it. This is of course not required, do
+    ;; with it what you like.
+    (setq-local company-minimum-prefix-length 0)
+    (setq-local company-tooltip-align-annotations t)
+    (setq-local company-idle-delay 0.1)
+
+    ;; If you don't have company-mode enabled by default, uncomment this line:
+    ;; (company-mode)
+
+    ;; By default, phpinspect-mode adds itself as a backend to
+    ;; the `company-backends' of the current buffer. You can completely
+    ;; disable all other backends with the statement below.
+    (setq-local company-backends '(phpinspect-company-backend))
+
+    ;; Shortcut to add use statements for classes you use.
+    (define-key php-mode-map (kbd \"C-c u\") 'phpinspect-fix-uses-interactive)
+
+    ;; Shortcuts to quickly search/open files of PHP classes.
+    ;; You can make these local to php-mode, but making them global
+    ;; like this makes them work in other modes/filetypes as well, which
+    ;; can be handy when jumping between templates, config files and PHP code.
+    (global-set-key (kbd \"C-c a\") 'phpinspect-find-class-file)
+    (global-set-key (kbd \"C-c c\") 'phpinspect-find-own-class-file)
+
+    ;; Enable phpinspect-mode
+    (phpinspect-mode))
+
+  (add-hook 'php-mode-hook #'my-php-personal-hook)
+
+;; End example configuration."
+    :after-hook (phpinspect--mode-function))
 
 (defun phpinspect--find-class-token (token)
   "Recurse into token tree until a class is found."
@@ -2114,6 +2153,7 @@ static variables and static methods."
 
 
 (defun phpinspect-company-backend (command &optional arg &rest _ignored)
+  "A company backend for PHP."
   (interactive (list 'interactive))
   (cond
    ((eq command 'interactive)
