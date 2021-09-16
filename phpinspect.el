@@ -1166,8 +1166,7 @@ TODO:
          (statement (phpinspect--get-last-statement-in-token
                      enclosing-token))
          (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
-                               resolvecontext
-                               token-tree))
+                               resolvecontext))
          (static))
     (phpinspect--log "Enclosing token: %s" enclosing-token)
     (phpinspect--log "reference token: %s" (car (last statement 2)))
@@ -1478,6 +1477,7 @@ resolve types of function argument variables."
 (defun phpinspect--make-type-resolver (types &optional token-tree namespace)
   "Little wrapper closure to pass around and resolve types with."
   (unless namespace (setq namespace ""))
+
   (let* ((inside-class
           (if token-tree (or (phpinspect--find-innermost-incomplete-class token-tree)
                              (phpinspect--find-class-token token-tree))))
@@ -1487,7 +1487,8 @@ resolve types of function argument variables."
       (phpinspect--real-type
        types
        namespace
-       (if (and inside-class-name (or (string= type "self") (string= type "static")))
+       (if (and inside-class-name (or (string= type "self")
+                                      (string= type "static")))
            (progn
              (phpinspect--log "Returning inside class name for %s : %s"
                               type inside-class-name)
@@ -1937,7 +1938,7 @@ Example configuration:
 
 (defun phpinspect--find-class-token (token)
   "Recurse into token tree until a class is found."
-  (when (and (listp token) (> 1 (length token)))
+  (when (and (listp token) (> (length token) 1))
     (let ((last-token (car (last token))))
       (cond ((phpinspect-class-p token) token)
             (last-token
@@ -2065,8 +2066,7 @@ static variables and static methods."
                           phpinspect--buffer-index
                           (phpinspect--index-tokens token-tree)))
          (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
-                         resolvecontext
-                         token-tree))
+                         resolvecontext))
          (method-lister (phpinspect--make-method-lister
                          resolvecontext
                          buffer-classes
@@ -2083,7 +2083,7 @@ static variables and static methods."
                   (funcall method-lister type)))))))
 
 (defun phpinspect--make-type-resolver-for-resolvecontext
-    (resolvecontext &optional token-tree)
+    (resolvecontext)
   (let ((namespace-or-root
          (seq-find #'phpinspect-namespace-or-root-p
                    (phpinspect--resolvecontext-enclosing-tokens
@@ -2091,7 +2091,9 @@ static variables and static methods."
       (phpinspect--make-type-resolver
        (phpinspect--uses-to-types
         (seq-filter #'phpinspect-use-p namespace-or-root))
-       token-tree
+       (seq-find #'phpinspect-class-p
+                   (phpinspect--resolvecontext-enclosing-tokens
+                    resolvecontext))
        (when (phpinspect-namespace-p namespace-or-root)
          (cadadr namespace-or-root)))))
 
@@ -2414,7 +2416,6 @@ located in \"vendor\" folder."
 
 when INDEX-NEW is non-nil, new files are added to the index
 before the search is executed."
-  (phpinspect--log "%s" (phpinspect--get-project-root))
   (when (eq index-new 'index-new)
     (with-temp-buffer
       (call-process phpinspect-index-executable nil (current-buffer) nil "index" "--new")))
