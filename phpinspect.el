@@ -1487,11 +1487,10 @@ resolve types of function argument variables."
       (phpinspect--real-type
        types
        namespace
-       (if (or (string= type "self") (string= type "static"))
+       (if (and inside-class-name (or (string= type "self") (string= type "static")))
            (progn
              (phpinspect--log "Returning inside class name for %s : %s"
                               type inside-class-name)
-
              inside-class-name)
          ;; else
          type)))))
