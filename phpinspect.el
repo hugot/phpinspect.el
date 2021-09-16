@@ -360,11 +360,12 @@ If a parser by TREE-TYPE doesn't exist, it is created by callng
 `phpinspect-make-parser` with TREE-TYPE as first argument and
 PARSER-PARAMETERS as the rest of the arguments.  The resulting
 parser function is then returned in byte-compiled form."
-  (let ((parser-name (symbol-name tree-type)))
-    (or (intern-soft parser-name phpinspect-parser-obarray)
-         (defalias (intern parser-name phpinspect-parser-obarray)
-           (byte-compile (apply #'phpinspect-make-parser
-                                `(,tree-type ,@parser-parameters)))))))
+  (let* ((parser-name (symbol-name tree-type))
+         (parser-symbol (intern-soft parser-name phpinspect-parser-obarray)))
+    (or (and parser-symbol (symbol-function parser-symbol))
+        (defalias (intern parser-name phpinspect-parser-obarray)
+          (byte-compile (apply #'phpinspect-make-parser
+                               `(,tree-type ,@parser-parameters)))))))
 
 (defun phpinspect-purge-parser-cache ()
   "Empty `phpinspect-parser-obarray`.
