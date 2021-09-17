@@ -7,6 +7,9 @@ Example config:
 ```elisp
 ;;;###autoload
 (defun my-php-personal-hook ()
+  ;; It is important to enable `company-mode' before setting
+  ;; the variables below.
+  (company-mode)
   (setq-local company-minimum-prefix-length 0)
   (setq-local company-tooltip-align-annotations t)
   (setq-local company-idle-delay 0.1)
