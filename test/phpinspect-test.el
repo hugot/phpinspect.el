@@ -127,7 +127,7 @@
            (phpinspect-test-read-fixture-data
             "class-index-1-2-undestructive-merge"))))
 
-(ert-deftest phpinspect-find-innermost-incomplete-nested-token ()
+(ert-deftest phpinspect--get-resolvecontext ()
   (let ((resolvecontext (phpinspect--get-resolvecontext
                          (phpinspect-test-read-fixture-data "IncompleteClass"))))
 
@@ -150,7 +150,58 @@
 
     (should (phpinspect-incomplete-class-p
              (cadddr (phpinspect--resolvecontext-enclosing-tokens
-                     resolvecontext))))))
+                      resolvecontext))))))
+
+(ert-deftest phpinspect-type-resolver-for-resolvecontext ()
+  (let* ((resolvecontext (phpinspect--get-resolvecontext
+                         (phpinspect-test-read-fixture-data "IncompleteClass")))
+         (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
+                         resolvecontext)))
+
+    (should (string= "\\array" (funcall type-resolver "array")))
+    (should (string= "\\array" (funcall type-resolver "\\array")))
+    (should (string= "\\Symfony\\Component\\HttpFoundation\\Response"
+                     (funcall type-resolver "Response")))
+    (should (string= "\\Response" (funcall type-resolver "\\Response")))
+    (should (string= "\\App\\Controller\\GastonLagaffe"
+                     (funcall type-resolver "GastonLagaffe")))
+    (should (string= "\\App\\Controller\\Dupuis\\GastonLagaffe"
+                     (funcall type-resolver "Dupuis\\GastonLagaffe")))))
+
+(ert-deftest phpinspect-type-resolver-for-resolvecontext-namespace-block ()
+  (let* ((resolvecontext (phpinspect--get-resolvecontext
+                          (phpinspect-test-read-fixture-data
+                           "IncompleteClassBlockedNamespace")))
+         (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
+                         resolvecontext)))
+
+    (should (string= "\\array" (funcall type-resolver "array")))
+    (should (string= "\\array" (funcall type-resolver "\\array")))
+    (should (string= "\\Symfony\\Component\\HttpFoundation\\Response"
+                     (funcall type-resolver "Response")))
+    (should (string= "\\Response" (funcall type-resolver "\\Response")))
+    (should (string= "\\App\\Controller\\GastonLagaffe"
+                     (funcall type-resolver "GastonLagaffe")))
+    (should (string= "\\App\\Controller\\Dupuis\\GastonLagaffe"
+                     (funcall type-resolver "Dupuis\\GastonLagaffe")))))
+
+(ert-deftest phpinspect-type-resolver-for-resolvecontext-multiple-namespace-blocks ()
+  (let* ((resolvecontext (phpinspect--get-resolvecontext
+                          (phpinspect-test-read-fixture-data
+                           "IncompleteClassMultipleNamespaces")))
+         (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
+                         resolvecontext)))
+
+    (should (string= "\\array" (funcall type-resolver "array")))
+    (should (string= "\\array" (funcall type-resolver "\\array")))
+    (should (string= "\\Symfony\\Component\\HttpFoundation\\Response"
+                     (funcall type-resolver "Response")))
+    (should (string= "\\Response" (funcall type-resolver "\\Response")))
+    (should (string= "\\App\\Controller\\GastonLagaffe"
+                     (funcall type-resolver "GastonLagaffe")))
+    (should (string= "\\App\\Controller\\Dupuis\\GastonLagaffe"
+                     (funcall type-resolver "Dupuis\\GastonLagaffe")))))
+
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here

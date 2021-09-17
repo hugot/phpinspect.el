@@ -1513,7 +1513,8 @@ said FQN's by class name"
          (concat "\\" namespace "\\" type))
 
         ;; Clas|interface|trait name
-        (t (concat "\\" (or (assoc-default type types #'string=) (concat namespace "\\" type))))))
+        (t (concat "\\" (or (assoc-default type types #'string=)
+                            (concat namespace "\\" type))))))
 
 (defun phpinspect-var-annotation-p (token)
   (phpinspect-type-p token :var-annotation))
@@ -1702,6 +1703,12 @@ said FQN's by class name"
                      (extends . ,extends)
                      (implements . ,implements))))))
 
+(defsubst phpinspect-namespace-body (namespace)
+  "Return the nested tokens in NAMESPACE tokens' body.
+Accounts for namespaces that are defined with '{}' blocks."
+  (if (phpinspect-block-p (caddr namespace))
+      (cdaddr namespace)
+    (cdr namespace)))
 
 (defun phpinspect--index-classes (types classes &optional namespace indexed)
   "Index the class tokens in `classes`, using the types in `types`
@@ -2087,15 +2094,19 @@ static variables and static methods."
   (let ((namespace-or-root
          (seq-find #'phpinspect-namespace-or-root-p
                    (phpinspect--resolvecontext-enclosing-tokens
-                    resolvecontext))))
+                    resolvecontext)))
+        (namespace-name))
+    (when (phpinspect-namespace-p namespace-or-root)
+      (setq namespace-name (cadadr namespace-or-root))
+      (setq namespace-or-root (phpinspect-namespace-body namespace-or-root)))
+
       (phpinspect--make-type-resolver
        (phpinspect--uses-to-types
         (seq-filter #'phpinspect-use-p namespace-or-root))
        (seq-find #'phpinspect-class-p
                    (phpinspect--resolvecontext-enclosing-tokens
                     resolvecontext))
-       (when (phpinspect-namespace-p namespace-or-root)
-         (cadadr namespace-or-root)))))
+       namespace-name)))
 
 (defun phpinspect--get-last-statement-in-token (token)
   (setq token (cond ((phpinspect-function-p token)
