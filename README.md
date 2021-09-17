@@ -1,8 +1,11 @@
 # phpinspect.el
 
-WIP. Documentation is in the making.
+WIP. More documentation is in the making.
 
-Example config:
+For bug reports and/or feature requests visit the [ticket tracker](https://todo.sr.ht/~hugot/phpinspect.el)
+
+
+## Example config
 
 ```elisp
 ;;;###autoload
