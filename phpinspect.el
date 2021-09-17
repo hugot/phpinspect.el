@@ -2120,7 +2120,10 @@ static variables and static methods."
   (let ((variables))
     (dolist (token (phpinspect--resolvecontext-enclosing-tokens resolvecontext))
       (when (phpinspect-not-class-p token)
-        (dolist (potential-variable token)
+        (let ((token-list token)
+              (potential-variable))
+        (while token-list
+          (setq potential-variable (pop token-list))
           (cond ((phpinspect-variable-p potential-variable)
                  (phpinspect--log "Pushing variable %s" potential-variable)
                  (push (phpinspect--make-variable
@@ -2128,13 +2131,16 @@ static variables and static methods."
                         :type "")
                        variables))
                 ((phpinspect-function-p potential-variable)
-                 (dolist (argument (phpinspect-function-argument-list
-                                    potential-variable))
+                 (push (phpinspect-function-block potential-variable) token-list)
+                 (dolist (argument (phpinspect-function-argument-list potential-variable))
                    (when (phpinspect-variable-p argument)
                      (push (phpinspect--make-variable
                             :name (cadr argument)
                             :type "")
-                           variables))))))))
+                           variables))))
+                ((phpinspect-block-p potential-variable)
+                 (dolist (nested-token (cdr potential-variable))
+                   (push nested-token token-list))))))))
     variables))
 
 (defun phpinspect--suggest-at-point ()
