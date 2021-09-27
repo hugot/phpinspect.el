@@ -29,10 +29,10 @@ shopt -so pipefail
 
 read -rd '' USAGE <<'EOF'
     phpns - Resolve namespaces and fix missing use statements in your PHP scripts.
-    
+
     USAGE:
         phpns COMMAND [ ARGUMENTS ] [ OPTIONS ]
-    
+
     COMMANDS:
         i,   index                             Index the PHP project in the current directory
         fu,  find-use             CLASS_NAME   Echo the FQN of a class
@@ -45,7 +45,7 @@ read -rd '' USAGE <<'EOF'
 
     OPTIONS FOR ALL COMMANDS:
         -s --silent     Don't print info.
-    
+
     UNIQUE OPTIONS PER COMMAND:
         index:
             -d, --diff                Show differences between the files in the index and the files in the project directory.
@@ -95,7 +95,7 @@ execute() {
             # Only index new files
             if [[ ${CONFIG[$INDEX_NEW]} == '--new' ]]; then
                 declare -a new_files=() deleted_files=()
-                
+
                 # Extract new files from diff.
                 while IFS=':' read -ra diff_file; do
                     if [[ ${diff_file[0]} == '-' ]]; then
@@ -203,7 +203,7 @@ fixMissingUseStatements() {
     declare check_uses='false' check_needs='false' file="$1" namespace="$2"
     declare -A uses=() needs=() namespace=()
     declare -a classes=()
-    
+
     classes=($(execute cns "$(execute ns "$file")"))
     for class in "${classes[@]}"; do
         namespace["$class"]='in_namespace'
@@ -247,7 +247,13 @@ findUsePathForClass() {
 }
 
 _handle_no_use() {
-    if [[ ${CONFIG[$PREFER_OWN]} == '--prefer-own' ]]; then
+    declare tried_index_new="$1"
+
+    if [[ $tried_index_new != true ]]; then
+        execute index --silent --new
+        execute fu "${CONFIG[@]}"
+        return $?
+    elif [[ ${CONFIG[$PREFER_OWN]} == '--prefer-own' ]]; then
         CONFIG[$PREFER_OWN]=
         execute fu "${CONFIG[@]}"
         return $?
@@ -273,9 +279,9 @@ _handle_multiple_uses() {
             printf '"%s"' "${possibilities[$i]//\\/\\\\}"
             [[ $i -lt $((${#possibilities[@]}-1)) ]] && printf ','
             echo
-        done 
+        done
         )"
-        
+
         return 0
     fi
 
@@ -371,8 +377,8 @@ declare -gri EXPAND_CLASSES=7
 declare -gri NO_CLASSES=8
 declare -gri NAMESPACE=9
 declare -gri CLASS_PATH=10
-declare -gri INDEX_DIFF=11 
-declare -gri NO_VENDOR=12 # Keep this around as it might be used later on 
+declare -gri INDEX_DIFF=11
+declare -gri NO_VENDOR=12 # Keep this around as it might be used later on
 declare -gri INDEX_NEW=13
 declare -gri FILE=14
 
@@ -416,7 +422,7 @@ _handle_filepath_arguments() {
                 ;;
             -*)
                 if [[ ${#arg} -gt 2 ]]; then
-                    
+
                     declare -i i=1
                     while [[ $i -lt ${#arg} ]]; do
                         _handle_filepath_arguments "-${arg:$i:1}"
@@ -583,7 +589,7 @@ _handle_find_use_arguments() {
                 ;;
             -a | --auto-pick)
                 CONFIG[$AUTO_PICK]='--auto-pick'
-                ;; 
+                ;;
             -j | --json) CONFIG[$STDOUT]='--stdout'
                 CONFIG[$JSON]='--json'
                 INFO=0
@@ -672,7 +678,7 @@ fillIndex() {
             classes[$file]="${BASH_REMATCH[2]}"
         elif [[ "${line[1]}" =~ namespace[[:blank:]]+([A-Za-z_\\]+) ]]; then
             namespaces[$file]="${BASH_REMATCH[1]}"
-        else 
+        else
             debugf 'No class or namespace found in line "%s"' "${line[0]}"
         fi
 
@@ -723,7 +729,7 @@ fillIndex() {
     # Ditto for the namespaces index
     # shellcheck disable=SC2005
     echo "$(sort -u < "$NAMESPACES")" > "$NAMESPACES"
-    
+
     info "Finished indexing. Indexed ${lines} lines and found FQN's for $uses classes." >&2
 }
 
@@ -746,13 +752,13 @@ findUsesAndNeeds() {
     while read -r line; do
         [[ $line == namespace* ]] && check_uses='true'
         if [[ $line == ?(@(abstract|final) )@(class|interface|trait)* ]]; then
-            check_uses='false' 
+            check_uses='false'
             check_needs='true'
-            
+
             read -ra line_array <<<"$line"
             set -- "${line_array[@]}"
             while shift && [[ "$1" != @(extends|implements) ]]; do :; done;
-            while shift && [[ -n $1 ]]; do 
+            while shift && [[ -n $1 ]]; do
                 [[ $1 == 'implements' ]] && shift
                 [[ $1 == \\* ]] || _set_needed_if_not_used "$1"
             done
@@ -819,12 +825,12 @@ _check_needs() {
     fi
 }
 
-# shellcheck disable=SC2049 
+# shellcheck disable=SC2049
 _line_matches() {
     if [[ $line =~ 'new'[[:space:]]+([^\\][A-Za-z]+)\( ]] \
         || [[ $line =~ 'instanceof'[[:space:]]+([A-Za-z]+) ]] \
         || [[ $line =~ catch[[:space:]]*\(([A-Za-z]+) ]] \
-        || [[ $line =~ \*[[:blank:]]*@([A-Z][a-zA-Z]*) ]]; then 
+        || [[ $line =~ \*[[:blank:]]*@([A-Z][a-zA-Z]*) ]]; then
         match="${BASH_REMATCH[1]}"
         return $?
     elif [[ $line =~ @(var|param|return|throws)[[:space:]]+([A-Za-z]+) ]] \
