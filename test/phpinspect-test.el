@@ -202,6 +202,41 @@
     (should (string= "\\App\\Controller\\Dupuis\\GastonLagaffe"
                      (funcall type-resolver "Dupuis\\GastonLagaffe")))))
 
+(ert-deftest phpinspect-index-static-methods ()
+  (let* ((class-tokens
+          `(:root
+            (:class
+             (:declaration (:word "class") (:word "Potato"))
+             (:block
+              (:static
+               (:function (:declaration (:word "function")
+                                        (:word "staticMethod")
+                                        (:list (:variable "untyped")
+                                               (:comma)
+                                               (:word "array")
+                                               (:variable "things")))
+                          (:block)))))))
+         (index (phpinspect--index-tokens class-tokens))
+         (expected-index
+          `(phpinspect--root-index
+            (classes
+             ("\\Potato" phpinspect--class
+              (methods)
+              (class-name . "\\Potato")
+              (static-methods . (,(phpinspect--make-function
+                                   :name "staticMethod"
+                                   :scope '(:public)
+                                   :arguments '(("untyped" nil)
+                                                ("things" "\\array"))
+                                   :return-type nil)))
+              (static-variables)
+              (variables)
+              (constants)
+              (extends)
+              (implements)))
+            (functions))))
+    (should (equal expected-index index))))
+
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here

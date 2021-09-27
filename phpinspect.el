@@ -1476,7 +1476,6 @@ resolve types of function argument variables."
 
 (defun phpinspect--make-type-resolver (types &optional token-tree namespace)
   "Little wrapper closure to pass around and resolve types with."
-  (unless namespace (setq namespace ""))
 
   (let* ((inside-class
           (if token-tree (or (phpinspect--find-innermost-incomplete-class token-tree)
@@ -1497,8 +1496,10 @@ resolve types of function argument variables."
          type)))))
 
 (defun phpinspect--real-type (types namespace type)
-  "Get the FQN for `type`, using `types` as an alist to retrieve
-said FQN's by class name"
+  "Get the FQN for TYPE, using TYPES and NAMESPACE as context.
+
+TYPES must be an alist with class names as cars and FQNs as cdrs.
+NAMESPACE may be nil, or a string with a namespace FQN."
   (phpinspect--log "Resolving %s from namespace %s" type namespace)
   ;; Absolute FQN
   (cond ((string-match "^\\\\" type)
@@ -1509,12 +1510,14 @@ said FQN's by class name"
          (concat "\\" type))
 
         ;; Relative FQN
-        ((string-match "\\\\" type)
+        ((and namespace (string-match "\\\\" type))
          (concat "\\" namespace "\\" type))
 
         ;; Clas|interface|trait name
         (t (concat "\\" (or (assoc-default type types #'string=)
-                            (concat namespace "\\" type))))))
+                          (if namespace
+                              (concat namespace "\\" type)
+                            type))))))
 
 (defun phpinspect-var-annotation-p (token)
   (phpinspect-type-p token :var-annotation))
@@ -1613,16 +1616,18 @@ said FQN's by class name"
       (dolist (word (cadr class))
         (if (phpinspect-word-p word)
             (cond ((string= (cadr word) "extends")
-                   (phpinspect--log "Extends was true")
+                   (phpinspect--log "Class %s extends other classes" class-name)
                    (setq enc-extends t))
                   ((string= (cadr word) "implements")
                    (setq enc-extends nil)
-                   (phpinspect--log "Implements was true")
+                   (phpinspect--log "Class %s implements in interface" class-name)
                    (setq enc-implements t))
                   (t
                    (phpinspect--log "Calling Resolver from index-class on %s" (cadr word))
-                   (cond (enc-extends (push (funcall type-resolver (cadr word)) extends))
-                         (enc-implements (push (funcall type-resolver (cadr word)) implements))))))))
+                   (cond (enc-extends
+                          (push (funcall type-resolver (cadr word)) extends))
+                         (enc-implements
+                          (push (funcall type-resolver (cadr word)) implements))))))))
 
     (dolist (token (caddr class))
       (cond ((phpinspect-scope-p token)
@@ -1654,7 +1659,20 @@ said FQN's by class name"
                                                                  token
                                                                  comment-before)
                           methods))))
+            ((phpinspect-static-p token)
+             (cond ((phpinspect-function-p (cadr token))
+                    (push (phpinspect--index-function-from-scope type-resolver
+                                                                 `(:public
+                                                                   ,(cadr token))
+                                                                 comment-before)
+                          static-methods))
 
+                   ((phpinspect-variable-p (cadr token))
+                    (push (phpinspect--index-variable-from-scope type-resolver
+                                                                 `(:public
+                                                                   ,(cadr token))
+                                                                 comment-before)
+                          static-variables))))
             ((phpinspect-const-p token)
              ;; Bare constants are always public
              (push (phpinspect--index-const-from-scope (list :public token))
