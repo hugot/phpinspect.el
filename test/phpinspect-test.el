@@ -237,6 +237,81 @@
             (functions))))
     (should (equal expected-index index))))
 
+(ert-deftest phpinspect-resolve-type-from-context ()
+  (let* ((token-tree (phpinspect-parse-string "
+namespace Amazing;
+
+class FluffBall
+{
+    private $fluffer;
+
+    public function __construct(Fluffer $fluffer)
+    {
+        $this->fluffer = $fluffer;
+    }
+
+    public function beFluffy(): void
+    {
+        $ball = $this->fluffer;
+
+        if ($ball) {
+            if(isset($ball->fluff()->poof->upFluff->"))
+        (fluffer "
+namespace Amazing;
+
+use Vendor\\FluffLib\\Fluff;
+
+class Fluffer
+{
+    public function fluff(): Fluff
+    {
+    }
+}")
+        (vendor-fluff "
+namespace Vendor\\FluffLib;
+class Fluff
+{
+    /**
+     * @var FlufferUpper
+     */
+    public $poof;
+}")
+        (vendor-fluffer-upper "
+namespace Vendor\\FluffLib;
+class FlufferUpper
+{
+    public $upFluff;
+    public function __construct(DoubleFluffer $upFluff)
+    {
+        $this->upFluff = $upFluff;
+    }
+}")
+        (phpinspect-project-root-function (lambda () "phpinspect-test"))
+        (phpinspect-class-filepath-function
+         (lambda (fqn)
+           (pcase fqn
+             ("\\Amazing\\Fluffer" "fluffer")
+             ("\\Vendor\\FluffLib\\Fluff" "vendor-fluff")
+             ("\\Vendor\\FluffLib\\FlufferUpper" "vendor-fluffer-upper")
+             (_ (ert-fail (format "Unexpected class FQN filepath was requested: %s" fqn))))))
+        (phpinspect-insert-file-contents-function
+         (lambda (filepath)
+           (pcase filepath
+             ("fluffer" (insert fluffer))
+             ("vendor-fluff" (insert vendor-fluff))
+             ("vendor-fluffer-upper" (insert vendor-fluffer-upper))
+             (_ (ert-fail (format "Unexpected filepath was requested: %s" filepath))))))
+        (context (phpinspect--get-resolvecontext token-tree)))
+    (phpinspect-purge-cache)
+    (phpinspect-cache-project-class
+     (phpinspect-project-root)
+     (cdar (alist-get 'classes (cdr (phpinspect--index-tokens token-tree)))))
+
+    (should (equal "\\Vendor\\FluffLib\\DoubleFluffer"
+                   (phpinspect-resolve-type-from-context
+                    context
+                    (phpinspect--make-type-resolver-for-resolvecontext
+                     context))))))
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here

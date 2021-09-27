@@ -46,6 +46,15 @@
   "In-memory nested key-value store used for caching by
 phpinspect")
 
+(defvar phpinspect-insert-file-contents-function #'insert-file-contents-literally
+  "Function that phpinspect uses to insert file contents into a buffer.")
+
+(defvar phpinspect-project-root-function #'phpinspect--find-project-root
+  "Function that phpinspect uses to find the root directory of a project.")
+
+(defvar phpinspect-class-filepath-function #'phpinspect-get-class-filepath
+  "Function that phpinspect uses to find the filepath of a class by its FQN.")
+
 (defvar phpinspect-project-root-file-list
   '("composer.json" "composer.lock" ".git" ".svn" ".hg")
   "List of files that could indicate a project root directory.")
@@ -963,7 +972,7 @@ statement of the innermost incomplete token as subject
 accompanied by all of its enclosing tokens."
   (unless resolvecontext
     (setq resolvecontext (phpinspect--make-resolvecontext
-                          :project-root (phpinspect--get-project-root))))
+                          :project-root (phpinspect-project-root))))
 
   (let ((last-token (car (last token)))
         (last-encountered-token (car
@@ -1109,13 +1118,18 @@ accompanied by all of its enclosing tokens."
 
 (defun phpinspect-parse-file (file)
   (with-temp-buffer
-    (insert-file-contents-literally file)
+    (phpinspect-insert-file-contents file)
     (phpinspect-parse-current-buffer)))
 
 (defun phpinspect-parse-current-buffer ()
   (phpinspect-parse-buffer-until-point
    (current-buffer)
    (point-max)))
+
+(defun phpinspect-parse-string (string)
+  (with-temp-buffer
+    (insert string)
+    (phpinspect-parse-current-buffer)))
 
 (defun phpinspect--split-list (predicate list)
   (seq-reduce (let ((current-sublist))
@@ -1785,7 +1799,7 @@ namespace if not provided"
 (defun phpinspect--get-or-create-index-for-class-file (class-fqn)
   (phpinspect--log "Getting or creating index for %s" class-fqn)
   (phpinspect-get-or-create-cached-project-class
-   (phpinspect--get-project-root)
+   (phpinspect-project-root)
    class-fqn))
 
 (defun phpinspect-index-file (file-name)
@@ -1799,7 +1813,7 @@ namespace if not provided"
       (or
        existing-index
        (progn
-         (let* ((class-file (phpinspect-get-class-filepath class-fqn))
+         (let* ((class-file (phpinspect-class-filepath class-fqn))
                 (visited-buffer (when class-file (find-buffer-visiting class-file)))
                 (new-index))
 
@@ -1889,7 +1903,7 @@ users will have to use \\[phpinspect-purge-cache]."
     (setq phpinspect--buffer-index (phpinspect--index-current-buffer))
     (dolist (class (alist-get 'classes phpinspect--buffer-index))
       (when class
-        (phpinspect-cache-project-class (phpinspect--get-project-root)
+        (phpinspect-cache-project-class (phpinspect-project-root)
                                         (cdr class))))))
 
 (defun phpinspect--disable-mode ()
@@ -2340,7 +2354,7 @@ hierarchy as long as no matching files are found.  See also
               phpinspect-project-root-file-list)
     dominating-file))
 
-(defun phpinspect--get-project-root (&optional start-file)
+(defun phpinspect--find-project-root (&optional start-file)
   "(Attempt to) Find the root directory of the visited PHP project.
 If a found project root has a parent directory called \"vendor\",
 the search continues upwards. See also
@@ -2363,14 +2377,18 @@ level of START-FILE in stead of `default-directory`."
                               "/")))
             (when (not (or (string= parent-without-vendor "/")
                            (string= parent-without-vendor "")))
-              (phpinspect--get-project-root parent-without-vendor))))))))
+              (phpinspect--find-project-root parent-without-vendor))))))))
+
+(defsubst phpinspect-project-root (&rest args)
+  "Call `phpinspect-project-root-function' with ARGS as arguments."
+  (apply phpinspect-project-root-function args))
 
 ;; Use statements
 ;;;###autoload
 (defun phpinspect-fix-uses-interactive ()
   "Add missing use statements to the currently visited PHP file."
   (interactive)
-  (let ((project-root (phpinspect--get-project-root)))
+  (let ((project-root (phpinspect-project-root)))
     (when project-root
       (save-buffer)
       (let* ((phpinspect-json (shell-command-to-string
@@ -2417,12 +2435,16 @@ level of START-FILE in stead of `default-directory`."
 	(forward-line -1)
 	(phpinspect-goto-first-line-no-comment-up)))
 
+(defsubst phpinspect-insert-file-contents (&rest args)
+  "Call `phpinspect-insert-file-contents-function' with ARGS as arguments."
+  (apply phpinspect-insert-file-contents-function args))
+
 (defun phpinspect-get-all-fqns (&optional fqn-file)
   (unless fqn-file
     (setq fqn-file "uses"))
   (with-temp-buffer
-    (insert-file-contents-literally
-     (concat (phpinspect--get-project-root) "/.cache/phpinspect/" fqn-file))
+    (phpinspect-insert-file-contents
+     (concat (phpinspect-project-root) "/.cache/phpinspect/" fqn-file))
     (split-string (buffer-string) (char-to-string ?\n))))
 
 ;;;###autoload
@@ -2434,7 +2456,7 @@ available FQNs in a project.  This may require
 `phpinspect-index-current-project' to have run once for the
 project directory before it can be used."
   (interactive (list (completing-read "Class: " (phpinspect-get-all-fqns))))
-  (find-file (phpinspect-get-class-filepath fqn)))
+  (find-file (phpinspect-class-filepath fqn)))
 
 (defun phpinspect-find-own-class-file (fqn)
   "`phpinspect-find-class-file', but for non-vendored classes.
@@ -2443,8 +2465,11 @@ When called interactively, presents the user with a list of
 available FQNs for classes in the current project, which aren't
 located in \"vendor\" folder."
   (interactive (list (completing-read "Class: " (phpinspect-get-all-fqns "uses_own"))))
-  (find-file (phpinspect-get-class-filepath fqn)))
+  (find-file (phpinspect-class-filepath fqn)))
 
+(defsubst phpinspect-class-filepath (fqn)
+  "Call `phpinspect-class-filepath-function' with FQN as argument."
+  (funcall phpinspect-class-filepath-function fqn))
 
 (defun phpinspect-get-class-filepath (class &optional index-new)
   "Retrieve filepath to CLASS definition file.
@@ -2454,7 +2479,7 @@ before the search is executed."
   (when (eq index-new 'index-new)
     (with-temp-buffer
       (call-process phpinspect-index-executable nil (current-buffer) nil "index" "--new")))
-  (let* ((default-directory (phpinspect--get-project-root))
+  (let* ((default-directory (phpinspect-project-root))
          (result (with-temp-buffer
                    (phpinspect--log "dir: %s" default-directory)
                    (phpinspect--log "class: %s" (string-remove-prefix "\\" class))
@@ -2489,7 +2514,7 @@ before the search is executed."
 Index is stored in files in the .cache directory of
 the project root."
   (interactive)
-  (let* ((default-directory (phpinspect--get-project-root)))
+  (let* ((default-directory (phpinspect-project-root)))
     (with-current-buffer (get-buffer-create "**phpinspect-index**")
       (goto-char (point-max))
       (make-process
