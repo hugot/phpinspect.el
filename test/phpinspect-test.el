@@ -313,5 +313,87 @@ class FlufferUpper
                     (phpinspect--make-type-resolver-for-resolvecontext
                      context))))))
 
+(ert-deftest phpinspect-eldoc-function-for-object-method ()
+  (let* ((php-code "
+class Thing
+{
+    function getThis(\\DateTime $moment, Thing $thing, $other): static
+    {
+        return $this;
+    }
+
+    function doStuff()
+    {
+        $this->getThis(")
+         (tokens (phpinspect-parse-string php-code))
+         (index (phpinspect--index-tokens tokens))
+         (phpinspect-project-root-function (lambda () "phpinspect-test"))
+         (phpinspect-eldoc-word-width 100))
+    (phpinspect-purge-cache)
+    (phpinspect-cache-project-class
+     (phpinspect-project-root)
+     (cdar (alist-get 'classes (cdr index))))
+
+    (should (string= "getThis: ($moment DateTime, $thing Thing, $other): Thing"
+                   (with-temp-buffer
+                     (insert php-code)
+                     (phpinspect-eldoc-function))))))
+
+(ert-deftest phpinspect-eldoc-function-for-static-method ()
+  (let* ((php-code "
+class Thing
+{
+    static function doThing(\\DateTime $moment, Thing $thing, $other): static
+    {
+        return $this;
+    }
+
+    function doStuff()
+    {
+        self::doThing(")
+         (tokens (phpinspect-parse-string php-code))
+         (index (phpinspect--index-tokens tokens))
+         (phpinspect-project-root-function (lambda () "phpinspect-test"))
+         (phpinspect-eldoc-word-width 100))
+    (phpinspect-purge-cache)
+    (phpinspect-cache-project-class
+     (phpinspect-project-root)
+     (cdar (alist-get 'classes (cdr index))))
+
+    (should (string= "doThing: ($moment DateTime, $thing Thing, $other): Thing"
+                   (with-temp-buffer
+                     (insert php-code)
+                     (phpinspect-eldoc-function))))))
+
+
+(ert-deftest phpinspect-resolve-type-from-context-static-method ()
+  (let* ((php-code "
+class Thing
+{
+    static function doThing(\\DateTime $moment, Thing $thing, $other): static
+    {
+        return $this;
+    }
+
+    function doStuff()
+    {
+        self::doThing()->")
+         (tokens (phpinspect-parse-string php-code))
+         (index (phpinspect--index-tokens tokens))
+         (phpinspect-project-root-function (lambda () "phpinspect-test"))
+         (phpinspect-eldoc-word-width 100)
+         (context (phpinspect--get-resolvecontext tokens)))
+    (phpinspect-purge-cache)
+    (phpinspect-cache-project-class
+     (phpinspect-project-root)
+     (cdar (alist-get 'classes (cdr index))))
+
+    (should (string= "\\Thing"
+                     (phpinspect-resolve-type-from-context
+                      context
+                      (phpinspect--make-type-resolver-for-resolvecontext
+                       context))))))
+
+
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here

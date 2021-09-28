@@ -63,6 +63,9 @@ phpinspect")
   "Used internally to save metadata about completion options
   between company backend calls")
 
+(defvar phpinspect-eldoc-word-width 14
+  "The maximum width of words in eldoc strings.")
+
 (defvar phpinspect-index-executable
   (concat (file-name-directory
            (or load-file-name
@@ -1220,20 +1223,23 @@ TODO:
                 (comma-count
                  (length (seq-filter #'phpinspect-comma-p incomplete-token))))
             (concat (truncate-string-to-width
-                     (phpinspect--function-name method) 14) ": ("
+                     (phpinspect--function-name method) phpinspect-eldoc-word-width) ": ("
                      (mapconcat
                       (lambda (arg)
                         (setq arg-count (+ arg-count 1))
                         (if (= arg-count comma-count)
                             (propertize (concat
                                          "$"
-                                         (truncate-string-to-width (car arg) 8)
+                                         (truncate-string-to-width
+                                          (car arg)
+                                          phpinspect-eldoc-word-width)
                                          " "
                                          (phpinspect--format-type-name (or (cadr arg) "")))
                                         'face 'eldoc-highlight-function-argument)
                           (concat "$"
-                                  (truncate-string-to-width (car arg) 8)
-                                  " "
+                                  (truncate-string-to-width (car arg)
+                                                            phpinspect-eldoc-word-width)
+                                  (if (cadr arg) " " "")
                                   (phpinspect--format-type-name (or (cadr arg) "")))))
                       (phpinspect--function-arguments method)
                       ", ")
@@ -1280,6 +1286,11 @@ TODO:
           (push assignment variable-assignments)))
     (nreverse variable-assignments)))
 
+(defun phpinspect-drop-preceding-barewords (statement)
+  (while (and statement (phpinspect-word-p (cadr statement)))
+    (pop statement))
+  statement)
+
 (defun phpinspect-get-derived-statement-type-in-block
     (resolvecontext statement php-block type-resolver &optional function-arg-list)
   "Get type of RESOLVECONTEXT subject in PHP-BLOCK.
@@ -1305,25 +1316,15 @@ $variable = $variable->method();"
       ;; No first token means we were passed an empty list.
       (when (and first-token
                  (setq previous-attribute-type
-                       ;; Statements that are only bare words can be something preceding
-                       ;; a static attribute that is not passed to this function. For
-                       ;; example "return self" could have prefixed another attribute
-                       ;; that the caller is trying to derive. Therefore we just try to
-                       ;; resolve the type of the last bare word in the statement.
-                       (or (when (and (phpinspect-word-p first-token)
-                                      (seq-every-p #'phpinspect-word-p statement))
-                             (setq statement (last statement))
-                             (funcall type-resolver (cadr (pop statement))))
-
+                       (or
                            ;; Statements starting with a bare word can indicate a static
                            ;; method call. These could be statements with "return" or
-                           ;; another bare-word at the start though, so we dop tokens
-                           ;; from the statement until it starts with a static attribute
-                           ;; refererence (::something in PHP code).
+                           ;; another bare-word at the start though, so we drop preceding
+                           ;; barewords when they are present.
                            (when (phpinspect-word-p first-token)
-                             (while (and first-token
-                                         (not (phpinspect-static-attrib-p
-                                               (car statement))))
+                             (when (phpinspect-word-p (car statement))
+                               (setq statement (phpinspect-drop-preceding-barewords
+                                                statement))
                                (setq first-token (pop statement)))
                              (funcall type-resolver (cadr first-token)))
 
