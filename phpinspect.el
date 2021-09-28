@@ -136,10 +136,17 @@ Type can be any of the token types returned by
 (defun phpinspect-comma-p (token)
   (phpinspect-type-p token :comma))
 
-(defun phpinspect-end-of-statement-p (token)
+(defsubst phpinspect-terminator-p (token)
+  (phpinspect-type-p token :terminator))
+
+(defun phpinspect-end-of-token-p (token)
   (or (phpinspect-terminator-p token)
       (phpinspect-comma-p token)
       (phpinspect-html-p token)))
+
+(defsubst phpinspect-end-of-statement-p (token)
+  (or (phpinspect-end-of-token-p token)
+      (phpinspect-block-p token)))
 
 (defsubst phpinspect-incomplete-block-p (token)
   (phpinspect-type-p token :incomplete-block))
@@ -150,7 +157,7 @@ Type can be any of the token types returned by
 
 (defun phpinspect-end-of-use-p (token)
   (or (phpinspect-block-p token)
-      (phpinspect-end-of-statement-p token)))
+      (phpinspect-end-of-token-p token)))
 
 (defun phpinspect-static-p (token)
   (phpinspect-type-p token :static))
@@ -242,19 +249,16 @@ Type can be any of the token types returned by
 
 (defun phpinspect--static-terminator-p (token)
   (or (phpinspect-function-p token)
-      (phpinspect-end-of-statement-p token)))
+      (phpinspect-end-of-token-p token)))
 
 (defun phpinspect--scope-terminator-p (token)
   (or (phpinspect-function-p token)
-      (phpinspect-end-of-statement-p token)
+      (phpinspect-end-of-token-p token)
       (phpinspect-const-p token)
       (phpinspect-static-p token)))
 
 (defun phpinspect-namespace-keyword-p (token)
   (and (phpinspect-word-p token) (string= (car (last token)) "namespace")))
-
-(defun phpinspect-terminator-p (token)
-  (phpinspect-type-p token :terminator))
 
 (defun phpinspect-use-keyword-p (token)
   (and (phpinspect-word-p token) (string= (car (last token)) "use")))
@@ -607,7 +611,7 @@ token is \";\", which marks the end of a statement in PHP."
                   :const
                   '(word comment assignment-operator string array
                          terminator)
-                  #'phpinspect-end-of-statement-p))
+                  #'phpinspect-end-of-token-p))
          (token (funcall parser (current-buffer) max-point)))
     (when (phpinspect-incomplete-token-p (car (last token)))
       (setcar token :incomplete-const))
@@ -744,7 +748,7 @@ nature like argument lists"
 (defsubst phpinspect-get-or-create-declaration-parser ()
   (phpinspect-get-parser-create :declaration
                                 '(comment word list terminator tag)
-                                #'phpinspect-end-of-statement-p))
+                                #'phpinspect-end-of-token-p))
 
 
 (phpinspect-defhandler function-keyword (start-token max-point)
@@ -754,7 +758,7 @@ nature like argument lists"
   (let* ((parser (phpinspect-get-or-create-declaration-parser))
          (continue-condition (lambda () (not (char-equal (char-after) ?{))))
          (declaration (funcall parser (current-buffer) max-point continue-condition)))
-    (if (phpinspect-end-of-statement-p (car (last declaration)))
+    (if (phpinspect-end-of-token-p (car (last declaration)))
         (list :function declaration)
       (list :function
             declaration
@@ -2155,7 +2159,7 @@ static variables and static methods."
           (setq keep-taking nil))
         (setq last-test (phpinspect-variable-p elt))
         (and keep-taking
-             (not (phpinspect-terminator-p elt))
+             (not (phpinspect-end-of-statement-p elt))
              (listp elt))))
     (reverse token))))
 

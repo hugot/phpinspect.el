@@ -423,5 +423,41 @@ class Thing
                       (phpinspect--make-type-resolver-for-resolvecontext
                        context))))))
 
+(ert-deftest phpinspect--get-last-statement-in-token-with-static-attribute-context ()
+    (let* ((php-code-function "
+    function doStuff()
+    {
+        return self::doThing()")
+           (php-code-block "
+    {
+        return self::doThing()")
+           (php-code-preceding-block "
+    function doStuff()
+    {
+        if (true === true) {
+            forach ($things as $k => $v) {
+            }
+        }
+        self::doThing()")
+           (php-code-bare "Thing::something(); Something::other()")
+           (get-last-statement
+            (lambda (php-code)
+              (phpinspect--get-last-statement-in-token
+               (car (cdr (phpinspect-parse-string php-code)))))))
+
+      (should (equal `((:word "return") (:word "self") (:static-attrib (:word "doThing"))
+                       (:list))
+                     (funcall get-last-statement php-code-function)))
+      (should (equal `((:word "return") (:word "self") (:static-attrib (:word "doThing"))
+                       (:list))
+                     (funcall get-last-statement php-code-block)))
+      (should (equal `((:word "self") (:static-attrib (:word "doThing"))
+                       (:list))
+                     (funcall get-last-statement php-code-preceding-block)))
+      (should (equal `((:word "Something") (:static-attrib (:word "other"))
+                       (:list))
+                     (phpinspect--get-last-statement-in-token
+                      (phpinspect-parse-string php-code-bare))))))
+
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here
