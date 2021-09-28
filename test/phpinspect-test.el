@@ -394,6 +394,34 @@ class Thing
                       (phpinspect--make-type-resolver-for-resolvecontext
                        context))))))
 
+(ert-deftest phpinspect-resolve-type-from-context-static-method-with-preceding-words ()
+  (let* ((php-code "
+class Thing
+{
+    static function doThing(\\DateTime $moment, Thing $thing, $other): static
+    {
+        return $this;
+    }
+
+    function doStuff()
+    {
+        if (true) {
+            return self::doThing()->")
+         (tokens (phpinspect-parse-string php-code))
+         (index (phpinspect--index-tokens tokens))
+         (phpinspect-project-root-function (lambda () "phpinspect-test"))
+         (phpinspect-eldoc-word-width 100)
+         (context (phpinspect--get-resolvecontext tokens)))
+    (phpinspect-purge-cache)
+    (phpinspect-cache-project-class
+     (phpinspect-project-root)
+     (cdar (alist-get 'classes (cdr index))))
+
+    (should (string= "\\Thing"
+                     (phpinspect-resolve-type-from-context
+                      context
+                      (phpinspect--make-type-resolver-for-resolvecontext
+                       context))))))
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here
