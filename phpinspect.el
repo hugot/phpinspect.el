@@ -919,10 +919,11 @@ that contains all handlers necessary to parse code."
       (push item new-plist))
     (nreverse new-plist)))
 
-
 (defmacro phpinspect--make-type (&rest property-list)
   `(phpinspect--make-type-generated
     ,@(phpinspect--wrap-plist-name-in-symbol property-list)))
+
+(defconst phpinspect--null-type (phpinspect--make-type :name "\\null"))
 
 (cl-defmethod phpinspect--type-set-name ((type phpinspect--type) (name string))
   (setf (phpinspect--type-name-symbol type) (phpinspect-intern-name name)))
@@ -1020,8 +1021,7 @@ candidate. Candidates can be indexed functions and variables.")
                  (phpinspect--format-type-name (phpinspect--function-return-type completion-candidate)))
    :annotation (concat " "
                        (phpinspect--type-bare-name
-                        (or (phpinspect--function-return-type completion-candidate)
-                            (phpinspect--make-type :name "\\"))))
+                        (phpinspect--function-return-type completion-candidate)))
    :kind 'function))
 
 (cl-defstruct (phpinspect--resolvecontext
@@ -1127,31 +1127,43 @@ accompanied by all of its enclosing tokens."
     (seq-uniq classes #'eq)))
 
 
-(defun phpinspect-get-cached-project-class-methods
-    (project-root class-fqn &optional static)
-  (phpinspect--log "Getting cached project class methods for %s (%s)"
+;; (defun phpinspect-get-cached-project-class-methods
+;;     (project-root class-fqn &optional static)
+;;   (phpinspect--log "Getting cached project class methods for %s (%s)"
+;;                    project-root class-fqn)
+;;   (when project-root
+;;     (let ((index (phpinspect-get-or-create-cached-project-class
+;;                   project-root
+;;                   class-fqn)))
+;;       (when index
+;;         (phpinspect--log "Retrieved class index, starting method collection %s (%s)"
+;;                          project-root class-fqn)
+
+;;         (let ((methods-key (if static 'static-methods 'methods))
+;;               (methods))
+
+;;           (dolist (class (phpinspect-get-project-class-inherit-classes
+;;                           project-root
+;;                           index))
+;;             (dolist (method (alist-get methods-key class))
+;;               (push method methods)))
+
+;;           (dolist (method (alist-get methods-key index))
+;;             (push method methods))
+
+;;           (nreverse methods))))))
+
+(defun phpinspect-get-cached-project-class-methods (project-root class-fqn &optional static)
+    (phpinspect--log "Getting cached project class methods for %s (%s)"
                    project-root class-fqn)
-  (when project-root
-    (let ((index (phpinspect-get-or-create-cached-project-class
-                  project-root
-                  class-fqn)))
-      (when index
-        (phpinspect--log "Retrieved class index, starting method collection %s (%s)"
-                         project-root class-fqn)
-
-        (let ((methods-key (if static 'static-methods 'methods))
-              (methods))
-
-          (dolist (class (phpinspect-get-project-class-inherit-classes
-                          project-root
-                          index))
-            (dolist (method (alist-get methods-key class))
-              (push method methods)))
-
-          (dolist (method (alist-get methods-key index))
-            (push method methods))
-
-          (nreverse methods))))))
+    (when project-root
+      (let ((class (phpinspect-get-or-create-cached-project-class
+                    project-root
+                    class-fqn)))
+        (when class
+          (phpinspect--log "Retrieved class index, starting method collection %s (%s)"
+                           project-root class-fqn)
+          (phpinspect--class-get-method-list class)))))
 
 (defmacro phpinspect-find-function-in-list (method-name list)
   (let ((break-sym (gensym))
@@ -1163,43 +1175,68 @@ accompanied by all of its enclosing tokens."
                      ,method-name-sym)
              (throw (quote ,break-sym) func)))))))
 
+;; (defsubst phpinspect-get-cached-project-class-method-type
+;;   (project-root class-fqn method-name)
+;;   (when project-root
+;;     (phpinspect--log "Getting cached project class method type for %s (%s::%s)"
+;;                      project-root class-fqn method-name)
+;;     (let ((found-method
+;;             (phpinspect-find-function-in-list
+;;              method-name
+;;              (phpinspect-get-cached-project-class-methods project-root class-fqn))))
+;;       (when found-method
+;;         (phpinspect--log "Found method: %s" found-method)
+;;         (phpinspect--function-return-type found-method)))))
+
 (defsubst phpinspect-get-cached-project-class-method-type
   (project-root class-fqn method-name)
-  (when project-root
-    (phpinspect--log "Getting cached project class method type for %s (%s::%s)"
-                     project-root class-fqn method-name)
-    (let ((found-method
-            (phpinspect-find-function-in-list
-             method-name
-             (phpinspect-get-cached-project-class-methods project-root class-fqn))))
-      (when found-method
-        (phpinspect--log "Found method: %s" found-method)
-        (phpinspect--function-return-type found-method)))))
+    (when project-root
+    (let* ((class (phpinspect-get-cached-project-class project-root class-fqn))
+           (method))
+      (when class
+        (setq method
+              (phpinspect--class-get-method class (phpinspect-intern-name method-name)))
+        (when method
+          (phpinspect--function-return-type method))))))
+
 
 (defsubst phpinspect-get-cached-project-class-variable-type
   (project-root class-fqn variable-name)
   (phpinspect--log "Getting cached project class variable type for %s (%s::%s)"
-                     project-root class-fqn variable-name)
+                   project-root class-fqn variable-name)
   (when project-root
     (let ((found-variable
            (seq-find (lambda (variable)
                        (string= (phpinspect--variable-name variable) variable-name))
-                     (alist-get 'variables
-                                (phpinspect-get-or-create-cached-project-class
-                                 project-root
-                                 class-fqn)))))
+                     (phpinspect--class-variables
+                      (phpinspect-get-or-create-cached-project-class
+                       project-root
+                       class-fqn)))))
       (when found-variable
         (phpinspect--variable-type found-variable)))))
+
+;; (defsubst phpinspect-get-cached-project-class-static-method-type
+;;   (project-root class-fqn method-name)
+;;   (when project-root
+;;     (let* ((found-method
+;;             (phpinspect-find-function-in-list
+;;              method-name
+;;              (phpinspect-get-cached-project-class-methods project-root class-fqn 'static))))
+;;       (when found-method
+;;         (phpinspect--function-return-type found-method)))))
 
 (defsubst phpinspect-get-cached-project-class-static-method-type
   (project-root class-fqn method-name)
   (when project-root
-    (let* ((found-method
-            (phpinspect-find-function-in-list
-             method-name
-             (phpinspect-get-cached-project-class-methods project-root class-fqn 'static))))
-      (when found-method
-        (phpinspect--function-return-type found-method)))))
+    (let* ((class (phpinspect-get-cached-project-class project-root class-fqn))
+           (method))
+      (when class
+        (setq method
+              (phpinspect--class-get-static-method
+               class
+               (phpinspect-intern-name method-name)))
+        (when method
+          (phpinspect--function-return-type method))))))
 
 (defun phpinspect-parse-file (file)
   (with-temp-buffer
@@ -1720,7 +1757,7 @@ NAMESPACE may be nil, or a string with a namespace FQN."
      :scope `(,(car scope))
      :name (cadadr (cdr declaration))
      :return-type (if type (funcall type-resolver type)
-                    (phpinspect--make-type :name "\\void"))
+                    phpinspect--null-type)
      :arguments (phpinspect--index-function-arg-list
                  type-resolver
                  (phpinspect-function-argument-list php-func)))))
@@ -1889,7 +1926,7 @@ NAMESPACE may be nil, or a string with a namespace FQN."
 
     (let ((class-name (funcall type-resolver (phpinspect--make-type :name class-name))))
       `(,class-name .
-                    (phpinspect--class
+                    (phpinspect--indexed-class
                      (methods . ,methods)
                      (class-name . ,class-name)
                      (static-methods . ,static-methods)
@@ -1961,43 +1998,48 @@ namespace if not provided"
   ;; TODO: Implement function indexation
   )
 
-(defun phpinspect--get-or-create-index-for-class-file (class-fqn)
-  (phpinspect--log "Getting or creating index for %s" class-fqn)
-  (phpinspect-get-or-create-cached-project-class
-   (phpinspect-project-root)
-   class-fqn))
+;; (defun phpinspect--get-or-create-index-for-class-file (class-fqn)
+;;   (phpinspect--log "Getting or creating index for %s" class-fqn)
+;;   (phpinspect-get-or-create-cached-project-class
+;;    (phpinspect-project-root)
+;;    class-fqn))
 
 (defun phpinspect-index-file (file-name)
   (phpinspect--index-tokens (phpinspect-parse-file file-name)))
 
 (defun phpinspect-get-or-create-cached-project-class (project-root class-fqn)
   (when project-root
-    (let ((existing-index (phpinspect-get-cached-project-class
-                           project-root
-                           class-fqn)))
-      (or
-       existing-index
-       (progn
-         (let* ((class-file (phpinspect-class-filepath class-fqn))
-                (visited-buffer (when class-file (find-buffer-visiting class-file)))
-                (new-index))
+    (let ((project (phpinspect--cache-get-project-create
+                    (phpinspect--get-or-create-global-cache)
+                    project-root)))
+      (phpinspect--project-get-class-create project class-fqn))))
 
-           (phpinspect--log "No existing index for FQN: %s" class-fqn)
-           (phpinspect--log "filepath: %s" class-file)
-           (when class-file
-             (if visited-buffer
-                 (setq new-index (with-current-buffer visited-buffer
-                                   (phpinspect--index-current-buffer)))
-               (setq new-index (phpinspect-index-file class-file)))
-             (dolist (class (alist-get 'classes new-index))
-               (when class
-                 (phpinspect-cache-project-class
-                  project-root
-                  (cdr class))))
-             (alist-get class-fqn (alist-get 'classes new-index)
-                        nil
-                        nil
-                        #'phpinspect--type=))))))))
+    ;; (let ((existing-index (phpinspect-get-cached-project-class
+    ;;                        project-root
+    ;;                        class-fqn)))
+    ;;   (or
+    ;;    existing-index
+    ;;    (progn
+    ;;      (let* ((class-file (phpinspect-class-filepath class-fqn))
+    ;;             (visited-buffer (when class-file (find-buffer-visiting class-file)))
+    ;;             (new-index))
+
+    ;;        (phpinspect--log "No existing index for FQN: %s" class-fqn)
+    ;;        (phpinspect--log "filepath: %s" class-file)
+    ;;        (when class-file
+    ;;          (if visited-buffer
+    ;;              (setq new-index (with-current-buffer visited-buffer
+    ;;                                (phpinspect--index-current-buffer)))
+    ;;            (setq new-index (phpinspect-index-file class-file)))
+    ;;          (dolist (class (alist-get 'classes new-index))
+    ;;            (when class
+    ;;              (phpinspect-cache-project-class
+    ;;               project-root
+    ;;               (cdr class))))
+    ;;          (alist-get class-fqn (alist-get 'classes new-index)
+    ;;                     nil
+    ;;                     nil
+    ;;                     #'phpinspect--type=))))))))
 
 
 (defun phpinspect--index-current-buffer ()
@@ -2007,15 +2049,20 @@ namespace if not provided"
   "Index a PHP file for classes and the methods they have"
   (phpinspect--index-tokens (phpinspect-parse-current-buffer)))
 
-(defun phpinspect--get-variables-for-class (buffer-classes class &optional static)
-  (let ((class-index (or (assoc-default class buffer-classes #'phpinspect--type=)
-                         (phpinspect--get-or-create-index-for-class-file class))))
-    (when class-index
-      (if static
-          (append (alist-get 'static-variables class-index)
-                  (alist-get 'constants class-index))
-        (alist-get 'variables class-index)))))
+;; (defun phpinspect--get-variables-for-class (buffer-classes class &optional static)
+;;   (let ((class-index (or (assoc-default class buffer-classes #'phpinspect--type=)
+;;                          (phpinspect--get-or-create-index-for-class-file class))))
+;;     (when class-index
+;;       (if static
+;;           (append (alist-get 'static-variables class-index)
+;;                   (alist-get 'constants class-index))
+;;         (alist-get 'variables class-index)))))
 
+(defun phpinspect--get-variables-for-class (buffer-classes class-name &optional static)
+  (let ((class (phpinspect-get-or-create-cached-project-class
+                (phpinspect-project-root)
+                class-name)))
+    (when class (phpinspect--class-variables class))))
 
 (defun phpinspect--get-methods-for-class
     (resolvecontext buffer-classes class &optional static)
@@ -2034,7 +2081,7 @@ more recent"
                                      buffer-index))
             (push method methods)))
       (unless methods
-        (phpinspect--log "Failed to find metods for class %s :(" class))
+        (phpinspect--log "Failed to find methods for class %s :(" class))
       methods))
 
 
@@ -2177,8 +2224,8 @@ level of a token. Nested variables are ignored."
   "Merge two phpinspect index types into one and return it")
 
 (cl-defmethod phpinspect--merge-indexes
-  ((class1 (head phpinspect--class))
-   (class2 (head phpinspect--class)))
+  ((class1 (head phpinspect--indexed-class))
+   (class2 (head phpinspect--indexed-class)))
   "Merge two indexed classes."
   (let* ((class1-methods (alist-get 'methods (cdr class1)))
          (class1-variables (alist-get 'variables (cdr class1))))
@@ -2280,9 +2327,7 @@ resolved to provide completion candidates.
 
 If STATIC is non-nil, candidates are provided for constants,
 static variables and static methods."
-  (let* ((buffer-index (phpinspect--merge-indexes
-                          phpinspect--buffer-index
-                          (phpinspect--index-tokens token-tree)))
+  (let* ((buffer-index phpinspect--buffer-index)
          (buffer-classes (alist-get 'classes (cdr buffer-index)))
          (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
                          resolvecontext))
@@ -2351,7 +2396,7 @@ static variables and static methods."
                  (phpinspect--log "Pushing variable %s" potential-variable)
                  (push (phpinspect--make-variable
                         :name (cadr potential-variable)
-                        :type (phpinspect--make-type :name "\\void"))
+                        :type phpinspect--null-type)
                        variables))
                 ((phpinspect-function-p potential-variable)
                  (push (phpinspect-function-block potential-variable) token-list)
@@ -2359,7 +2404,7 @@ static variables and static methods."
                    (when (phpinspect-variable-p argument)
                      (push (phpinspect--make-variable
                             :name (cadr argument)
-                            :type (phpinspect--make-type :name "\\void"))
+                            :type phpinspect--null-type)
                            variables))))
                 ((phpinspect-block-p potential-variable)
                  (dolist (nested-token (cdr potential-variable))
@@ -2458,12 +2503,151 @@ static variables and static methods."
 as keys and project caches as values."))
 
 (cl-defstruct (phpinspect--project (:constructor phpinspect--make-project-cache))
-  (class-index (make-hash-table :test 'equal :size 100 :rehash-size 40)
+  (class-index (make-hash-table :test 'eq :size 100 :rehash-size 40)
                :type hash-table
                :documentation
                "A `hash-table` that contains all of the currently
 indexed classes in the project"))
 
+(cl-defstruct (phpinspect--class (:constructor phpinspect--make-class-generated))
+  (project nil
+           :type phpinspect--project
+           :documentaton
+           "The project that this class belongs to")
+  (index nil
+         :type phpinspect--indexed-class
+         :documentation
+         "The index that this class is derived from")
+  (methods (make-hash-table :test 'eq :size 20 :rehash-size 20)
+           :type hash-table
+           :documentation
+           "All methods, including those from extended classes.")
+  (static-methods (make-hash-table :test 'eq :size 20 :rehash-size 20)
+                  :type hash-table
+                  :documentation
+                  "All static methods this class provides,
+                  including those from extended classes.")
+  (variables nil
+             :type list
+             :documentation
+             "Variables that belong to this class.")
+  (extended-classes (make-hash-table :test 'eq)
+                    :type hash-table
+                    :documentation
+                    "All extended/implemented classes.")
+  (subscriptions nil
+                 :type list
+                 :documentation
+                 "A list of subscription functions that should be
+                 called whenever anything about this class is
+                 updated"))
+
+(cl-defmethod phpinspect--class-trigger-update ((class phpinspect--class))
+  (dolist (sub (phpinspect--class-subscriptions class))
+    (funcall sub class)))
+
+(cl-defmethod phpinspect--class-set-index ((class phpinspect--class)
+                                           (index (head phpinspect--indexed-class)))
+  (setf (phpinspect--class-index class) index)
+  (dolist (method (alist-get 'methods index))
+    (phpinspect--class-update-method class method))
+
+  (dolist (method (alist-get 'static-methods index))
+    (phpinspect--class-update-static-method class method))
+
+  (setf (phpinspect--class-variables class)
+        (alist-get 'variables index))
+
+  (setf (phpinspect--class-extended-classes class)
+        (seq-filter
+         #'phpinspect--class-p
+         (mapcar
+          (lambda (class-name)
+            (phpinspect--project-get-class-create (phpinspect--class-project class)
+                                           class-name))
+          `(,@(alist-get 'implements index) ,@(alist-get 'extends index)))))
+
+  (dolist (extended (phpinspect--class-extended-classes class))
+    (phpinspect--class-incorporate class extended)
+    (phpinspect--class-subscribe class extended))
+
+  (phpinspect--class-trigger-update class))
+
+(cl-defmethod phpinspect--class-get-method ((class phpinspect--class) method-name)
+  (gethash method-name (phpinspect--class-methods class)))
+
+(cl-defmethod phpinspect--class-get-static-method ((class phpinspect--class) method-name)
+  (gethash method-name (phpinspect--class-static-methods class)))
+
+(cl-defmethod phpinspect--class-set-method ((class phpinspect--class)
+                                            (method phpinspect--function))
+  (phpinspect--log "Adding method by name %s to class"
+                   (phpinspect--function-name method))
+  (puthash (phpinspect--function-name-symbol method)
+           method
+           (phpinspect--class-methods class)))
+
+(cl-defmethod phpinspect--class-set-static-method ((class phpinspect--class)
+                                                   (method phpinspect--function))
+  (puthash (phpinspect--function-name-symbol method)
+           method
+           (phpinspect--class-static-methods class)))
+
+(cl-defmethod phpinspect--class-get-method-return-type
+  ((class phpinspect--class) (method-name symbol))
+  (let ((method (phpinspect--class-get-method class method-name)))
+    (when method
+      (phpinspect--function-return-type method))))
+
+(cl-defmethod phpinspect--class-get-method-list ((class phpinspect--class))
+  (let ((methods))
+    (maphash (lambda (key method)
+               (push method methods))
+             (phpinspect--class-methods class))
+    methods))
+
+(cl-defmethod phpinspect--class-update-static-method ((class phpinspect--class)
+                                                      (method phpinspect--function))
+  (let ((existing (gethash (phpinspect--function-name-symbol method)
+                           (phpinspect--class-static-methods class))))
+    (if existing
+        (progn
+          (unless (eq (phpinspect--function-return-type method)
+                    phpinspect--null-type)
+          (setf (phpinspect--function-return-type existing)
+                (phpinspect--function-return-type method))
+          (setf (phpinspect--function-arguments existing)
+                (phpinspect--function-arguments method))))
+      (phpinspect--class-set-static-method class method))))
+
+(cl-defmethod phpinspect--class-update-method ((class phpinspect--class)
+                                               (method phpinspect--function))
+  (let ((existing (gethash (phpinspect--function-name-symbol method)
+                           (phpinspect--class-methods class))))
+    (if existing
+        (progn
+          (unless (eq (phpinspect--function-return-type method)
+                    phpinspect--null-type)
+          (setf (phpinspect--function-return-type existing)
+                (phpinspect--function-return-type method))
+          (setf (phpinspect--function-arguments existing)
+                (phpinspect--function-arguments method))))
+      (phpinspect--class-set-method class method))))
+
+(cl-defmethod phpinspect--class-incorporate ((class phpinspect--class)
+                                             (other-class phpinspect--class))
+  (maphash (lambda (k method)
+             (phpinspect--class-update-method class method))
+           (phpinspect--class-methods other-class)))
+
+(cl-defmethod phpinspect--class-subscribe ((class phpinspect--class)
+                                           (subscription-class phpinspect--class))
+  (let ((update-function
+         (lambda (new-class)
+           (phpinspect--class-incorporate class new-class)
+           (phpinspect--class-trigger-update class))))
+    (push update-function (phpinspect--class-subscriptions subscription-class))))
+1
 (cl-defgeneric phpinspect--cache-getproject
     ((cache phpinspect--cache) (project-name string))
   "Get project by PROJECT-NAME that is located in CACHE.")
@@ -2486,27 +2670,58 @@ then returned.")
                (phpinspect--cache-projects cache))))
 
 (cl-defgeneric phpinspect--project-add-class
-    ((project phpinspect--project) (class (head phpinspect--class)))
+    ((project phpinspect--project) (class (head phpinspect--indexed-class)))
   "Add an indexed CLASS to PROJECT.")
 
 (cl-defmethod phpinspect--project-add-class
-  ((project phpinspect--project) (class (head phpinspect--class)))
-  (let* ((class-name (phpinspect--type-name (alist-get 'class-name (cdr class))))
+  ((project phpinspect--project) (indexed-class (head phpinspect--indexed-class)))
+  (let* ((class-name (phpinspect--type-name-symbol
+                      (alist-get 'class-name (cdr indexed-class))))
          (existing-class (gethash class-name
                                   (phpinspect--project-class-index project))))
-    (puthash class-name
-             (if existing-class
-                 (phpinspect--merge-indexes existing-class class)
-               class)
-             (phpinspect--project-class-index project))))
+    (if existing-class
+        (phpinspect--class-set-index existing-class indexed-class)
+      (let ((new-class (phpinspect--make-class-generated :project project)))
+        (phpinspect--class-set-index new-class indexed-class)
+        (puthash class-name new-class (phpinspect--project-class-index project))))))
 
 (cl-defgeneric phpinspect--project-get-class
     ((project phpinspect--project) (class-fqn phpinspect--type))
   "Get indexed class by name of CLASS-FQN stored in PROJECT.")
 
+(cl-defmethod phpinspect--project-get-class-create
+  ((project phpinspect--project) (class-fqn phpinspect--type))
+  (let ((class (phpinspect--project-get-class project class-fqn)))
+    (unless class
+      (setq class (phpinspect--make-class-generated :project project))
+      (puthash (phpinspect--type-name-symbol class-fqn)
+               class
+               (phpinspect--project-class-index project))
+
+      (let* ((class-file (phpinspect-class-filepath class-fqn))
+             (visited-buffer (when class-file (find-buffer-visiting class-file)))
+             (new-index)
+             (class-index))
+
+        (phpinspect--log "No existing index for FQN: %s" class-fqn)
+        (phpinspect--log "filepath: %s" class-file)
+        (when class-file
+          (if visited-buffer
+              (setq new-index (with-current-buffer visited-buffer
+                                (phpinspect--index-current-buffer)))
+            (setq new-index (phpinspect-index-file class-file)))
+          (setq class-index
+                (alist-get class-fqn (alist-get 'classes new-index)
+                           nil
+                           nil
+                           #'phpinspect--type=))
+          (when class-index
+            (phpinspect--class-set-index class class-index)))))
+    class))
+
 (cl-defmethod phpinspect--project-get-class
   ((project phpinspect--project) (class-fqn phpinspect--type))
-  (gethash (phpinspect--type-name class-fqn)
+  (gethash (phpinspect--type-name-symbol class-fqn)
            (phpinspect--project-class-index project)))
 
 (defun phpinspect--get-or-create-global-cache ()
@@ -2675,10 +2890,14 @@ before the search is executed."
                                              (phpinspect--type-name class)))
                            (buffer-string)))))
     (if (not (= (car result) 0))
-        ;; Index new files and try again if not done already.
-        (if (eq index-new 'index-new)
-            nil
-          (phpinspect-get-class-filepath class 'index-new))
+        (progn
+          (phpinspect--log "Got non-zero return value %d Retrying with reindex. output: \"%s\""
+                           (car result)
+                           (cadr result))
+          ;; Index new files and try again if not done already.
+          (if (eq index-new 'index-new)
+              nil
+            (phpinspect-get-class-filepath class 'index-new)))
       (concat (string-remove-suffix "/" default-directory)
               "/"
               (string-remove-prefix "/" (string-trim (cadr result)))))))
