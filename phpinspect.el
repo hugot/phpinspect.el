@@ -1224,7 +1224,8 @@ When called interactively, presents the the user with a list of
 available FQNs in a project.  This may require
 `phpinspect-index-current-project' to have run once for the
 project directory before it can be used."
-  (interactive (list (completing-read "Class: " (phpinspect-get-all-fqns))))
+  (interactive (list (phpinspect--make-type
+                      :name (completing-read "Class: " (phpinspect-get-all-fqns)))))
   (find-file (phpinspect-class-filepath fqn)))
 
 (defun phpinspect-find-own-class-file (fqn)
@@ -1233,7 +1234,9 @@ project directory before it can be used."
 When called interactively, presents the user with a list of
 available FQNs for classes in the current project, which aren't
 located in \"vendor\" folder."
-  (interactive (list (completing-read "Class: " (phpinspect-get-all-fqns "uses_own"))))
+  (interactive (list (phpinspect--make-type
+                      :name
+                      (completing-read "Class: " (phpinspect-get-all-fqns "uses_own")))))
   (find-file (phpinspect-class-filepath fqn)))
 
 (defsubst phpinspect-class-filepath (fqn)
