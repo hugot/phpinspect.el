@@ -56,26 +56,34 @@
                    arg-index))))
     (nreverse arg-index)))
 
+(defsubst phpinspect--should-prefer-return-annotation (type)
+  "When the return annotation should be preferred over typehint of TYPE, if available."
+  (or (not type)
+      (phpinspect--type= type phpinspect--object-type)))
+
 (defun phpinspect--index-function-from-scope (type-resolver scope comment-before)
   (let* ((php-func (cadr scope))
          (declaration (cadr php-func))
          (type (if (phpinspect-word-p (car (last declaration)))
-                   (phpinspect--make-type :name (cadar (last declaration))))))
+                   (funcall type-resolver
+                            (phpinspect--make-type :name (cadar (last declaration)))))))
 
-    ;; @return annotation. Has precedence over typehint when dealing with a collection.
+    ;; @return annotation. When dealing with a collection, we want to store the
+    ;; type of its members.
     (let* ((is-collection
            (when type
-             (member (phpinspect--type-name
-                      (funcall type-resolver type)) phpinspect-collection-types)))
+             (member (phpinspect--type-name type) phpinspect-collection-types)))
            (return-annotation-type
-            (when (or (not type) is-collection)
+            (when (or (phpinspect--should-prefer-return-annotation type) is-collection)
               (cadadr
                (seq-find #'phpinspect-return-annotation-p
                          comment-before)))))
-      (phpinspect--log "found return annotation %s" return-annotation-type)
+      (phpinspect--log "found return annotation %s when type is %s"
+                       return-annotation-type
+                       type)
 
       (when return-annotation-type
-        (cond ((not type)
+        (cond ((phpinspect--should-prefer-return-annotation type)
                (setq type (funcall type-resolver
                                    (phpinspect--make-type :name return-annotation-type))))
               (is-collection

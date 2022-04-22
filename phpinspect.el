@@ -74,14 +74,6 @@ phpinspect")
 Should normally be set to \"phpinspect-index.bash\" in the source
   file directory.")
 
-(defconst phpinspect-native-types
-  ;; self, parent and resource are not valid type name.
-  ;; see https://www.php.net/manual/ja/language.types.declarations.php
-  '("array" "bool" "callable" "float" "int" "iterable" "mixed" "object" "string" "void"))
-
-(defvar phpinspect-collection-types
-  '("\\array" "\\iterable" "\\SplObjectCollection" "\\mixed")
-  "FQNs of types that should be treated as collecitons when inferring types.")
 
 (cl-defstruct (phpinspect--completion
                (:constructor phpinspect--construct-completion))
@@ -229,7 +221,7 @@ accompanied by all of its enclosing tokens."
 (defsubst phpinspect-get-cached-project-class-method-type
   (project-root class-fqn method-name)
     (when project-root
-    (let* ((class (phpinspect-get-cached-project-class project-root class-fqn))
+    (let* ((class (phpinspect-get-or-create-cached-project-class project-root class-fqn))
            (method))
       (when class
         (setq method
@@ -266,7 +258,7 @@ accompanied by all of its enclosing tokens."
 (defsubst phpinspect-get-cached-project-class-static-method-type
   (project-root class-fqn method-name)
   (when project-root
-    (let* ((class (phpinspect-get-cached-project-class project-root class-fqn))
+    (let* ((class (phpinspect-get-or-create-cached-project-class project-root class-fqn))
            (method))
       (when class
         (setq method

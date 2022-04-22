@@ -49,10 +49,36 @@
   `(phpinspect--make-type-generated
     ,@(phpinspect--wrap-plist-name-in-symbol property-list)))
 
-(defconst phpinspect--null-type (phpinspect--make-type :name "\\null"))
+(defun phpinspect--make-types (&rest type-names)
+  (mapcar (lambda (name) (phpinspect--make-type :name name))
+          type-names))
+
+(defconst phpinspect-native-types
+  ;; self, parent and resource are not valid type name.
+  ;; see https://www.php.net/manual/ja/language.types.declarations.php
+  ;;;
+  ;; However, this list does not need to be valid, it just needs to contain the
+  ;; list of type names that we should not attempt to resolve relatively.
+  '("array" "bool" "callable" "float" "int" "iterable" "mixed" "object" "string" "void" "self" "static" "this"))
+
+(defvar phpinspect-collection-types
+  (phpinspect--make-types '("\\array" "\\iterable" "\\SplObjectCollection" "\\mixed"))
+  "FQNs of types that should be treated as collecitons when inferring types.")
+
+(defconst phpinspect--object-type (phpinspect--make-type :name "\\object" :fully-qualified t))
+(defconst phpinspect--static-type (phpinspect--make-type :name "\\static" :fully-qualified t))
+(defconst phpinspect--self-type (phpinspect--make-type :name "\\self" :fully-qualified t))
+(defconst phpinspect--this-type (phpinspect--make-type :name "\\this" :fully-qualified t))
+(defconst phpinspect--null-type (phpinspect--make-type :name "\\null" :fully-qualified t))
 
 (cl-defmethod phpinspect--type-set-name ((type phpinspect--type) (name string))
   (setf (phpinspect--type-name-symbol type) (phpinspect-intern-name name)))
+
+(cl-defmethod phpinspect--type-does-late-static-binding ((type phpinspect--type))
+  "Whether or not TYPE is used for late static binding.
+See https://wiki.php.net/rfc/static_return_type ."
+  (or (phpinspect--type= type phpinspect--static-type)
+      (phpinspect--type= type phpinspect--this-type)))
 
 (cl-defmethod phpinspect--type-name ((type phpinspect--type))
   (symbol-name (phpinspect--type-name-symbol type)))
@@ -107,15 +133,12 @@ NAMESPACE may be nil, or a string with a namespace FQN."
           (if token-tree (or (phpinspect--find-innermost-incomplete-class token-tree)
                              (phpinspect--find-class-token token-tree))))
          (inside-class-name (if inside-class (phpinspect--get-class-name-from-token
-                                              inside-class)))
-         (self-type (phpinspect--make-type :name "self"))
-         (static-type (phpinspect--make-type :name "static")))
+                                              inside-class))))
     (lambda (type)
       (phpinspect--type-resolve
        types
        namespace
-       (if (and inside-class-name (or (phpinspect--type= type self-type)
-                                      (phpinspect--type= type static-type)))
+       (if (and inside-class-name (phpinspect--type= type phpinspect--self-type))
            (progn
              (phpinspect--log "Returning inside class name for %s : %s"
                               type inside-class-name)
@@ -129,7 +152,8 @@ NAMESPACE may be nil, or a string with a namespace FQN."
 (cl-defmethod phpinspect--format-type-name ((type phpinspect--type))
   (phpinspect--format-type-name (phpinspect--type-name type)))
 
-(cl-defstruct (phpinspect--function (:constructor phpinspect--make-function-generated))
+(cl-defstruct (phpinspect--function (:constructor phpinspect--make-function-generated)
+                                    (:copier phpinspect--copy-function))
   "A PHP function."
   (name-symbol nil
                :type symbol
