@@ -122,6 +122,13 @@
              (phpinspect--class-methods class))
     methods))
 
+(cl-defmethod phpinspect--class-get-static-method-list ((class phpinspect--class))
+  (let ((methods))
+    (maphash (lambda (key method)
+               (push method methods))
+             (phpinspect--class-static-methods class))
+    methods))
+
 (cl-defmethod phpinspect--class-update-static-method ((class phpinspect--class)
                                                       (method phpinspect--function))
   (let ((existing (gethash (phpinspect--function-name-symbol method)

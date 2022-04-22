@@ -212,7 +212,9 @@ accompanied by all of its enclosing tokens."
         (when class
           (phpinspect--log "Retrieved class index, starting method collection %s (%s)"
                            project-root class-fqn)
-          (phpinspect--class-get-method-list class)))))
+          (if static
+              (phpinspect--class-get-static-method-list class)
+            (phpinspect--class-get-method-list class))))))
 
 (defmacro phpinspect-find-function-in-list (method-name list)
   (let ((break-sym (gensym))
@@ -677,7 +679,9 @@ resolve types of function argument variables."
   (let ((class (phpinspect-get-or-create-cached-project-class
                 (phpinspect-project-root)
                 class-name)))
-    (when class (phpinspect--class-variables class))))
+    ;; TODO return static variables/constants when static is set
+    (when class
+      (phpinspect--class-variables class))))
 
 (defun phpinspect--get-methods-for-class
     (resolvecontext buffer-classes class &optional static)
