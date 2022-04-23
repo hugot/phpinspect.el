@@ -368,7 +368,16 @@ namespace if not provided"
   (previous nil
             :type phpinspect--queue-item
             :documentation
-            "The previous item in the queue"))
+            "The previous item in the queue")
+  (subscription nil
+                :type function
+                :read-only t
+                :documentation
+                "A function that should be called when items are
+                enqueued."))
+
+(defsubst phpinspect--make-queue (&optional subscription)
+    (phpinspect--make-queue-item :subscription subscription))
 
 (cl-defmethod phpinspect--queue-last ((item phpinspect--queue-item))
   (if (phpinspect--queue-item-next item)
@@ -381,27 +390,30 @@ namespace if not provided"
     item))
 
 (cl-defmethod phpinspect--queue-enqueue ((item phpinspect--queue-item) thing)
-  (let ((last (phpinspect--queue-last item)))
-    (if (not (phpinspect--queue-item-thing last))
-        (setf (phpinspect--queue-item-thing last) thing)
-  (setf (phpinspect--queue-item-next last)
-        (phpinspect--make-queue-item :previous last :thing thing)))))
+    (let ((last (phpinspect--queue-last item)))
+      (if (not (phpinspect--queue-item-thing last))
+          (setf (phpinspect--queue-item-thing last) thing)
+        (setf (phpinspect--queue-item-next last)
+              (phpinspect--make-queue-item
+               :previous last
+               :thing thing
+               :subscription (phpinspect--queue-item-subscription item)))))
+    (funcall (phpinspect--queue-item-subscription item)))
 
 (cl-defmethod phpinspect--queue-dequeue ((item phpinspect--queue-item))
-  (let* ((first (phpinspect--queue-first item))
-         (thing (phpinspect--queue-item-thing first))
-         (next (phpinspect--queue-item-next first)))
-    (when next (setf (phpinspect--queue-item-previous next) nil))
-    (cond ((and (eq item first) (not next))
-           (setf (phpinspect--queue-item-thing item)
-                 nil))
-          ((eq item first)
-
-           (setf (phpinspect--queue-item-thing item)
-                 (phpinspect--queue-item-thing next))
-           (setf (phpinspect--queue-item-next item)
-                 (phpinspect--queue-item-next next))))
-    thing))
+    (let* ((first (phpinspect--queue-first item))
+           (thing (phpinspect--queue-item-thing first))
+           (next (phpinspect--queue-item-next first)))
+      (when next (setf (phpinspect--queue-item-previous next) nil))
+      (cond ((and (eq item first) (not next))
+             (setf (phpinspect--queue-item-thing item)
+                   nil))
+            ((eq item first)
+             (setf (phpinspect--queue-item-thing item)
+                   (phpinspect--queue-item-thing next))
+             (setf (phpinspect--queue-item-next item)
+                   (phpinspect--queue-item-next next))))
+      thing))
 
 (cl-defmethod phpinspect--queue-find
   ((item phpinspect--queue-item) thing comparison-func)
@@ -423,7 +435,10 @@ namespace if not provided"
   (when (not (phpinspect--queue-find item thing comparison-func))
     (phpinspect--queue-enqueue item thing)))
 
-(defvar phpinspect--index-queue (phpinspect--make-queue-item)
+(cl-defmethod phpinspect--queue-await-insert ((item phpinspect--queue-item))
+  (condition-wait (phpinspect--queue-item-insert item)))
+
+(defvar phpinspect--index-queue (phpinspect--make-queue)
   "Queue with indexation tasks. Each task is a list, the car of
   which is a project directory path and the cadr of which is an
   instance of `phpinspect--type`.")
@@ -436,33 +451,46 @@ namespace if not provided"
 
 (defun phpinspect--index-thread-function ()
   (while phpinspect--index-thread-running
-    (let* ((task (phpinspect--queue-dequeue phpinspect--index-queue))
-           (mx (make-mutex))
-           (continue (make-condition-variable mx))
-           (skip-pause))
-      (when task
-        (phpinspect--log "Indexing class %s for project in %s from index thread"
-                         (phpinspect--index-task-type task)
-                         (phpinspect--index-task-project-root task))
+    ;; This error is used to wake up the thread when new tasks are added to the
+    ;; queue.
+    (ignore-error 'phpinspect--wakeup-thread
+      (let* ((task (phpinspect--queue-dequeue phpinspect--index-queue))
+             (mx (make-mutex))
+             (continue (make-condition-variable mx))
+             (skip-pause))
+        (if task
+            (progn
+              (phpinspect--log "Indexing class %s for project in %s from index thread"
+                               (phpinspect--index-task-type task)
+                               (phpinspect--index-task-project-root task))
 
-        (let ((project (phpinspect--cache-get-project-create
-                         (phpinspect--get-or-create-global-cache)
-                         (phpinspect--index-task-project-root task)))
-              (is-native-type (phpinspect--type-is-native
-                               (phpinspect--index-task-type task))))
-          (if is-native-type
-              (progn
-                (phpinspect--log "Skipping indexation of native type %s"
-                                 (phpinspect--index-task-type task))
-                (setq skip-pause t))
-            (let ((type-index (phpinspect--index-type
-                                 project
-                                 (phpinspect--index-task-type task))))
-              (when type-index (phpinspect--project-add-class project type-index))))))
+              (let ((project (phpinspect--cache-get-project-create
+                              (phpinspect--get-or-create-global-cache)
+                              (phpinspect--index-task-project-root task)))
+                    (is-native-type (phpinspect--type-is-native
+                                     (phpinspect--index-task-type task))))
+                (if is-native-type
+                    (progn
+                      (phpinspect--log "Skipping indexation of native type %s"
+                                       (phpinspect--index-task-type task))
 
-          (unless skip-pause
-            (phpinspect--index-thread-pause 1 mx continue))
-          (setq skip-pause nil)))
+                      ;; We can skip pausing when a native type is encountered
+                      ;; and skipped, as we haven't done any intensive work that
+                      ;; may cause hangups.
+                      (setq skip-pause t))
+                  (let ((type-index (phpinspect--index-type
+                                     project
+                                     (phpinspect--index-task-type task))))
+                    (when type-index (phpinspect--project-add-class project type-index))))))
+
+          ;; else: join with the main thread until wakeup is signaled
+          (thread-join main-thread))
+
+        ;; Pause for a second after indexing something, to allow user input to
+        ;; interrupt the thread.
+        (unless skip-pause
+          (phpinspect--index-thread-pause 1 mx continue))
+        (setq skip-pause nil))))
   (phpinspect--log "Index thread exiting")
   (message "phpinspect index thread exited"))
 
@@ -475,10 +503,18 @@ namespace if not provided"
   (with-mutex mx (condition-wait continue))
   (phpinspect--log "Index thread continuing"))
 
+(define-error 'phpinspect--wakeup-thread
+  "This error is used to wakeup the index thread")
+
+(defun phpinspect--wakeup-index-thread ()
+  (when (thread--blocker phpinspect--index-thread)
+    (thread-signal phpinspect--index-thread 'phpinspect--wakeup-thread nil)))
+
 (defun phpinspect--ensure-index-thread ()
   (interactive)
   (when (or (not phpinspect--index-thread)
             (not (thread-alive-p phpinspect--index-thread)))
+    (setq phpinspect--index-queue (phpinspect--make-queue #'phpinspect--wakeup-index-thread))
     (setq phpinspect--index-thread-running t)
     (setq phpinspect--index-thread
           (make-thread #'phpinspect--index-thread-function "phpinspect-index-thread"))))

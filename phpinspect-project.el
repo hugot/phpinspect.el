@@ -51,6 +51,29 @@ indexed classes in the project")
                                               (phpinspect--function-return-type method))
                                              #'phpinspect--index-task=))))
 
+(cl-defmethod phpinspect--project-add-variable-types-to-index-queue
+  ((project phpinspect--project) variables)
+  (dolist (var variables)
+    (when (phpinspect--variable-type var)
+      (phpinspect--queue-enqueue-noduplicate phpinspect--index-queue
+                                             (phpinspect--make-index-task
+                                              (phpinspect--project-root project)
+                                              (phpinspect--variable-type var))
+                                             #'phpinspect--index-task=))))
+
+(cl-defmethod phpinspect--project-add-class-attribute-types-to-index-queue
+  ((project phpinspect--project) (class phpinspect--class))
+  (phpinspect--project-add-return-types-to-index-queueue
+   project
+   (phpinspect--class-get-method-list class))
+  (phpinspect--project-add-return-types-to-index-queueue
+   project
+   (phpinspect--class-get-static-method-list class))
+  (phpinspect--project-add-variable-types-to-index-queue
+   project
+   (phpinspect--class-variables class)))
+
+
 (cl-defmethod phpinspect--project-add-class
   ((project phpinspect--project) (indexed-class (head phpinspect--indexed-class)))
   (let* ((class-name (phpinspect--type-name-symbol
@@ -60,15 +83,15 @@ indexed classes in the project")
     (if existing-class
         (progn
           (phpinspect--class-set-index existing-class indexed-class)
-          (phpinspect--project-add-return-types-to-index-queueue
+          (phpinspect--project-add-class-attribute-types-to-index-queue
            project
-           (phpinspect--class-get-method-list existing-class)))
+           existing-class))
       (let ((new-class (phpinspect--make-class-generated :project project)))
         (phpinspect--class-set-index new-class indexed-class)
         (puthash class-name new-class (phpinspect--project-class-index project))
-        (phpinspect--project-add-return-types-to-index-queueue
+        (phpinspect--project-add-class-attribute-types-to-index-queue
          project
-         (phpinspect--class-get-method-list new-class))))))
+         new-class)))))
 
 (cl-defgeneric phpinspect--project-get-class
     ((project phpinspect--project) (class-fqn phpinspect--type))
