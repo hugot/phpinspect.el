@@ -297,7 +297,7 @@ accompanied by all of its enclosing tokens."
       (push (nreverse current-sublist) sublists))
     (nreverse sublists)))
 
-(defun phpinspect-get-variable-type-in-function-arg-list (variable-name arg-list)
+(defun phpinspect-get-variable-type-in-function-arg-list (variable-name type-resolver arg-list)
   "Infer VARIABLE-NAME's type from typehints in
 ARG-LIST. ARG-LIST should be a list token as returned by
 `phpinspect--list-handler` (see also `phpinspect-list-p`)"
@@ -310,7 +310,8 @@ ARG-LIST. ARG-LIST should be a list token as returned by
              (> arg-no 0))
         (let ((arg (elt arg-list (- arg-no 1))))
           (if (phpinspect-word-p arg)
-              (car (last arg))
+              (funcall type-resolver
+                       (phpinspect--make-type :name (car (last arg))))
             nil)))))
 
 (defun phpinspect-eldoc-function ()
@@ -614,6 +615,7 @@ resolve types of function argument variables."
              (phpinspect--log "Variable was assigned with the value of another variable")
              (or (when function-arg-list
                    (phpinspect-get-variable-type-in-function-arg-list (cadar last-assignment-value)
+                                                                      type-resolver
                                                                       function-arg-list))
                  (phpinspect-get-variable-type-in-block resolvecontext
                                                         (cadar last-assignment-value)
@@ -621,8 +623,11 @@ resolve types of function argument variables."
                                                         type-resolver
                                                         function-arg-list)))
             ((not assignments)
-             (phpinspect--log "No assignments found for variable %s, checking function arguments" variable-name)
-             (phpinspect-get-variable-type-in-function-arg-list variable-name function-arg-list))))))
+             (phpinspect--log "No assignments found for variable %s, checking function arguments"
+                              variable-name)
+             (phpinspect-get-variable-type-in-function-arg-list variable-name
+                                                                type-resolver
+                                                                function-arg-list))))))
 
 
 (defun phpinspect-resolve-type-from-context (resolvecontext type-resolver)
