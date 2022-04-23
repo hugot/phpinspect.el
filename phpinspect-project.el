@@ -31,11 +31,25 @@
                :type hash-table
                :documentation
                "A `hash-table` that contains all of the currently
-indexed classes in the project"))
+indexed classes in the project")
+  (root nil
+        :type string
+        :documentation
+        "The root directory of this project"))
 
 (cl-defgeneric phpinspect--project-add-class
     ((project phpinspect--project) (class (head phpinspect--indexed-class)))
   "Add an indexed CLASS to PROJECT.")
+
+(cl-defmethod phpinspect--project-add-return-types-to-index-queueue
+  ((project phpinspect--project) methods)
+  (dolist (method methods)
+    (when (not (phpinspect--project-get-class project (phpinspect--function-return-type method)))
+      (phpinspect--queue-enqueue-noduplicate phpinspect--index-queue
+                                             (phpinspect--make-index-task
+                                              (phpinspect--project-root project)
+                                              (phpinspect--function-return-type method))
+                                             #'phpinspect--index-task=))))
 
 (cl-defmethod phpinspect--project-add-class
   ((project phpinspect--project) (indexed-class (head phpinspect--indexed-class)))
@@ -44,10 +58,17 @@ indexed classes in the project"))
          (existing-class (gethash class-name
                                   (phpinspect--project-class-index project))))
     (if existing-class
-        (phpinspect--class-set-index existing-class indexed-class)
+        (progn
+          (phpinspect--class-set-index existing-class indexed-class)
+          (phpinspect--project-add-return-types-to-index-queueue
+           project
+           (phpinspect--class-get-method-list existing-class)))
       (let ((new-class (phpinspect--make-class-generated :project project)))
         (phpinspect--class-set-index new-class indexed-class)
-        (puthash class-name new-class (phpinspect--project-class-index project))))))
+        (puthash class-name new-class (phpinspect--project-class-index project))
+        (phpinspect--project-add-return-types-to-index-queueue
+         project
+         (phpinspect--class-get-method-list new-class))))))
 
 (cl-defgeneric phpinspect--project-get-class
     ((project phpinspect--project) (class-fqn phpinspect--type))
@@ -61,27 +82,14 @@ indexed classes in the project"))
       (puthash (phpinspect--type-name-symbol class-fqn)
                class
                (phpinspect--project-class-index project))
-
-      (let* ((class-file (phpinspect-class-filepath class-fqn))
-             (visited-buffer (when class-file (find-buffer-visiting class-file)))
-             (new-index)
-             (class-index))
-
-        (phpinspect--log "No existing index for FQN: %s" class-fqn)
-        (phpinspect--log "filepath: %s" class-file)
-        (when class-file
-          (if visited-buffer
-              (setq new-index (with-current-buffer visited-buffer
-                                (phpinspect--index-current-buffer)))
-            (setq new-index (phpinspect-index-file class-file)))
-          (setq class-index
-                (alist-get class-fqn (alist-get 'classes new-index)
-                           nil
-                           nil
-                           #'phpinspect--type=))
-          (when class-index
-            (phpinspect--class-set-index class class-index)))))
+      (phpinspect--queue-enqueue-noduplicate
+       phpinspect--index-queue
+       (phpinspect--make-index-task (phpinspect--project-root project)
+                                    class-fqn)
+       #'phpinspect--index-task=))
     class))
+
+(defalias 'phpinspect--project-add-class-if-missing #'phpinspect--project-get-class-create)
 
 (cl-defmethod phpinspect--project-get-class
   ((project phpinspect--project) (class-fqn phpinspect--type))

@@ -338,12 +338,6 @@ namespace if not provided"
   ;; TODO: Implement function indexation
   )
 
-;; (defun phpinspect--get-or-create-index-for-class-file (class-fqn)
-;;   (phpinspect--log "Getting or creating index for %s" class-fqn)
-;;   (phpinspect-get-or-create-cached-project-class
-;;    (phpinspect-project-root)
-;;    class-fqn))
-
 (defun phpinspect-index-file (file-name)
   (phpinspect--index-tokens (phpinspect-parse-file file-name)))
 
@@ -354,34 +348,6 @@ namespace if not provided"
                     project-root)))
       (phpinspect--project-get-class-create project class-fqn))))
 
-    ;; (let ((existing-index (phpinspect-get-cached-project-class
-    ;;                        project-root
-    ;;                        class-fqn)))
-    ;;   (or
-    ;;    existing-index
-    ;;    (progn
-    ;;      (let* ((class-file (phpinspect-class-filepath class-fqn))
-    ;;             (visited-buffer (when class-file (find-buffer-visiting class-file)))
-    ;;             (new-index))
-
-    ;;        (phpinspect--log "No existing index for FQN: %s" class-fqn)
-    ;;        (phpinspect--log "filepath: %s" class-file)
-    ;;        (when class-file
-    ;;          (if visited-buffer
-    ;;              (setq new-index (with-current-buffer visited-buffer
-    ;;                                (phpinspect--index-current-buffer)))
-    ;;            (setq new-index (phpinspect-index-file class-file)))
-    ;;          (dolist (class (alist-get 'classes new-index))
-    ;;            (when class
-    ;;              (phpinspect-cache-project-class
-    ;;               project-root
-    ;;               (cdr class))))
-    ;;          (alist-get class-fqn (alist-get 'classes new-index)
-    ;;                     nil
-    ;;                     nil
-    ;;                     #'phpinspect--type=))))))))
-
-
 (defun phpinspect--index-current-buffer ()
   (phpinspect--index-tokens (phpinspect-parse-current-buffer)))
 
@@ -389,15 +355,167 @@ namespace if not provided"
   "Index a PHP file for classes and the methods they have"
   (phpinspect--index-tokens (phpinspect-parse-current-buffer)))
 
-;; (defun phpinspect--get-variables-for-class (buffer-classes class &optional static)
-;;   (let ((class-index (or (assoc-default class buffer-classes #'phpinspect--type=)
-;;                          (phpinspect--get-or-create-index-for-class-file class))))
-;;     (when class-index
-;;       (if static
-;;           (append (alist-get 'static-variables class-index)
-;;                   (alist-get 'constants class-index))
-;;         (alist-get 'variables class-index)))))
+(cl-defstruct (phpinspect--queue-item
+               (:constructor phpinspect--make-queue-item))
+  (next nil
+        :type phpinspect--queue-item
+        :documentation
+        "The next item in the queue")
+  (thing nil
+         :type any
+         :documentation
+         "The thing stored in the queue")
+  (previous nil
+            :type phpinspect--queue-item
+            :documentation
+            "The previous item in the queue"))
 
+(cl-defmethod phpinspect--queue-last ((item phpinspect--queue-item))
+  (if (phpinspect--queue-item-next item)
+      (phpinspect--queue-last (phpinspect--queue-item-next item))
+    item))
+
+(cl-defmethod phpinspect--queue-first ((item phpinspect--queue-item))
+  (if (phpinspect--queue-item-previous item)
+      (phpinspect--queue-first (phpinspect--queue-item-previous item))
+    item))
+
+(cl-defmethod phpinspect--queue-enqueue ((item phpinspect--queue-item) thing)
+  (let ((last (phpinspect--queue-last item)))
+    (if (not (phpinspect--queue-item-thing last))
+        (setf (phpinspect--queue-item-thing last) thing)
+  (setf (phpinspect--queue-item-next last)
+        (phpinspect--make-queue-item :previous last :thing thing)))))
+
+(cl-defmethod phpinspect--queue-dequeue ((item phpinspect--queue-item))
+  (let* ((first (phpinspect--queue-first item))
+         (thing (phpinspect--queue-item-thing first))
+         (next (phpinspect--queue-item-next first)))
+    (when next (setf (phpinspect--queue-item-previous next) nil))
+    (cond ((and (eq item first) (not next))
+           (setf (phpinspect--queue-item-thing item)
+                 nil))
+          ((eq item first)
+
+           (setf (phpinspect--queue-item-thing item)
+                 (phpinspect--queue-item-thing next))
+           (setf (phpinspect--queue-item-next item)
+                 (phpinspect--queue-item-next next))))
+    thing))
+
+(cl-defmethod phpinspect--queue-find
+  ((item phpinspect--queue-item) thing comparison-func)
+  (setq item (phpinspect--queue-first item))
+
+  (let ((found))
+    (while (and item (not found))
+      (when (and (phpinspect--queue-item-thing item)
+                 (funcall comparison-func thing (phpinspect--queue-item-thing item)))
+        (setq found item))
+
+      (setq item (phpinspect--queue-item-next item)))
+
+    found))
+
+(cl-defmethod phpinspect--queue-enqueue-noduplicate
+  ((item phpinspect--queue-item) thing comparison-func)
+
+  (when (not (phpinspect--queue-find item thing comparison-func))
+    (phpinspect--queue-enqueue item thing)))
+
+(defvar phpinspect--index-queue (phpinspect--make-queue-item)
+  "Queue with indexation tasks. Each task is a list, the car of
+  which is a project directory path and the cadr of which is an
+  instance of `phpinspect--type`.")
+
+(defvar phpinspect--index-thread nil
+  "Thread that executes index tasks from `phpinspect--index-queue`.")
+
+(defvar phpinspect--index-thread-running nil
+  "Thread that executes index tasks from `phpinspect--index-queue`.")
+
+(defun phpinspect--index-thread-function ()
+  (while phpinspect--index-thread-running
+    (let* ((task (phpinspect--queue-dequeue phpinspect--index-queue))
+           (mx (make-mutex))
+           (continue (make-condition-variable mx))
+           (skip-pause))
+      (when task
+        (phpinspect--log "Indexing class %s for project in %s from index thread"
+                         (phpinspect--index-task-type task)
+                         (phpinspect--index-task-project-root task))
+
+        (let ((project (phpinspect--cache-get-project-create
+                         (phpinspect--get-or-create-global-cache)
+                         (phpinspect--index-task-project-root task)))
+              (is-native-type (phpinspect--type-is-native
+                               (phpinspect--index-task-type task))))
+          (if is-native-type
+              (progn
+                (phpinspect--log "Skipping indexation of native type %s"
+                                 (phpinspect--index-task-type task))
+                (setq skip-pause t))
+            (let ((type-index (phpinspect--index-type
+                                 project
+                                 (phpinspect--index-task-type task))))
+              (when type-index (phpinspect--project-add-class project type-index))))))
+
+          (unless skip-pause
+            (phpinspect--index-thread-pause 1 mx continue))
+          (setq skip-pause nil)))
+  (phpinspect--log "Index thread exiting")
+  (message "phpinspect index thread exited"))
+
+(defun phpinspect--index-thread-pause (pause-time mx continue)
+  (phpinspect--log "Index thead is paused for %d seconds" pause-time)
+  (run-with-idle-timer
+   pause-time
+   nil
+   (lambda () (with-mutex mx (condition-notify continue))))
+  (with-mutex mx (condition-wait continue))
+  (phpinspect--log "Index thread continuing"))
+
+(defun phpinspect--ensure-index-thread ()
+  (interactive)
+  (when (or (not phpinspect--index-thread)
+            (not (thread-alive-p phpinspect--index-thread)))
+    (setq phpinspect--index-thread-running t)
+    (setq phpinspect--index-thread
+          (make-thread #'phpinspect--index-thread-function "phpinspect-index-thread"))))
+
+(defun phpinspect--stop-index-thread ()
+  (interactive)
+  (setq phpinspect--index-thread-running nil))
+
+(defalias 'phpinspect--index-task-project-root #'car)
+(defalias 'phpinspect--index-task-type #'cadr)
+
+(defun phpinspect--index-task= (task1 task2)
+  (and (phpinspect--type= (phpinspect--index-task-type task1)
+                          (phpinspect--index-task-type task2))
+       (string= (phpinspect--index-task-project-root task1)
+                (phpinspect--index-task-project-root task2))))
+
+(defsubst phpinspect--make-index-task (project-root type)
+  (list project-root type))
+
+(cl-defmethod phpinspect--index-type ((project phpinspect--project)
+                                      (type phpinspect--type))
+  (let* ((class-file (with-temp-buffer
+                       (cd (phpinspect--project-root project))
+                       (phpinspect-type-filepath type)))
+         (visited-buffer (when class-file (find-buffer-visiting class-file)))
+         (new-index)
+         (class-index))
+    (when class-file
+      (if visited-buffer
+          (setq new-index (with-current-buffer visited-buffer
+                            (phpinspect--index-current-buffer)))
+        (setq new-index (phpinspect-index-file class-file)))
+            (alist-get type (alist-get 'classes new-index)
+                       nil
+                       nil
+                       #'phpinspect--type=))))
 
 (provide 'phpinspect-index)
 ;;; phpinspect-index.el ends here

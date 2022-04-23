@@ -56,7 +56,7 @@ then returned.")
   ((cache phpinspect--cache) (project-root string))
   (or (phpinspect--cache-getproject cache project-root)
       (puthash project-root
-               (phpinspect--make-project-cache)
+               (phpinspect--make-project-cache :root project-root)
                (phpinspect--cache-projects cache))))
 
 (provide 'phpinspect-cache)

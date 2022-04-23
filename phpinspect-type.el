@@ -49,17 +49,21 @@
   `(phpinspect--make-type-generated
     ,@(phpinspect--wrap-plist-name-in-symbol property-list)))
 
-(defun phpinspect--make-types (&rest type-names)
+(defun phpinspect--make-types (type-names)
   (mapcar (lambda (name) (phpinspect--make-type :name name))
           type-names))
 
-(defconst phpinspect-native-types
+(defconst phpinspect-native-typenames
   ;; self, parent and resource are not valid type name.
   ;; see https://www.php.net/manual/ja/language.types.declarations.php
   ;;;
   ;; However, this list does not need to be valid, it just needs to contain the
   ;; list of type names that we should not attempt to resolve relatively.
   '("array" "bool" "callable" "float" "int" "iterable" "mixed" "object" "string" "void" "self" "static" "this"))
+
+(defconst phpinspect-native-types
+  (phpinspect--make-types (mapcar (lambda (name) (concat "\\" name))
+                                  phpinspect-native-typenames)))
 
 (defvar phpinspect-collection-types
   (phpinspect--make-types '("\\array" "\\iterable" "\\SplObjectCollection" "\\mixed"))
@@ -79,6 +83,12 @@
 See https://wiki.php.net/rfc/static_return_type ."
   (or (phpinspect--type= type phpinspect--static-type)
       (phpinspect--type= type phpinspect--this-type)))
+
+(defsubst phpinspect--type-is-native (type)
+  (catch 'found
+    (dolist (native phpinspect-native-types)
+      (when (phpinspect--type= type native)
+        (throw 'found t)))))
 
 (cl-defmethod phpinspect--type-name ((type phpinspect--type))
   (symbol-name (phpinspect--type-name-symbol type)))
@@ -103,7 +113,7 @@ NAMESPACE may be nil, or a string with a namespace FQN."
          type)
 
         ;; Native type
-        ((member type phpinspect-native-types)
+        ((member type phpinspect-native-typenames)
          (concat "\\" type))
 
         ;; Relative FQN

@@ -1,4 +1,4 @@
-;;; phpinspect.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
+;; phpinspect.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021  Free Software Foundation, Inc
 
@@ -36,6 +36,7 @@
 (require 'phpinspect-util)
 (require 'phpinspect-type)
 (require 'phpinspect-index)
+(require 'phpinspect-class)
 
 (defvar-local phpinspect--buffer-index nil
   "The result of the last successfull parse + index action
@@ -51,7 +52,7 @@ phpinspect")
 (defvar phpinspect-project-root-function #'phpinspect--find-project-root
   "Function that phpinspect uses to find the root directory of a project.")
 
-(defvar phpinspect-class-filepath-function #'phpinspect-get-class-filepath
+(defvar phpinspect-type-filepath-function #'phpinspect-get-class-filepath
   "Function that phpinspect uses to find the filepath of a class by its FQN.")
 
 (defvar phpinspect-project-root-file-list
@@ -711,6 +712,8 @@ more recent"
   (eldoc-add-command 'c-electric-backspace)
 
   (phpinspect--after-save-action)
+  (phpinspect--ensure-index-thread)
+
   (add-hook 'after-save-hook #'phpinspect--after-save-action nil 'local))
 
 (defun phpinspect--after-save-action ()
@@ -1222,7 +1225,7 @@ available FQNs in a project.  This may require
 project directory before it can be used."
   (interactive (list (phpinspect--make-type
                       :name (completing-read "Class: " (phpinspect-get-all-fqns)))))
-  (find-file (phpinspect-class-filepath fqn)))
+  (find-file (phpinspect-type-filepath fqn)))
 
 (defun phpinspect-find-own-class-file (fqn)
   "`phpinspect-find-class-file', but for non-vendored classes.
@@ -1233,11 +1236,11 @@ located in \"vendor\" folder."
   (interactive (list (phpinspect--make-type
                       :name
                       (completing-read "Class: " (phpinspect-get-all-fqns "uses_own")))))
-  (find-file (phpinspect-class-filepath fqn)))
+  (find-file (phpinspect-type-filepath fqn)))
 
-(defsubst phpinspect-class-filepath (fqn)
-  "Call `phpinspect-class-filepath-function' with FQN as argument."
-  (funcall phpinspect-class-filepath-function fqn))
+(defsubst phpinspect-type-filepath (fqn)
+  "Call `phpinspect-type-filepath-function' with FQN as argument."
+  (funcall phpinspect-type-filepath-function fqn))
 
 (defun phpinspect-get-class-filepath (class &optional index-new)
   "Retrieve filepath to CLASS definition file.
