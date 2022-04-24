@@ -898,11 +898,12 @@ level of a token. Nested variables are ignored."
   (phpinspect--construct-completion
    :value (phpinspect--variable-name completion-candidate)
    :meta (phpinspect--format-type-name
-          (phpinspect--variable-type completion-candidate))
+          (or (phpinspect--variable-type completion-candidate)
+              phpinspect--null-type))
    :annotation (concat " "
                        (phpinspect--type-bare-name
                         (or (phpinspect--variable-type completion-candidate)
-                            (phpinspect--make-type :name "\\"))))
+                            phpinspect--null-type)))
    :kind 'variable))
 
 (cl-defstruct (phpinspect--completion-list
@@ -1035,7 +1036,10 @@ static variables and static methods."
                 ((phpinspect-block-p potential-variable)
                  (dolist (nested-token (cdr potential-variable))
                    (push nested-token token-list))))))))
-    variables))
+
+    ;; Only return variables that have a name. Unnamed variables are just dollar
+    ;; signs (:
+    (seq-filter #'phpinspect--variable-name variables)))
 
 (defun phpinspect--suggest-at-point ()
       (phpinspect--log "Entering suggest at point." )
