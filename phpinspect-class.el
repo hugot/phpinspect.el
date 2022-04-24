@@ -56,7 +56,17 @@
                  :documentation
                  "A list of subscription functions that should be
                  called whenever anything about this class is
-                 updated"))
+                 updated")
+  (initial-index nil
+                 :type bool
+                 :documentation
+                 "A boolean indicating whether or not this class
+                 has been indexed yet.")
+  (index-queued nil
+                :type bool
+                :documentation
+                "A boolean indicating whether the class type has
+                been queued for indexation"))
 
 (cl-defmethod phpinspect--class-trigger-update ((class phpinspect--class))
   (dolist (sub (phpinspect--class-subscriptions class))
@@ -64,6 +74,7 @@
 
 (cl-defmethod phpinspect--class-set-index ((class phpinspect--class)
                                            (index (head phpinspect--indexed-class)))
+  (setf (phpinspect--class-initial-index class) t)
   (setf (phpinspect--class-index class) index)
   (dolist (method (alist-get 'methods index))
     (phpinspect--class-update-method class method))
@@ -121,6 +132,12 @@
 (cl-defmethod phpinspect--class-get-method-return-type
   ((class phpinspect--class) (method-name symbol))
   (let ((method (phpinspect--class-get-method class method-name)))
+    (when method
+      (phpinspect--function-return-type method))))
+
+(cl-defmethod phpinspect--class-get-static-method-return-type
+  ((class phpinspect--class) (method-name symbol))
+  (let ((method (phpinspect--class-get-static-method class method-name)))
     (when method
       (phpinspect--function-return-type method))))
 

@@ -46,10 +46,10 @@
         (arg-list (cl-copy-list arg-list)))
     (while (setq current-token (pop arg-list))
       (cond ((and (phpinspect-word-p current-token)
-               (phpinspect-variable-p (car arg-list)))
-          (push `(,(cadr (pop arg-list))
-                  ,(funcall type-resolver (phpinspect--make-type :name (cadr current-token))))
-                arg-index))
+                  (phpinspect-variable-p (car arg-list)))
+             (push `(,(cadr (pop arg-list))
+                     ,(funcall type-resolver (phpinspect--make-type :name (cadr current-token))))
+                   arg-index))
             ((phpinspect-variable-p (car arg-list))
              (push `(,(cadr (pop arg-list))
                      nil)
@@ -71,8 +71,8 @@
     ;; @return annotation. When dealing with a collection, we want to store the
     ;; type of its members.
     (let* ((is-collection
-           (when type
-             (member (phpinspect--type-name type) phpinspect-collection-types)))
+            (when type
+              (member (phpinspect--type-name type) phpinspect-collection-types)))
            (return-annotation-type
             (when (or (phpinspect--should-prefer-return-annotation type) is-collection)
               (cadadr
@@ -139,7 +139,7 @@
                             (cadr class-token))))
     (cadr subtoken)))
 
-(defun phpinspect--index-class (type-resolver class)
+(defun phpinspect--index-class (imports type-resolver class)
   "Create an alist with relevant attributes of a parsed class."
   (phpinspect--log "INDEXING CLASS")
   (let ((methods)
@@ -247,9 +247,9 @@
     ;; TODO: actually check the types of the variables assigned to object attributes
     (let* ((constructor-sym (phpinspect-intern-name "__construct"))
            (constructor (seq-find (lambda (method)
-                                   (eq (phpinspect--function-name-symbol method)
-                                            constructor-sym))
-                                 methods)))
+                                    (eq (phpinspect--function-name-symbol method)
+                                        constructor-sym))
+                                  methods)))
       (when constructor
         (phpinspect--log "Constructor was found")
         (dolist (variable variables)
@@ -267,6 +267,7 @@
     (let ((class-name (funcall type-resolver (phpinspect--make-type :name class-name))))
       `(,class-name .
                     (phpinspect--indexed-class
+                     (imports . ,imports)
                      (methods . ,methods)
                      (class-name . ,class-name)
                      (static-methods . ,static-methods)
@@ -283,22 +284,26 @@ Accounts for namespaces that are defined with '{}' blocks."
       (cdaddr namespace)
     (cdr namespace)))
 
-(defun phpinspect--index-classes (types classes &optional namespace indexed)
-  "Index the class tokens in `classes`, using the types in `types`
+(defun phpinspect--index-classes (imports classes &optional namespace indexed)
+  "Index the class tokens in `classes`, using the imports in `imports`
 as Fully Qualified names. `namespace` will be assumed the root
 namespace if not provided"
   (if classes
       (let ((class (pop classes)))
         (push (phpinspect--index-class
-               (phpinspect--make-type-resolver types class namespace)
+               imports
+               (phpinspect--make-type-resolver imports class namespace)
                class)
               indexed)
-        (phpinspect--index-classes types classes namespace indexed))
+        (phpinspect--index-classes imports classes namespace indexed))
     (nreverse indexed)))
 
 (defun phpinspect--use-to-type (use)
   (let* ((fqn (cadr (cadr use)))
-         (type (phpinspect--make-type :name fqn :fully-qualified t))
+         (type (phpinspect--make-type :name (if (string-match "^\\\\" fqn)
+                                                fqn
+                                              (concat "\\" fqn))
+                                      :fully-qualified t))
          (type-name (if (and (phpinspect-word-p (caddr use))
                              (string= "as" (cadr (caddr use))))
                         (cadr (cadddr use))
@@ -327,16 +332,18 @@ namespace if not provided"
 
 (defun phpinspect--index-tokens (tokens)
   "Index TOKENS as returned by `phpinspect--parse-current-buffer`."
-  `(phpinspect--root-index
-    ,(append
-      (append '(classes)
-              (phpinspect--index-namespaces (seq-filter #'phpinspect-namespace-p tokens))
-              (phpinspect--index-classes
-               (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p tokens))
-               (seq-filter #'phpinspect-class-p tokens))))
-    (functions))
-  ;; TODO: Implement function indexation
-  )
+  (let ((imports (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p tokens))))
+    `(phpinspect--root-index
+      (imports . ,imports)
+      ,(append
+        (append '(classes)
+                (phpinspect--index-namespaces (seq-filter #'phpinspect-namespace-p tokens))
+                (phpinspect--index-classes
+                 imports
+                 (seq-filter #'phpinspect-class-p tokens))))
+      (functions))
+    ;; TODO: Implement function indexation
+    ))
 
 (defun phpinspect-index-file (file-name)
   (phpinspect--index-tokens (phpinspect-parse-file file-name)))
@@ -377,43 +384,45 @@ namespace if not provided"
                 enqueued."))
 
 (defsubst phpinspect--make-queue (&optional subscription)
-    (phpinspect--make-queue-item :subscription subscription))
+  (phpinspect--make-queue-item :subscription subscription))
 
+;; Recursion causes max-eval-depth error here for long queues. Hence the loop
+;; implementation for these two functions.
 (cl-defmethod phpinspect--queue-last ((item phpinspect--queue-item))
-  (if (phpinspect--queue-item-next item)
-      (phpinspect--queue-last (phpinspect--queue-item-next item))
-    item))
+  (while (phpinspect--queue-item-next item)
+    (setq item (phpinspect--queue-item-next item)))
+  item)
 
 (cl-defmethod phpinspect--queue-first ((item phpinspect--queue-item))
-  (if (phpinspect--queue-item-previous item)
-      (phpinspect--queue-first (phpinspect--queue-item-previous item))
-    item))
+  (while (phpinspect--queue-item-previous item)
+      (setq item (phpinspect--queue-item-previous item)))
+  item)
 
 (cl-defmethod phpinspect--queue-enqueue ((item phpinspect--queue-item) thing)
-    (let ((last (phpinspect--queue-last item)))
-      (if (not (phpinspect--queue-item-thing last))
-          (setf (phpinspect--queue-item-thing last) thing)
-        (setf (phpinspect--queue-item-next last)
-              (phpinspect--make-queue-item
-               :previous last
-               :thing thing
-               :subscription (phpinspect--queue-item-subscription item)))))
-    (funcall (phpinspect--queue-item-subscription item)))
+  (let ((last (phpinspect--queue-last item)))
+    (if (not (phpinspect--queue-item-thing last))
+        (setf (phpinspect--queue-item-thing last) thing)
+      (setf (phpinspect--queue-item-next last)
+            (phpinspect--make-queue-item
+             :previous last
+             :thing thing
+             :subscription (phpinspect--queue-item-subscription item)))))
+  (funcall (phpinspect--queue-item-subscription item)))
 
 (cl-defmethod phpinspect--queue-dequeue ((item phpinspect--queue-item))
-    (let* ((first (phpinspect--queue-first item))
-           (thing (phpinspect--queue-item-thing first))
-           (next (phpinspect--queue-item-next first)))
-      (when next (setf (phpinspect--queue-item-previous next) nil))
-      (cond ((and (eq item first) (not next))
-             (setf (phpinspect--queue-item-thing item)
-                   nil))
-            ((eq item first)
-             (setf (phpinspect--queue-item-thing item)
-                   (phpinspect--queue-item-thing next))
-             (setf (phpinspect--queue-item-next item)
-                   (phpinspect--queue-item-next next))))
-      thing))
+  (let* ((first (phpinspect--queue-first item))
+         (thing (phpinspect--queue-item-thing first))
+         (next (phpinspect--queue-item-next first)))
+    (when next (setf (phpinspect--queue-item-previous next) nil))
+    (cond ((and (eq item first) (not next))
+           (setf (phpinspect--queue-item-thing item)
+                 nil))
+          ((eq item first)
+           (setf (phpinspect--queue-item-thing item)
+                 (phpinspect--queue-item-thing next))
+           (setf (phpinspect--queue-item-next item)
+                 (phpinspect--queue-item-next next))))
+    thing))
 
 (cl-defmethod phpinspect--queue-find
   ((item phpinspect--queue-item) thing comparison-func)
@@ -478,10 +487,10 @@ namespace if not provided"
                       ;; and skipped, as we haven't done any intensive work that
                       ;; may cause hangups.
                       (setq skip-pause t))
-                  (let ((type-index (phpinspect--index-type
-                                     project
-                                     (phpinspect--index-task-type task))))
-                    (when type-index (phpinspect--project-add-class project type-index))))))
+                  (let* ((type (phpinspect--index-task-type task))
+                         (root-index (phpinspect--index-type-file project type)))
+                    (when root-index
+                      (phpinspect--project-add-index project root-index))))))
 
           ;; else: join with the main thread until wakeup is signaled
           (thread-join main-thread))
@@ -535,23 +544,27 @@ namespace if not provided"
 (defsubst phpinspect--make-index-task (project-root type)
   (list project-root type))
 
-(cl-defmethod phpinspect--index-type ((project phpinspect--project)
-                                      (type phpinspect--type))
-  (let* ((class-file (with-temp-buffer
-                       (cd (phpinspect--project-root project))
-                       (phpinspect-type-filepath type)))
-         (visited-buffer (when class-file (find-buffer-visiting class-file)))
-         (new-index)
-         (class-index))
-    (when class-file
-      (if visited-buffer
-          (setq new-index (with-current-buffer visited-buffer
-                            (phpinspect--index-current-buffer)))
-        (setq new-index (phpinspect-index-file class-file)))
-            (alist-get type (alist-get 'classes new-index)
-                       nil
-                       nil
-                       #'phpinspect--type=))))
+(cl-defmethod phpinspect--index-type-file ((project phpinspect--project)
+                                           (type phpinspect--type))
+  (condition-case error
+      (let* ((class-file (with-temp-buffer
+                           (cd (phpinspect--project-root project))
+                           (phpinspect-type-filepath type)))
+             (visited-buffer (when class-file (find-buffer-visiting class-file)))
+             (new-index)
+             (class-index))
+        (when class-file
+          (if visited-buffer
+              (with-current-buffer visited-buffer (phpinspect--index-current-buffer))
+            (phpinspect-index-file class-file))))
+    (file-missing
+     (phpinspect--log "Failed to find file for type %s:  %s" type error)
+     nil)))
+
+(defsubst phpinspect--index-thread-enqueue (task)
+  (phpinspect--queue-enqueue-noduplicate phpinspect--index-queue
+                                         task
+                                         #'phpinspect--index-task=))
 
 (provide 'phpinspect-index)
 ;;; phpinspect-index.el ends here

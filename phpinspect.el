@@ -353,12 +353,13 @@ TODO:
       (let* ((type-of-previous-statement
               (phpinspect-resolve-type-from-context resolvecontext type-resolver))
              (method-name-sym (phpinspect-intern-name (cadr (cadar (last statement 2)))))
-             (class-methods (phpinspect-get-cached-project-class-methods
-                            (phpinspect--resolvecontext-project-root resolvecontext)
-                            type-of-previous-statement
-                            static))
-             (method (and class-methods
-                          (phpinspect-find-function-in-list method-name class-methods))))
+             (class (phpinspect--project-get-class-create
+                     (phpinspect--cache-get-project-create
+                      (phpinspect--get-or-create-global-cache)
+                      (phpinspect--resolvecontext-project-root resolvecontext))
+                     type-of-previous-statement))
+             (method (when class
+                       (phpinspect--class-get-method class method-name-sym))))
         (phpinspect--log "Eldoc method name: %s" method-name-sym)
         (phpinspect--log "Eldoc type of previous statement: %s"
                          type-of-previous-statement)
@@ -716,8 +717,8 @@ more recent"
   (eldoc-add-command 'c-electric-paren)
   (eldoc-add-command 'c-electric-backspace)
 
-  (phpinspect--after-save-action)
   (phpinspect--ensure-index-thread)
+  (phpinspect--after-save-action)
 
   (add-hook 'after-save-hook #'phpinspect--after-save-action nil 'local))
 
@@ -732,10 +733,22 @@ keeps the cache valid.  If changes are made outside of Emacs,
 users will have to use \\[phpinspect-purge-cache]."
   (when (and (boundp 'phpinspect-mode) phpinspect-mode)
     (setq phpinspect--buffer-index (phpinspect--index-current-buffer))
-    (dolist (class (alist-get 'classes phpinspect--buffer-index))
-      (when class
-        (phpinspect-cache-project-class (phpinspect-project-root)
-                                        (cdr class))))))
+    (let ((imports (alist-get 'imports phpinspect--buffer-index))
+          (project (phpinspect--cache-get-project-create
+                    (phpinspect--get-or-create-global-cache)
+                    (phpinspect-project-root))))
+
+      (dolist (class (alist-get 'classes phpinspect--buffer-index))
+        (when class
+          (phpinspect--project-add-class project (cdr class))
+
+          (let ((imports (alist-get 'imports (cdr class))))
+            (when imports
+              (phpinspect--project-enqueue-imports project imports)))))
+
+
+      (when imports (phpinspect--project-enqueue-imports project imports)))))
+
 
 (defun phpinspect--disable-mode ()
   "Clean up the buffer environment for the mode to be disabled."

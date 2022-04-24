@@ -122,11 +122,11 @@ NAMESPACE may be nil, or a string with a namespace FQN."
 
         ;; Clas|interface|trait name
         (t (let ((from-types (assoc-default (phpinspect-intern-name type) types #'eq)))
-             (concat "\\" (cond (from-types
-                                 (phpinspect--type-name from-types))
-                                (namespace
-                                 (concat namespace "\\" type))
-                                (t type)))))))
+             (cond (from-types
+                    (phpinspect--type-name from-types))
+                   (namespace
+                    (concat "\\" namespace "\\" type))
+                   (t (concat "\\" type)))))))
 
 (cl-defmethod phpinspect--type-resolve (types namespace (type phpinspect--type))
   (unless (phpinspect--type-fully-qualified type)

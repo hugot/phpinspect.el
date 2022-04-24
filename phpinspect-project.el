@@ -44,22 +44,30 @@ indexed classes in the project")
 (cl-defmethod phpinspect--project-add-return-types-to-index-queueue
   ((project phpinspect--project) methods)
   (dolist (method methods)
-    (when (not (phpinspect--project-get-class project (phpinspect--function-return-type method)))
-      (phpinspect--queue-enqueue-noduplicate phpinspect--index-queue
-                                             (phpinspect--make-index-task
-                                              (phpinspect--project-root project)
-                                              (phpinspect--function-return-type method))
-                                             #'phpinspect--index-task=))))
+    (when (phpinspect--function-return-type method)
+      (phpinspect--project-enqueue-if-not-present
+       project
+       (phpinspect--function-return-type method)))))
 
 (cl-defmethod phpinspect--project-add-variable-types-to-index-queue
   ((project phpinspect--project) variables)
   (dolist (var variables)
     (when (phpinspect--variable-type var)
-      (phpinspect--queue-enqueue-noduplicate phpinspect--index-queue
-                                             (phpinspect--make-index-task
-                                              (phpinspect--project-root project)
-                                              (phpinspect--variable-type var))
-                                             #'phpinspect--index-task=))))
+      (phpinspect--project-enqueue-if-not-present project (phpinspect--variable-type var)))))
+
+(cl-defmethod phpinspect--project-enqueue-if-not-present
+  ((project phpinspect--project) (type phpinspect--type))
+  (let ((class (phpinspect--project-get-class project type)))
+    (when (or (not class)
+              (not (or (phpinspect--class-initial-index class)
+                       (phpinspect--class-index-queued class))))
+      (when (not class)
+        (setq class (phpinspect--project-create-class project type)))
+      (phpinspect--log "Adding unpresent class %s to index queue" type)
+      (setf (phpinspect--class-index-queued class) t)
+      (phpinspect--index-thread-enqueue (phpinspect--make-index-task
+                                         (phpinspect--project-root project)
+                                         type)))))
 
 (cl-defmethod phpinspect--project-add-class-attribute-types-to-index-queue
   ((project phpinspect--project) (class phpinspect--class))
@@ -73,43 +81,53 @@ indexed classes in the project")
    project
    (phpinspect--class-variables class)))
 
+(cl-defmethod phpinspect--project-add-index
+  ((project phpinspect--project) (index (head phpinspect--root-index)))
+  (dolist (indexed-class (alist-get 'classes (cdr index)))
+    (phpinspect--project-add-class project (cdr indexed-class))))
+
+(cl-defmethod phpinspect--project-enqueue-imports
+  ((project phpinspect--project) imports)
+  (dolist (import imports)
+    (when import
+      (phpinspect--log "Adding import to index queue: %s" import)
+      (phpinspect--project-enqueue-if-not-present project (cdr import)))))
 
 (cl-defmethod phpinspect--project-add-class
   ((project phpinspect--project) (indexed-class (head phpinspect--indexed-class)))
   (let* ((class-name (phpinspect--type-name-symbol
                       (alist-get 'class-name (cdr indexed-class))))
-         (existing-class (gethash class-name
-                                  (phpinspect--project-class-index project))))
-    (if existing-class
-        (progn
-          (phpinspect--class-set-index existing-class indexed-class)
-          (phpinspect--project-add-class-attribute-types-to-index-queue
-           project
-           existing-class))
-      (let ((new-class (phpinspect--make-class-generated :project project)))
-        (phpinspect--class-set-index new-class indexed-class)
-        (puthash class-name new-class (phpinspect--project-class-index project))
-        (phpinspect--project-add-class-attribute-types-to-index-queue
-         project
-         new-class)))))
+         (class (gethash class-name
+                         (phpinspect--project-class-index project))))
+    (unless class
+      (setq class (phpinspect--make-class-generated :project project)))
+
+    (phpinspect--class-set-index class indexed-class)
+    (puthash class-name class (phpinspect--project-class-index project))
+    (phpinspect--project-add-class-attribute-types-to-index-queue project class)))
 
 (cl-defgeneric phpinspect--project-get-class
     ((project phpinspect--project) (class-fqn phpinspect--type))
   "Get indexed class by name of CLASS-FQN stored in PROJECT.")
 
+(cl-defmethod phpinspect--project-set-class
+  ((project phpinspect--project) (class-fqn phpinspect--type) (class phpinspect--class))
+  (puthash (phpinspect--type-name-symbol class-fqn)
+           class
+           (phpinspect--project-class-index project)))
+
+(cl-defmethod phpinspect--project-create-class
+  ((project phpinspect--project) (class-fqn phpinspect--type))
+  (let ((class (phpinspect--make-class-generated :project project)))
+    (phpinspect--project-set-class project class-fqn class)
+    class))
+
 (cl-defmethod phpinspect--project-get-class-create
   ((project phpinspect--project) (class-fqn phpinspect--type))
   (let ((class (phpinspect--project-get-class project class-fqn)))
     (unless class
-      (setq class (phpinspect--make-class-generated :project project))
-      (puthash (phpinspect--type-name-symbol class-fqn)
-               class
-               (phpinspect--project-class-index project))
-      (phpinspect--queue-enqueue-noduplicate
-       phpinspect--index-queue
-       (phpinspect--make-index-task (phpinspect--project-root project)
-                                    class-fqn)
-       #'phpinspect--index-task=))
+      (setq class (phpinspect--project-create-class project class-fqn))
+      (phpinspect--project-enqueue-if-not-present project class-fqn))
     class))
 
 (defalias 'phpinspect--project-add-class-if-missing #'phpinspect--project-get-class-create)
