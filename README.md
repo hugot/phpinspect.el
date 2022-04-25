@@ -2,9 +2,6 @@
 
 WIP. More documentation is in the making.
 
-For bug reports and/or feature requests visit the [ticket tracker](https://todo.sr.ht/~hugot/phpinspect.el)
-
-
 ## Example config
 
 ```elisp
@@ -33,7 +30,7 @@ For bug reports and/or feature requests visit the [ticket tracker](https://todo.
 ## Install
 
 ```bash
-git clone https://git.sr.ht/~hugot/phpinspect.el ~/projects/phpinspect.el
+git clone https://git.snorba.art/hugo/phpinspect.el ~/projects/phpinspect.el
 ```
 
 ```elisp
