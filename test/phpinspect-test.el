@@ -26,6 +26,11 @@
 (require 'ert)
 (require 'phpinspect)
 
+;; Make sure that the worker is running. TODO: fully encapsulate the worker the
+;; data types that are used in tests so that we don't depend on some global
+;; worker object for tests.
+(phpinspect-ensure-worker)
+
 (defvar phpinspect-test-directory
   (file-name-directory
    (or load-file-name
@@ -363,7 +368,6 @@ class Thing
          (phpinspect-project-root-function (lambda () "phpinspect-test"))
          (phpinspect-eldoc-word-width 100))
     (phpinspect-purge-cache)
-    (phpinspect--ensure-index-thread)
     (phpinspect-cache-project-class
      (phpinspect-project-root)
      (cdar (alist-get 'classes (cdr index))))
@@ -390,7 +394,6 @@ class Thing
          (phpinspect-project-root-function (lambda () "phpinspect-test"))
          (phpinspect-eldoc-word-width 100))
     (phpinspect-purge-cache)
-    (phpinspect--ensure-index-thread)
     (phpinspect-cache-project-class
      (phpinspect-project-root)
      (cdar (alist-get 'classes (cdr index))))
