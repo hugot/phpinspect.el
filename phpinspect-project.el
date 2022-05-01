@@ -32,6 +32,10 @@
                :documentation
                "A `hash-table` that contains all of the currently
 indexed classes in the project")
+  (worker nil
+          :type phpinspect-worker
+          :documentation
+          "The worker that this project may queue tasks for")
   (root nil
         :type string
         :documentation
@@ -65,9 +69,8 @@ indexed classes in the project")
         (setq class (phpinspect--project-create-class project type)))
       (phpinspect--log "Adding unpresent class %s to index queue" type)
       (setf (phpinspect--class-index-queued class) t)
-      (phpinspect--index-thread-enqueue (phpinspect--make-index-task
-                                         (phpinspect--project-root project)
-                                         type)))))
+      (phpinspect-worker-enqueue (phpinspect--project-worker project)
+                                 (phpinspect-make-index-task project type)))))
 
 (cl-defmethod phpinspect--project-add-class-attribute-types-to-index-queue
   ((project phpinspect--project) (class phpinspect--class))

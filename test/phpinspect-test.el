@@ -26,6 +26,13 @@
 (require 'ert)
 (require 'phpinspect)
 
+(defvar phpinspect-test-directory
+  (file-name-directory
+   (or load-file-name
+       buffer-file-name))
+  "Directory that phpinspect tests reside in.")
+
+
 (defvar phpinspect-test-php-file-directory
   (concat
    (file-name-directory
@@ -486,6 +493,8 @@ class Thing
                        (:list))
                      (phpinspect--get-last-statement-in-token
                       (phpinspect-parse-string php-code-bare))))))
+
+(load-file (concat phpinspect-test-directory "/test-worker.el"))
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here

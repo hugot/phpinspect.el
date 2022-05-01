@@ -37,6 +37,7 @@
 (require 'phpinspect-type)
 (require 'phpinspect-index)
 (require 'phpinspect-class)
+(require 'phpinspect-worker)
 
 (defvar-local phpinspect--buffer-index nil
   "The result of the last successfull parse + index action
@@ -719,7 +720,7 @@ more recent"
   (eldoc-add-command 'c-electric-paren)
   (eldoc-add-command 'c-electric-backspace)
 
-  (phpinspect--ensure-index-thread)
+  (phpinspect-ensure-worker)
   (phpinspect--after-save-action)
 
   (add-hook 'after-save-hook #'phpinspect--after-save-action nil 'local))
