@@ -106,28 +106,36 @@
 (cl-defmethod phpinspect--class-get-static-method ((class phpinspect--class) method-name)
   (gethash method-name (phpinspect--class-static-methods class)))
 
+(cl-defmethod phpinspect--add-method-copy-to-map
+  ((map hash-table)
+   (class-name phpinspect--type)
+   (method phpinspect--function))
+  (setq method (phpinspect--copy-function method))
+
+  (setf (phpinspect--function-return-type method)
+        (phpinspect--resolve-late-static-binding
+         (phpinspect--function-return-type method)
+         class-name))
+
+  (puthash (phpinspect--function-name-symbol method)
+           method
+           map))
+
 (cl-defmethod phpinspect--class-set-method ((class phpinspect--class)
                                             (method phpinspect--function))
   (phpinspect--log "Adding method by name %s to class"
                    (phpinspect--function-name method))
-  (setq method (phpinspect--copy-function method))
-
-  (when (phpinspect--type-does-late-static-binding
-         (phpinspect--function-return-type method))
-
-    (setf (phpinspect--function-return-type method)
-          (alist-get 'class-name (phpinspect--class-index class))))
-
-    (puthash (phpinspect--function-name-symbol method)
-             method
-             (phpinspect--class-methods class)))
+  (phpinspect--add-method-copy-to-map
+   (phpinspect--class-methods class)
+   (alist-get 'class-name (phpinspect--class-index class))
+   method))
 
 (cl-defmethod phpinspect--class-set-static-method ((class phpinspect--class)
                                                    (method phpinspect--function))
-  (setq method (phpinspect--copy-function method))
-  (puthash (phpinspect--function-name-symbol method)
-           method
-           (phpinspect--class-static-methods class)))
+    (phpinspect--add-method-copy-to-map
+   (phpinspect--class-static-methods class)
+   (alist-get 'class-name (phpinspect--class-index class))
+   method))
 
 (cl-defmethod phpinspect--class-get-method-return-type
   ((class phpinspect--class) (method-name symbol))
@@ -155,39 +163,38 @@
              (phpinspect--class-static-methods class))
     methods))
 
+(cl-defmethod phpinspect--merge-method ((class-name phpinspect--type)
+                                        (existing phpinspect--function)
+                                        (method phpinspect--function))
+  (let ((new-return-type (phpinspect--resolve-late-static-binding
+                          class-name
+                          (phpinspect--function-return-type method))))
+    (unless (phpinspect--type= new-return-type phpinspect--null-type)
+      (phpinspect--log "method return type %s" (phpinspect--function-return-type method))
+      (setf (phpinspect--function-return-type existing)
+            new-return-type))
+
+    (setf (phpinspect--function-arguments existing)
+          (phpinspect--function-arguments method))))
+
 (cl-defmethod phpinspect--class-update-static-method ((class phpinspect--class)
                                                       (method phpinspect--function))
   (let ((existing (gethash (phpinspect--function-name-symbol method)
                            (phpinspect--class-static-methods class))))
     (if existing
-        (progn
-          (unless (phpinspect--type= (phpinspect--function-return-type method)
-                      phpinspect--null-type)
-            (setf (phpinspect--function-return-type existing)
-                  (phpinspect--function-return-type method)))
-          (setf (phpinspect--function-arguments existing)
-                (phpinspect--function-arguments method)))
+        (phpinspect--merge-method
+         (alist-get 'class-name (phpinspect--class-index class))
+         existing method)
       (phpinspect--class-set-static-method class method))))
 
 (cl-defmethod phpinspect--class-update-method ((class phpinspect--class)
                                                (method phpinspect--function))
-  (let ((existing (gethash (phpinspect--function-name-symbol method)
+  (let* ((existing (gethash (phpinspect--function-name-symbol method)
                            (phpinspect--class-methods class))))
     (if existing
-        (progn
-          (unless (phpinspect--type= (phpinspect--function-return-type method)
-                                     phpinspect--null-type)
-            (phpinspect--log "method return type %s" (phpinspect--function-return-type method))
-            (setf (phpinspect--function-return-type existing)
-                  ;; The "static" return type returns the class that the method
-                  ;; is called on
-                  (if (phpinspect--type-does-late-static-binding
-                       (phpinspect--function-return-type method))
-                      (alist-get 'class-name (phpinspect--class-index class))
-                    (phpinspect--function-return-type method))))
-
-          (setf (phpinspect--function-arguments existing)
-                (phpinspect--function-arguments method)))
+        (phpinspect--merge-method
+         (alist-get 'class-name (phpinspect--class-index class))
+         existing method)
       (phpinspect--class-set-method class method))))
 
 (cl-defmethod phpinspect--class-incorporate ((class phpinspect--class)

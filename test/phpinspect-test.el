@@ -39,6 +39,11 @@
     (insert-file-contents-literally (concat phpinspect-test-php-file-directory "/" name ".eld"))
     (read (current-buffer))))
 
+(defun phpinspect-test-read-fixture-serialization (name)
+  (with-temp-buffer
+    (insert-file-contents-literally (concat phpinspect-test-php-file-directory "/" name ".eld"))
+    (eval (read (current-buffer)))))
+
 (defun phpinspect-test-parse-fixture-code (name)
   (phpinspect-parse-file
    (concat phpinspect-test-php-file-directory "/" name ".php")))
@@ -113,21 +118,19 @@
                           (phpinspect-test-read-fixture-data "IndexClass1"))))
     (should (equal index expected-result))))
 
-(ert-deftest phpinspect-index-tokens ()
-  (should (equal
-           (phpinspect--index-tokens
-            (phpinspect-test-read-fixture-data "IndexClass1"))
-           (phpinspect-test-read-fixture-data "IndexClass1-indexed"))))
+(ert-deftest phpinspect-index-tokens-class ()
+  (let* ((index1
+          (phpinspect--index-tokens
+           (phpinspect-test-read-fixture-data "IndexClass1")))
+         (index2
+          (phpinspect-test-read-fixture-serialization "IndexClass1-indexed"))
+         (index1-class (cdr (alist-get 'classes index1)))
+         (index2-class (cdr (alist-get 'classes index2))))
+    (dolist (key '(class-name imports methods static-methods static-variables variables constants extends implements))
+      (should (equal (alist-get key index1-class)
+                     (alist-get key index2-class))))))
 
-(ert-deftest phpinspect-merge-class-indexes ()
-  (should (equal
-           (phpinspect--merge-indexes
-            (phpinspect-test-read-fixture-data "IndexClass1-indexed")
-            (phpinspect-test-read-fixture-data "IndexClass2-indexed"))
-           (phpinspect-test-read-fixture-data
-            "class-index-1-2-undestructive-merge"))))
-
-(ert-deftest phpinspect--get-resolvecontext ()
+(ert-deftest phpinspect-get-resolvecontext ()
   (let ((resolvecontext (phpinspect--get-resolvecontext
                          (phpinspect-test-read-fixture-data "IncompleteClass"))))
 
@@ -158,15 +161,25 @@
          (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
                          resolvecontext)))
 
-    (should (string= "\\array" (funcall type-resolver "array")))
-    (should (string= "\\array" (funcall type-resolver "\\array")))
-    (should (string= "\\Symfony\\Component\\HttpFoundation\\Response"
-                     (funcall type-resolver "Response")))
-    (should (string= "\\Response" (funcall type-resolver "\\Response")))
-    (should (string= "\\App\\Controller\\GastonLagaffe"
-                     (funcall type-resolver "GastonLagaffe")))
-    (should (string= "\\App\\Controller\\Dupuis\\GastonLagaffe"
-                     (funcall type-resolver "Dupuis\\GastonLagaffe")))))
+    (should (phpinspect--type= (phpinspect--make-type :name  "\\array")
+                               (funcall type-resolver
+                                        (phpinspect--make-type :name "array"))))
+    (should (phpinspect--type= (phpinspect--make-type :name  "\\array")
+                               (funcall type-resolver
+                                        (phpinspect--make-type :name "\\array"))))
+    (should (phpinspect--type= (phpinspect--make-type
+                                :name  "\\Symfony\\Component\\HttpFoundation\\Response")
+                     (funcall type-resolver (phpinspect--make-type :name "Response"))))
+    (should (phpinspect--type= (phpinspect--make-type :name  "\\Response")
+                               (funcall type-resolver
+                                        (phpinspect--make-type :name "\\Response"))))
+    (should (phpinspect--type= (phpinspect--make-type :name  "\\App\\Controller\\GastonLagaffe")
+                               (funcall type-resolver
+                                        (phpinspect--make-type :name "GastonLagaffe"))))
+    (should (phpinspect--type=
+             (phpinspect--make-type :name  "\\App\\Controller\\Dupuis\\GastonLagaffe")
+             (funcall type-resolver
+                      (phpinspect--make-type :name "Dupuis\\GastonLagaffe"))))))
 
 (ert-deftest phpinspect-type-resolver-for-resolvecontext-namespace-block ()
   (let* ((resolvecontext (phpinspect--get-resolvecontext
@@ -175,15 +188,21 @@
          (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
                          resolvecontext)))
 
-    (should (string= "\\array" (funcall type-resolver "array")))
-    (should (string= "\\array" (funcall type-resolver "\\array")))
-    (should (string= "\\Symfony\\Component\\HttpFoundation\\Response"
-                     (funcall type-resolver "Response")))
-    (should (string= "\\Response" (funcall type-resolver "\\Response")))
-    (should (string= "\\App\\Controller\\GastonLagaffe"
-                     (funcall type-resolver "GastonLagaffe")))
-    (should (string= "\\App\\Controller\\Dupuis\\GastonLagaffe"
-                     (funcall type-resolver "Dupuis\\GastonLagaffe")))))
+    (should (phpinspect--type= (phpinspect--make-type :name "\\array")
+                               (funcall type-resolver (phpinspect--make-type :name "array"))))
+    (should (phpinspect--type= (phpinspect--make-type :name  "\\array")
+                               (funcall type-resolver (phpinspect--make-type :name "\\array"))))
+    (should (phpinspect--type= (phpinspect--make-type
+                                :name  "\\Symfony\\Component\\HttpFoundation\\Response")
+                               (funcall type-resolver (phpinspect--make-type :name "Response"))))
+    (should (phpinspect--type= (phpinspect--make-type :name  "\\Response")
+                               (funcall type-resolver (phpinspect--make-type :name "\\Response"))))
+    (should (phpinspect--type= (phpinspect--make-type :name  "\\App\\Controller\\GastonLagaffe")
+                               (funcall type-resolver (phpinspect--make-type
+                                                       :name "GastonLagaffe"))))
+    (should (phpinspect--type= (phpinspect--make-type
+                                :name  "\\App\\Controller\\Dupuis\\GastonLagaffe")
+                     (funcall type-resolver (phpinspect--make-type :name "Dupuis\\GastonLagaffe"))))))
 
 (ert-deftest phpinspect-type-resolver-for-resolvecontext-multiple-namespace-blocks ()
   (let* ((resolvecontext (phpinspect--get-resolvecontext
@@ -192,15 +211,24 @@
          (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
                          resolvecontext)))
 
-    (should (string= "\\array" (funcall type-resolver "array")))
-    (should (string= "\\array" (funcall type-resolver "\\array")))
-    (should (string= "\\Symfony\\Component\\HttpFoundation\\Response"
-                     (funcall type-resolver "Response")))
-    (should (string= "\\Response" (funcall type-resolver "\\Response")))
-    (should (string= "\\App\\Controller\\GastonLagaffe"
-                     (funcall type-resolver "GastonLagaffe")))
-    (should (string= "\\App\\Controller\\Dupuis\\GastonLagaffe"
-                     (funcall type-resolver "Dupuis\\GastonLagaffe")))))
+    (should (phpinspect--type= (phpinspect--make-type :name "\\array")
+                               (funcall type-resolver
+                                        (phpinspect--make-type :name "array"))))
+    (should (phpinspect--type= (phpinspect--make-type :name  "\\array")
+                               (funcall type-resolver
+                                        (phpinspect--make-type :name "\\array"))))
+    (should (phpinspect--type= (phpinspect--make-type
+                                :name  "\\Symfony\\Component\\HttpFoundation\\Response")
+                     (funcall type-resolver (phpinspect--make-type :name "Response"))))
+    (should (phpinspect--type= (phpinspect--make-type :name  "\\Response")
+                               (funcall type-resolver
+                                        (phpinspect--make-type :name "\\Response"))))
+    (should (phpinspect--type= (phpinspect--make-type :name  "\\App\\Controller\\GastonLagaffe")
+                     (funcall type-resolver (phpinspect--make-type :name "GastonLagaffe"))))
+    (should (phpinspect--type= (phpinspect--make-type
+                                :name  "\\App\\Controller\\Dupuis\\GastonLagaffe")
+                               (funcall type-resolver (phpinspect--make-type
+                                                       :name "Dupuis\\GastonLagaffe"))))))
 
 (ert-deftest phpinspect-index-static-methods ()
   (let* ((class-tokens
@@ -219,22 +247,28 @@
          (index (phpinspect--index-tokens class-tokens))
          (expected-index
           `(phpinspect--root-index
+            (imports)
             (classes
-             ("\\Potato" phpinspect--class
+             (,(phpinspect--make-type :name"\\Potato" :fully-qualified t)
+              phpinspect--indexed-class
+              (class-name . ,(phpinspect--make-type :name "\\Potato" :fully-qualified t))
+              (imports)
               (methods)
-              (class-name . "\\Potato")
               (static-methods . (,(phpinspect--make-function
                                    :name "staticMethod"
                                    :scope '(:public)
-                                   :arguments '(("untyped" nil)
-                                                ("things" "\\array"))
-                                   :return-type nil)))
+                                   :arguments `(("untyped" nil)
+                                                ("things" ,(phpinspect--make-type :name "\\array"
+                                                                                  :fully-qualified t)))
+                                   :return-type phpinspect--null-type)))
               (static-variables)
               (variables)
               (constants)
               (extends)
               (implements)))
             (functions))))
+    ;; (pp expected-index)
+    ;; (pp index))
     (should (equal expected-index index))))
 
 (ert-deftest phpinspect-resolve-type-from-context ()
@@ -256,7 +290,7 @@ class FluffBall
 
         if ($ball) {
             if(isset($ball->fluff()->poof->upFluff->"))
-        (fluffer "
+        (fluffer  (phpinspect-parse-string "
 namespace Amazing;
 
 use Vendor\\FluffLib\\Fluff;
@@ -266,8 +300,8 @@ class Fluffer
     public function fluff(): Fluff
     {
     }
-}")
-        (vendor-fluff "
+}"))
+        (vendor-fluff (phpinspect-parse-string "
 namespace Vendor\\FluffLib;
 class Fluff
 {
@@ -275,8 +309,8 @@ class Fluff
      * @var FlufferUpper
      */
     public $poof;
-}")
-        (vendor-fluffer-upper "
+}"))
+        (vendor-fluffer-upper (phpinspect-parse-string "
 namespace Vendor\\FluffLib;
 class FlufferUpper
 {
@@ -285,33 +319,25 @@ class FlufferUpper
     {
         $this->upFluff = $upFluff;
     }
-}")
+}"))
         (phpinspect-project-root-function (lambda () "phpinspect-test"))
-        (phpinspect-class-filepath-function
-         (lambda (fqn)
-           (pcase fqn
-             ("\\Amazing\\Fluffer" "fluffer")
-             ("\\Vendor\\FluffLib\\Fluff" "vendor-fluff")
-             ("\\Vendor\\FluffLib\\FlufferUpper" "vendor-fluffer-upper")
-             (_ (ert-fail (format "Unexpected class FQN filepath was requested: %s" fqn))))))
-        (phpinspect-insert-file-contents-function
-         (lambda (filepath)
-           (pcase filepath
-             ("fluffer" (insert fluffer))
-             ("vendor-fluff" (insert vendor-fluff))
-             ("vendor-fluffer-upper" (insert vendor-fluffer-upper))
-             (_ (ert-fail (format "Unexpected filepath was requested: %s" filepath))))))
         (context (phpinspect--get-resolvecontext token-tree)))
-    (phpinspect-purge-cache)
-    (phpinspect-cache-project-class
-     (phpinspect-project-root)
-     (cdar (alist-get 'classes (cdr (phpinspect--index-tokens token-tree)))))
 
-    (should (equal "\\Vendor\\FluffLib\\DoubleFluffer"
-                   (phpinspect-resolve-type-from-context
-                    context
-                    (phpinspect--make-type-resolver-for-resolvecontext
-                     context))))))
+    (setf (phpinspect--resolvecontext-project-root context)
+          "phpinspect-test")
+
+    (phpinspect-purge-cache)
+    (dolist (tree (list token-tree fluffer vendor-fluff vendor-fluffer-upper))
+      (phpinspect-cache-project-class
+       "phpinspect-test"
+       (cdar (alist-get 'classes (cdr (phpinspect--index-tokens tree))))))
+
+    (should (phpinspect--type=
+             (phpinspect--make-type :name "\\Vendor\\FluffLib\\DoubleFluffer")
+             (phpinspect-resolve-type-from-context
+              context
+              (phpinspect--make-type-resolver-for-resolvecontext
+               context))))))
 
 (ert-deftest phpinspect-eldoc-function-for-object-method ()
   (let* ((php-code "
@@ -330,6 +356,7 @@ class Thing
          (phpinspect-project-root-function (lambda () "phpinspect-test"))
          (phpinspect-eldoc-word-width 100))
     (phpinspect-purge-cache)
+    (phpinspect--ensure-index-thread)
     (phpinspect-cache-project-class
      (phpinspect-project-root)
      (cdar (alist-get 'classes (cdr index))))
@@ -356,6 +383,7 @@ class Thing
          (phpinspect-project-root-function (lambda () "phpinspect-test"))
          (phpinspect-eldoc-word-width 100))
     (phpinspect-purge-cache)
+    (phpinspect--ensure-index-thread)
     (phpinspect-cache-project-class
      (phpinspect-project-root)
      (cdar (alist-get 'classes (cdr index))))
@@ -388,11 +416,11 @@ class Thing
      (phpinspect-project-root)
      (cdar (alist-get 'classes (cdr index))))
 
-    (should (string= "\\Thing"
-                     (phpinspect-resolve-type-from-context
-                      context
-                      (phpinspect--make-type-resolver-for-resolvecontext
-                       context))))))
+    (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
+                               (phpinspect-resolve-type-from-context
+                                context
+                                (phpinspect--make-type-resolver-for-resolvecontext
+                                 context))))))
 
 (ert-deftest phpinspect-resolve-type-from-context-static-method-with-preceding-words ()
   (let* ((php-code "
@@ -417,7 +445,7 @@ class Thing
      (phpinspect-project-root)
      (cdar (alist-get 'classes (cdr index))))
 
-    (should (string= "\\Thing"
+    (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
                      (phpinspect-resolve-type-from-context
                       context
                       (phpinspect--make-type-resolver-for-resolvecontext

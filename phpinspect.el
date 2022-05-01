@@ -359,7 +359,9 @@ TODO:
                       (phpinspect--resolvecontext-project-root resolvecontext))
                      type-of-previous-statement))
              (method (when class
-                       (phpinspect--class-get-method class method-name-sym))))
+                       (if static
+                           (phpinspect--class-get-static-method class method-name-sym)
+                           (phpinspect--class-get-method class method-name-sym)))))
         (phpinspect--log "Eldoc method name: %s" method-name-sym)
         (phpinspect--log "Eldoc type of previous statement: %s"
                          type-of-previous-statement)
@@ -418,20 +420,18 @@ TODO:
                     (phpinspect--find-assignments-in-token block-or-list)
                     assignments)))))
     ;; return
-    (phpinspect--log "Yayo Returning %s" assignments)
-    (phpinspect--log "Yayo had statements %s" statements)
+    (phpinspect--log "Found assignments in token: %s" assignments)
+    (phpinspect--log "Found statements in token: %s" statements)
     assignments))
 
 (cl-defmethod phpinspect--find-assignments-in-token ((token (head :list)))
   "Find assignments that are in a list token."
   (phpinspect--log "looking for assignments in list %s" token)
-  (let ((ajaja (seq-filter
-                (lambda (statement)
-                  (phpinspect--log "checking statement %s" statement)
-                  (seq-find #'phpinspect-maybe-assignment-p statement))
-                (phpinspect--split-list #'phpinspect-end-of-statement-p (cdr token)))))
-    (phpinspect--log "Found ajaja %s" ajaja)
-    ajaja))
+  (seq-filter
+   (lambda (statement)
+     (phpinspect--log "checking statement %s" statement)
+     (seq-find #'phpinspect-maybe-assignment-p statement))
+   (phpinspect--split-list #'phpinspect-end-of-statement-p (cdr token))))
 
 (defsubst phpinspect-not-assignment-p (token)
   "Inverse of applying `phpinspect-assignment-p to TOKEN."
@@ -595,6 +595,7 @@ resolve types of function argument variables."
            (last-assignment-value (when assignments (car (last assignments)))))
 
       (phpinspect--log "Last assignment: %s" last-assignment-value)
+      (phpinspect--log "Current block: %s" php-block)
       ;; When the right of an assignment is more than $variable; or "string";(so
       ;; (:variable "variable") (:terminator ";") or (:string "string") (:terminator ";")
       ;; in tokens), we're likely working with a derived assignment like $object->method()
@@ -602,7 +603,7 @@ resolve types of function argument variables."
       (cond ((and (phpinspect-word-p (car last-assignment-value))
                   (string= (cadar last-assignment-value) "new"))
              (funcall type-resolver (phpinspect--make-type :name (cadadr last-assignment-value))))
-            ((and (> (length last-assignment-value) 2)
+            ((and (> (length last-assignment-value) 1)
                   (seq-find #'phpinspect-attrib-p last-assignment-value))
              (phpinspect--log "Variable was assigned with a derived statement")
              (phpinspect-get-derived-statement-type-in-block resolvecontext
@@ -613,7 +614,8 @@ resolve types of function argument variables."
             ;; If the right of an assignment is just $variable;, we can check if it is a
             ;; function argument and otherwise recurse to find the type of that variable.
             ((phpinspect-variable-p (car last-assignment-value))
-             (phpinspect--log "Variable was assigned with the value of another variable")
+             (phpinspect--log "Variable was assigned with the value of another variable: %s"
+                              last-assignment-value)
              (or (when function-arg-list
                    (phpinspect-get-variable-type-in-function-arg-list (cadar last-assignment-value)
                                                                       type-resolver
@@ -851,44 +853,6 @@ level of a token. Nested variables are ignored."
 
 (defun phpinspect--buffer-index (buffer)
   (with-current-buffer buffer phpinspect--buffer-index))
-
-(cl-defgeneric phpinspect--merge-indexes (index1 index2)
-  "Merge two phpinspect index types into one and return it")
-
-(cl-defmethod phpinspect--merge-indexes
-  ((class1 (head phpinspect--indexed-class))
-   (class2 (head phpinspect--indexed-class)))
-  "Merge two indexed classes."
-  (let* ((class1-methods (alist-get 'methods (cdr class1)))
-         (class1-variables (alist-get 'variables (cdr class1))))
-    (dolist (method (alist-get 'methods (cdr class2)))
-      (cl-pushnew method class1-methods :test #'equal))
-    (setf (alist-get 'methods (cdr class1)) class1-methods)
-
-    (dolist (variable (alist-get 'variables (cdr class2)))
-      (cl-pushnew variable class1-variables :test #'equal))
-    (setf (alist-get 'variables (cdr class1)) class1-variables))
-  class1)
-
-(cl-defmethod phpinspect--merge-indexes
-  ((index1 (head phpinspect--root-index))
-   (index2 (head phpinspect--root-index)))
-  (let ((index1-classes (alist-get 'classes (cdr index1)))
-        (index2-classes (alist-get 'classes (cdr index2))))
-    (dolist (class index2-classes)
-      (when class
-        (let* ((class-name (alist-get 'class-name (cdr class)))
-               (existing-class (alist-get class-name index1-classes nil nil 'phpinspect--type=)))
-          (if existing-class
-              (progn
-                (phpinspect--log "Found existing class in root index: %s" class-name)
-                (setcdr (assoc class-name index1-classes)
-                        (phpinspect--merge-indexes existing-class (cdr class))))
-            ;; else
-            (phpinspect--log "Didn't find existing class in root index: %s" class-name)
-            (push class index1-classes)))))
-    (setf (alist-get 'classes index1) index1-classes)
-    index1))
 
 (defsubst phpinspect-not-variable-p (token)
   (not (phpinspect-variable-p token)))

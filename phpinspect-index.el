@@ -267,9 +267,9 @@
     (let ((class-name (funcall type-resolver (phpinspect--make-type :name class-name))))
       `(,class-name .
                     (phpinspect--indexed-class
+                     (class-name . ,class-name)
                      (imports . ,imports)
                      (methods . ,methods)
-                     (class-name . ,class-name)
                      (static-methods . ,static-methods)
                      (static-variables . ,static-variables)
                      (variables . ,variables)

@@ -84,6 +84,13 @@ See https://wiki.php.net/rfc/static_return_type ."
   (or (phpinspect--type= type phpinspect--static-type)
       (phpinspect--type= type phpinspect--this-type)))
 
+(cl-defmethod phpinspect--resolve-late-static-binding
+  ((type phpinspect--type)
+   (class-type phpinspect--type))
+  (if (phpinspect--type-does-late-static-binding type)
+      class-type
+    type))
+
 (defsubst phpinspect--type-is-native (type)
   (catch 'found
     (dolist (native phpinspect-native-types)

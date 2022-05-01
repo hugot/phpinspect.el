@@ -1,5 +1,7 @@
 
 (require 'phpinspect)
+(require 'phpinspect-index)
+(require 'phpinspect-serialize)
 
 (let ((here (file-name-directory
              (or load-file-name
@@ -20,5 +22,6 @@
              (insert-file-contents-literally (concat here "/../fixtures/" class ".eld"))
              (read (current-buffer)))))
       (with-temp-buffer
-        (insert (prin1-to-string (phpinspect--index-tokens index-class)))
+        (insert (prin1-to-string (phpinspect--serialize-root-index
+                                  (phpinspect--index-tokens index-class))))
         (write-file (concat here "/../fixtures/" class "-indexed.eld"))))))
