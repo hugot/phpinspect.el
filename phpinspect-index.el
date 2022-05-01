@@ -522,7 +522,7 @@ namespace if not provided"
 (defun phpinspect--ensure-index-thread ()
   (interactive)
   (when (or (not phpinspect--index-thread)
-            (not (thread-alive-p phpinspect--index-thread)))
+            (not (thread-live-p phpinspect--index-thread)))
     (setq phpinspect--index-queue (phpinspect--make-queue #'phpinspect--wakeup-index-thread))
     (setq phpinspect--index-thread-running t)
     (setq phpinspect--index-thread
