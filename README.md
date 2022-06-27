@@ -45,5 +45,5 @@ Tests are implemented using `ert`. You can run them in batch mode with the follo
 command:
 
 ```bash
-emacs -batch -l ert -l ./phpinspect.el -l ./test/phpinspect-test.el -f ert-run-tests-batch-and-exit
+emacs -L ./ -batch -l ert -l ./phpinspect.el -l ./test/phpinspect-test.el -f ert-run-tests-batch-and-exit
 ```

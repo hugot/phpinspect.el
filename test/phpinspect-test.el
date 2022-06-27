@@ -498,6 +498,7 @@ class Thing
                       (phpinspect-parse-string php-code-bare))))))
 
 (load-file (concat phpinspect-test-directory "/test-worker.el"))
+(load-file (concat phpinspect-test-directory "/test-autoload.el"))
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here
