@@ -25,35 +25,36 @@
 
 
 (require 'ert)
+(require 'phpinspect-fs)
 (require 'phpinspect-autoload)
 
 (ert-deftest phpinspect-psr0-fill-typehash ()
-  (let* ((directory1 (phpinspect-make-virtual-directory
-                      :location "/home/user/projects/app/src/"))
-         (directory2 (phpinspect-make-virtual-directory
-                      :location "/home/user/projects/app/lib/"))
+  (let* ((fs (phpinspect-make-virtual-fs))
          (typehash (make-hash-table :size 10 :test 'eq))
          (autoload
            (phpinspect-make-psr0-generated :prefix "App\\")))
 
     (puthash "/home/user/projects/app/src/App/Services/SuperService.php"
              ""
-             (phpinspect-virtual-directory-files directory1))
+             (phpinspect-virtual-fs-files fs))
 
     (puthash "/home/user/projects/app/src/Kernel.php"
              ""
-             (phpinspect-virtual-directory-files directory1))
+             (phpinspect-virtual-fs-files fs))
     (puthash "/home/user/projects/app/src/App/Controller/Banana.php"
              ""
-             (phpinspect-virtual-directory-files directory1))
+             (phpinspect-virtual-fs-files fs))
 
     (puthash "/home/user/projects/app/lib/Mailer_Lib.php"
              ""
-             (phpinspect-virtual-directory-files directory2))
+             (phpinspect-virtual-fs-files fs))
 
-    (setf (phpinspect-psr0-directories autoload) (list directory1 directory2))
+    (setf (phpinspect-psr0-directories autoload) (list "/home/user/projects/app/src/"
+                                                       "/home/user/projects/app/lib/"))
 
-    (phpinspect-al-strategy-fill-typehash autoload typehash)
+    (phpinspect-al-strategy-fill-typehash autoload fs typehash)
+
+    (should-not (hash-table-empty-p typehash))
 
     (should (string= "/home/user/projects/app/src/App/Services/SuperService.php"
                      (gethash (phpinspect-intern-name "\\App\\Services\\SuperService")
@@ -70,32 +71,33 @@
                               typehash)))))
 
 (ert-deftest phpinspect-psr4-fill-typehash ()
-  (let* ((directory1 (phpinspect-make-virtual-directory
-                      :location "/home/user/projects/app/src/"))
-         (directory2 (phpinspect-make-virtual-directory
-                      :location "/home/user/projects/app/lib/"))
+  (let* ((fs (phpinspect-make-virtual-fs))
          (typehash (make-hash-table :size 10 :test 'eq))
          (autoload
            (phpinspect-make-psr4-generated :prefix "App\\")))
 
     (puthash "/home/user/projects/app/src/Services/SuperService.php"
              ""
-             (phpinspect-virtual-directory-files directory1))
+             (phpinspect-virtual-fs-files fs))
 
     (puthash "/home/user/projects/app/src/Kernel.php"
              ""
-             (phpinspect-virtual-directory-files directory1))
+             (phpinspect-virtual-fs-files fs))
+
     (puthash "/home/user/projects/app/src/Controller/Banana.php"
              ""
-             (phpinspect-virtual-directory-files directory1))
+             (phpinspect-virtual-fs-files fs))
 
     (puthash "/home/user/projects/app/lib/Mailer_Lib.php"
              ""
-             (phpinspect-virtual-directory-files directory2))
+             (phpinspect-virtual-fs-files fs))
 
-    (setf (phpinspect-psr4-directories autoload) (list directory1 directory2))
+    (setf (phpinspect-psr4-directories autoload) (list "/home/user/projects/app/src/"
+                                                       "/home/user/projects/app/lib/"))
 
-    (phpinspect-al-strategy-fill-typehash autoload typehash)
+    (phpinspect-al-strategy-fill-typehash autoload fs typehash)
+
+    (should-not (hash-table-empty-p typehash))
 
     (should (string= "/home/user/projects/app/src/Services/SuperService.php"
                      (gethash (phpinspect-intern-name "\\App\\Services\\SuperService")

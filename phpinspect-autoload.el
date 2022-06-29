@@ -24,73 +24,23 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'phpinspect-project)
+(require 'phpinspect-fs)
 
 (cl-defstruct (phpinspect-autoloader
                (:constructor phpinspect-make-autoloader))
-  (types (make-hash-table :test 'eq)
+  (project nil
+           :type phpinspect--project
+           :documentation "The project that this autoloader can find files for")
+  (own-types (make-hash-table :test 'eq :size 10000 :rehash-size 10000)
+             :type hash-table
+             :documentation "The internal types that can be
+             autoloaded through this autoloader")
+  (types (make-hash-table :test 'eq :size 10000 :rehash-size 10000)
          :type hash-table
          :documentation
-         "The types that can be autoloaded through this autoloader.")
-  (strategies nil
-              :type list
-              :documentation
-              "The strategies that this autoloader can employ for its purpose."))
+         "The external types that can be autoloaded through this autoloader."))
 
-(cl-defstruct (phpinspect-directory
-               (:constructor phpinspect-make-directory))
-  (location nil
-            :type string
-            :documentation
-            "The filepath to the directory"))
-
-(cl-defstruct (phpinspect-virtual-directory
-               (:constructor phpinspect-make-virtual-directory))
-  (location nil
-            :type string
-            :documentation
-            "The filepath to the directory")
-  (files (make-hash-table :test 'equal)
-         :type hash-table
-         :documentation
-         "The files in the virtual directory"))
-
-(cl-defgeneric phpinspect-directory-list-files (directory)
-  "List all PHP files in DIRECTORY")
-
-(cl-defmethod phpinspect-directory-list-files ((dir phpinspect-directory))
-  "List all PHP files in DIR."
-  (directory-files-recursively (phpinspect-directory-location dir)
-                               ".*.php$"
-                               t ;; Ignore directories that cannot be read
-                               t ;; follow symlinks
-                               ))
-
-(cl-defmethod phpinspect-directory-list-files ((dir phpinspect-virtual-directory))
-  "List all virtual files that DIR contains."
-  (let ((files))
-    (maphash (lambda (file _)
-               (push file files))
-             (phpinspect-virtual-directory-files dir))
-    files))
-
-(cl-defgeneric phpinspect-directory-list-files (directory)
-  "List all PHP files in DIRECTORY")
-
-(cl-defmethod phpinspect-directory-get-location ((dir phpinspect-directory))
-  "Get location of PHP dir."
-  (phpinspect-directory-location dir))
-
-(cl-defmethod phpinspect-directory-get-location ((dir phpinspect-virtual-directory))
-  "List all virtual files that DIR contains."
-  (phpinspect-virtual-directory-location dir))
-
-(cl-defmethod phpinspect-directory-insert-file-contents ((dir phpinspect-directory)
-                                                         (file string))
-  (insert-file-contents file))
-
-(cl-defmethod phpinspect-directory-insert-file-contents ((dir phpinspect-virtual-directory)
-                                                         (file string))
-  (insert (gethash file (phpinspect-virtual-directory-files dir))))
 
 (cl-defstruct (phpinspect-psr0
                (:constructor phpinspect-make-psr0-generated))
@@ -127,25 +77,25 @@
   (phpinspect-intern-name
    (concat "\\"
            (or prefix "")
-           (replace-regexp-in-string "/"
-                                     "\\\\"
-                                     (string-remove-suffix
-                                      ".php"
-                                      (string-remove-prefix
-                                       (phpinspect-directory-get-location dir)
-                                       filename))))))
+           (replace-regexp-in-string
+            "/" "\\\\"
+            (string-remove-suffix
+             ".php"
+             (string-remove-prefix dir filename))))))
 
 (cl-defmethod phpinspect-al-strategy-fill-typehash ((strategy phpinspect-psr0)
-                                                     typehash)
+                                                    fs
+                                                    typehash)
   (dolist (dir (phpinspect-psr0-directories strategy))
-    (dolist (file (phpinspect-directory-list-files dir))
+    (dolist (file (phpinspect-fs-directory-files-recursively fs dir "\\.php$"))
       (puthash (phpinspect-filename-to-typename dir file) file typehash))))
 
 (cl-defmethod phpinspect-al-strategy-fill-typehash ((strategy phpinspect-psr4)
+                                                    fs
                                                     typehash)
   (let ((prefix (phpinspect-psr4-prefix strategy)))
     (dolist (dir (phpinspect-psr4-directories strategy))
-      (dolist (file (phpinspect-directory-list-files dir))
+      (dolist (file (phpinspect-fs-directory-files-recursively fs dir "\\.php$"))
         (puthash (phpinspect-filename-to-typename dir file prefix) file typehash)))))
 
 (provide 'phpinspect-autoload)
