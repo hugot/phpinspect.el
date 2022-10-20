@@ -27,13 +27,13 @@
 
 (ert-deftest phpinspect-virtual-fs-file-exists-p ()
   (let ((fs (phpinspect-make-virtual-fs)))
-    (puthash "/test/test.txt" "contents" (phpinspect-virtual-fs-files fs))
+    (phpinspect-virtual-fs-set-file fs "/test/test.txt" "contents")
 
     (should (phpinspect-fs-file-exists-p fs "/test/test.txt"))))
 
 (ert-deftest phpinspect-virtual-fs-insert-file-contents ()
   (let ((fs (phpinspect-make-virtual-fs)))
-    (puthash "/test/test.txt" "contents" (phpinspect-virtual-fs-files fs))
+    (phpinspect-virtual-fs-set-file fs "/test/test.txt" "contents")
 
     (with-temp-buffer
       (phpinspect-fs-insert-file-contents fs "/test/test.txt")
@@ -67,11 +67,10 @@
       (should (member "/a/b/c/aaa.match" files))
       (should (not (member "/a/b/c/nope.nomatch" files))))
 
-    (let ((files (phpinspect-fs-directory-files-recursively fs "/a/b" "\\.match$")))
-      (should (member "/a/b/c/dee.match" files))
-      (should (member "/a/b/c/cee.match" files))
-      (should (member "/a/b/c/aaa.match" files))
-      (should (not (member "/a/b/c/nope.nomatch" files))))
+    (let ((files (phpinspect-fs-directory-files fs "/a/b")))
+      (should (member "/a/b/c" files))
+      (should (member "/a/b/d" files))
+      (should (= 2 (length files))))
 
     (let ((files (phpinspect-fs-directory-files-recursively fs "/a/b")))
       (should (member "/a/b/c/dee.match" files))

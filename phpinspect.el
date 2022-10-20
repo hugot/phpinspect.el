@@ -1138,6 +1138,14 @@ level of START-FILE in stead of `default-directory`."
     (set (make-local-variable 'phpinspect--buffer-project) (funcall phpinspect-project-root-function)))
   phpinspect--buffer-project)
 
+
+(defmacro phpinspect-json-preset (&rest body)
+  "Default options to wrap around `json-read' and similar BODY."
+  `(let ((json-object-type 'hash-table)
+	     (json-array-type 'list)
+	     (json-key-type 'string))
+     ,@body))
+
 ;; Use statements
 ;;;###autoload
 (defun phpinspect-fix-uses-interactive ()

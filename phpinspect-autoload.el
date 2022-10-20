@@ -27,21 +27,6 @@
 (require 'phpinspect-project)
 (require 'phpinspect-fs)
 
-(cl-defstruct (phpinspect-autoloader
-               (:constructor phpinspect-make-autoloader))
-  (project nil
-           :type phpinspect--project
-           :documentation "The project that this autoloader can find files for")
-  (own-types (make-hash-table :test 'eq :size 10000 :rehash-size 10000)
-             :type hash-table
-             :documentation "The internal types that can be
-             autoloaded through this autoloader")
-  (types (make-hash-table :test 'eq :size 10000 :rehash-size 10000)
-         :type hash-table
-         :documentation
-         "The external types that can be autoloaded through this autoloader."))
-
-
 (cl-defstruct (phpinspect-psr0
                (:constructor phpinspect-make-psr0-generated))
   (prefix nil
@@ -69,7 +54,99 @@
              :documentation
              "The directories that this autoloader finds code in."))
 
-(cl-defgeneric phpinspect-al-strategy-fill-typehash (strategy typehash)
+(cl-defstruct (phpinspect-autoloader
+               (:constructor phpinspect-make-autoloader))
+  (project nil
+           :type phpinspect--project
+           :documentation "The project that this autoloader can find files for")
+  (own-types (make-hash-table :test 'eq :size 10000 :rehash-size 10000)
+             :type hash-table
+             :documentation "The internal types that can be
+             autoloaded through this autoloader")
+  (types (make-hash-table :test 'eq :size 10000 :rehash-size 10000)
+         :type hash-table
+         :documentation
+         "The external types that can be autoloaded through this autoloader."))
+
+(defun phpinspect-make-autoload-definition-closure (project-root fs typehash)
+  "Create a closure that can be used to `maphash' the autoload section of a composer-json."
+  (lambda (type prefixes)
+    (let ((strategy))
+      (cond
+       ((string= "psr-0" type)
+        (maphash
+         (lambda (prefix directory-paths)
+           (when (stringp directory-paths) (setq directory-paths (list directory-paths)))
+           (setq strategy (phpinspect-make-psr0-generated :prefix prefix))
+           (dolist (path directory-paths)
+             (push (concat project-root "/" path)
+                   (phpinspect-psr0-directories strategy))))
+         prefixes))
+       ((string= "psr-4" type)
+        (maphash
+         (lambda (prefix directory-paths)
+           (when (stringp directory-paths) (setq directory-paths (list directory-paths)))
+           (setq strategy (phpinspect-make-psr4-generated :prefix prefix))
+             (dolist (path directory-paths)
+               (push (concat project-root "/" path)
+                     (phpinspect-psr4-directories strategy))))
+         prefixes))
+       (t (phpinspect--log "Unsupported autoload strategy \"%s\" encountered" type)))
+
+      (when strategy
+        (phpinspect-al-strategy-fill-typehash strategy fs typehash)))))
+
+(cl-defmethod phpinspect--read-json-file (fs file)
+  (with-temp-buffer
+    (phpinspect-fs-insert-file-contents fs file)
+    (goto-char 0)
+    (phpinspect-json-preset (json-read))))
+
+(cl-defmethod phpinspect-autoloader-refresh ((autoloader phpinspect-autoloader))
+  "Refresh autoload definitions by reading composer.json files
+  from the project and vendor folders."
+  (let* ((project-root (phpinspect--project-root (phpinspect-autoloader-project autoloader)))
+         (fs (phpinspect--project-fs (phpinspect-autoloader-project autoloader)))
+         (vendor-dir (concat project-root "/vendor"))
+         (composer-json (phpinspect--read-json-file
+                         fs
+                         (concat project-root "/composer.json")))
+         (project-autoload (gethash "autoload" composer-json))
+         (own-types (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
+         (types (make-hash-table :test 'eq :size 10000 :rehash-size 10000)))
+
+    (when project-autoload
+      (maphash (phpinspect-make-autoload-definition-closure project-root fs own-types)
+               project-autoload)
+
+      (maphash (phpinspect-make-autoload-definition-closure project-root fs types)
+               project-autoload))
+
+    (when (phpinspect-fs-file-directory-p fs vendor-dir)
+      (dolist (author-dir (phpinspect-fs-directory-files fs vendor-dir))
+        (when (phpinspect-fs-file-directory-p fs author-dir)
+          (dolist (dependency-dir (phpinspect-fs-directory-files fs author-dir))
+            (when (and (phpinspect-fs-file-directory-p fs dependency-dir)
+                       (phpinspect-fs-file-exists-p fs (concat dependency-dir "/composer.json")))
+              (let* ((dependency-json (phpinspect--read-json-file
+                                       fs
+                                       (concat dependency-dir "/composer.json")))
+                     (dependency-autoload (gethash "autoload" dependency-json)))
+                (when dependency-autoload
+                  (maphash (phpinspect-make-autoload-definition-closure
+                            dependency-dir fs types)
+                           dependency-autoload))))))))
+
+      (setf (phpinspect-autoloader-own-types autoloader) own-types)
+      (setf (phpinspect-autoloader-types autoloader) types)))
+
+(cl-defmethod phpinspect-autoloader-resolve ((autoloader phpinspect-autoloader)
+                                            typename-symbol)
+  (or (gethash typename-symbol (phpinspect-autoloader-own-types autoloader))
+      (gethash typename-symbol (phpinspect-autoloader-types autoloader))))
+
+
+(cl-defgeneric phpinspect-al-strategy-fill-typehash (strategy fs typehash)
   "Make STRATEGY return a map with type names as keys and the
   paths to the files they are defined in as values.")
 

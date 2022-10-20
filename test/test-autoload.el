@@ -1,4 +1,4 @@
-;;; test-autoload.el --- Unit tests for phpinspect.el  -*- lexical-binding: t; -*-
+;; test-autoload.el --- Unit tests for phpinspect.el  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021 Free Software Foundation, Inc.
 
@@ -34,20 +34,17 @@
          (autoload
            (phpinspect-make-psr0-generated :prefix "App\\")))
 
-    (puthash "/home/user/projects/app/src/App/Services/SuperService.php"
-             ""
-             (phpinspect-virtual-fs-files fs))
+    (phpinspect-virtual-fs-set-file
+     fs "/home/user/projects/app/src/App/Services/SuperService.php" "")
 
-    (puthash "/home/user/projects/app/src/Kernel.php"
-             ""
-             (phpinspect-virtual-fs-files fs))
-    (puthash "/home/user/projects/app/src/App/Controller/Banana.php"
-             ""
-             (phpinspect-virtual-fs-files fs))
+    (phpinspect-virtual-fs-set-file
+     fs "/home/user/projects/app/src/Kernel.php" "")
 
-    (puthash "/home/user/projects/app/lib/Mailer_Lib.php"
-             ""
-             (phpinspect-virtual-fs-files fs))
+    (phpinspect-virtual-fs-set-file
+     fs "/home/user/projects/app/src/App/Controller/Banana.php" "")
+
+    (phpinspect-virtual-fs-set-file
+     fs "/home/user/projects/app/lib/Mailer_Lib.php" "")
 
     (setf (phpinspect-psr0-directories autoload) (list "/home/user/projects/app/src/"
                                                        "/home/user/projects/app/lib/"))
@@ -76,21 +73,17 @@
          (autoload
            (phpinspect-make-psr4-generated :prefix "App\\")))
 
-    (puthash "/home/user/projects/app/src/Services/SuperService.php"
-             ""
-             (phpinspect-virtual-fs-files fs))
+    (phpinspect-virtual-fs-set-file
+     fs "/home/user/projects/app/src/Services/SuperService.php" "")
 
-    (puthash "/home/user/projects/app/src/Kernel.php"
-             ""
-             (phpinspect-virtual-fs-files fs))
+    (phpinspect-virtual-fs-set-file
+     fs "/home/user/projects/app/src/Kernel.php" "")
 
-    (puthash "/home/user/projects/app/src/Controller/Banana.php"
-             ""
-             (phpinspect-virtual-fs-files fs))
+    (phpinspect-virtual-fs-set-file
+     fs "/home/user/projects/app/src/Controller/Banana.php" "")
 
-    (puthash "/home/user/projects/app/lib/Mailer_Lib.php"
-             ""
-             (phpinspect-virtual-fs-files fs))
+    (phpinspect-virtual-fs-set-file
+     fs "/home/user/projects/app/lib/Mailer_Lib.php" "")
 
     (setf (phpinspect-psr4-directories autoload) (list "/home/user/projects/app/src/"
                                                        "/home/user/projects/app/lib/"))
@@ -112,3 +105,51 @@
     (should (string= "/home/user/projects/app/lib/Mailer_Lib.php"
                      (gethash (phpinspect-intern-name "\\App\\Mailer_Lib")
                               typehash)))))
+
+(ert-deftest phpinspect-autoloader-refresh ()
+  (let* ((fs (phpinspect-make-virtual-fs))
+         (project (phpinspect--make-project
+                   :fs fs
+                   :root "/project/root"))
+         (autoloader (phpinspect-make-autoloader
+                      :project project)))
+    (phpinspect-virtual-fs-set-file
+     fs
+     "/project/root/composer.json"
+     "{ \"autoload\": { \"psr-4\": {\"App\\\\Banana\\\\\": [\"src/\", \"lib\"]}}}")
+
+    (phpinspect-virtual-fs-set-file fs "/project/root/src/TestClass.php" "")
+
+    (phpinspect-virtual-fs-set-file
+     fs
+    "/project/root/vendor/runescape/client/composer.json"
+    "{\"autoload\": { \"psr-0\": {\"Runescape\\\\Banana\\\\\": [\"src/\", \"lib\"]}}}")
+
+    (phpinspect-virtual-fs-set-file
+     fs "/project/root/vendor/runescape/client/src/TestClass.php" "")
+
+     (phpinspect-virtual-fs-set-file
+      fs
+      "/project/root/vendor/runescape/client/src/Runescape/Banana/App.php"
+      "")
+
+     (phpinspect-virtual-fs-set-file
+      fs "/project/root/vendor/runescape/client/src/LibClass.php" "")
+
+     (phpinspect-virtual-fs-set-file
+      fs
+      "/project/root/vendor/not-runescape/wow/composer.json"
+      "{ \"autoload\": { \"psr-4\": {\"WoW\\\\Dwarves\\\\\": \"src/\"}}}")
+
+     (phpinspect-virtual-fs-set-file
+      fs "/project/root/vendor/not-runescape/wow/src/TestClass.php" "")
+
+    (phpinspect-autoloader-refresh autoloader)
+
+    (should-not (hash-table-empty-p (phpinspect-autoloader-own-types autoloader)))
+    (should-not (hash-table-empty-p (phpinspect-autoloader-types autoloader)))
+
+    (should (string= "/project/root/vendor/runescape/client/src/Runescape/Banana/App.php"
+                     (phpinspect-autoloader-resolve
+                      autoloader
+                      (phpinspect-intern-name "\\Runescape\\Banana\\App"))))))
