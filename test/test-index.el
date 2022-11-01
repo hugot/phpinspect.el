@@ -62,7 +62,7 @@
               (constants)
               (extends)
               (implements)
-              (used-types)))
+              (used-types . (,(phpinspect-intern-name "array")))))
             (used-types)
             (functions))))
     (should (equal expected-index index))))
