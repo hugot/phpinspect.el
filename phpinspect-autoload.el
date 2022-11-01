@@ -66,7 +66,13 @@
   (types (make-hash-table :test 'eq :size 10000 :rehash-size 10000)
          :type hash-table
          :documentation
-         "The external types that can be autoloaded through this autoloader."))
+         "The external types that can be autoloaded through this autoloader.")
+  (type-name-fqn-bags (make-hash-table :test 'eq :size 3000 :rehash-size 3000)
+                      :type hash-table
+                      :documentation
+                      "Hash table that contains lists of fully
+qualified names congruent with a bareword type name. Keyed by
+bareword typenames."))
 
 (defun phpinspect-make-autoload-definition-closure (project-root fs typehash)
   "Create a closure that can be used to `maphash' the autoload section of a composer-json."
@@ -108,12 +114,21 @@
   (let* ((project-root (phpinspect--project-root (phpinspect-autoloader-project autoloader)))
          (fs (phpinspect--project-fs (phpinspect-autoloader-project autoloader)))
          (vendor-dir (concat project-root "/vendor"))
-         (composer-json (phpinspect--read-json-file
-                         fs
-                         (concat project-root "/composer.json")))
-         (project-autoload (gethash "autoload" composer-json))
+         (composer-json-path (concat project-root "/composer.json"))
+         (composer-json)
+         (project-autoload )
+         (type-name-fqn-bags (make-hash-table :test 'eq :size 3000 :rehash-size 3000))
          (own-types (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
          (types (make-hash-table :test 'eq :size 10000 :rehash-size 10000)))
+
+    (when (phpinspect-fs-file-exists-p fs composer-json-path)
+      (setq composer-json (phpinspect--read-json-file fs composer-json-path))
+
+      (if (hash-table-p composer-json)
+          (setq project-autoload (gethash "autoload" composer-json))
+        (phpinspect--log "Error: Parsing %s did not return a hashmap."
+                         composer-json-path)))
+
 
     (when project-autoload
       (maphash (phpinspect-make-autoload-definition-closure project-root fs own-types)
@@ -137,8 +152,18 @@
                             dependency-dir fs types)
                            dependency-autoload))))))))
 
-      (setf (phpinspect-autoloader-own-types autoloader) own-types)
-      (setf (phpinspect-autoloader-types autoloader) types)))
+    (maphash (lambda (type-fqn _)
+               (let* ((type-name (phpinspect-intern-name
+                                  (car (last (split-string (symbol-name type-fqn) "\\\\")))))
+                      (bag (gethash type-name type-name-fqn-bags)))
+                 (push type-fqn bag)
+                 (puthash type-name bag type-name-fqn-bags)))
+             types)
+
+    (setf (phpinspect-autoloader-own-types autoloader) own-types)
+    (setf (phpinspect-autoloader-types autoloader) types)
+    (setf (phpinspect-autoloader-type-name-fqn-bags autoloader)
+          type-name-fqn-bags)))
 
 (cl-defmethod phpinspect-autoloader-resolve ((autoloader phpinspect-autoloader)
                                             typename-symbol)
@@ -152,13 +177,16 @@
 
 (defsubst phpinspect-filename-to-typename (dir filename &optional prefix)
   (phpinspect-intern-name
-   (concat "\\"
-           (or prefix "")
-           (replace-regexp-in-string
-            "/" "\\\\"
-            (string-remove-suffix
-             ".php"
-             (string-remove-prefix dir filename))))))
+   (replace-regexp-in-string
+    "[\\\\]+"
+    "\\\\"
+    (concat "\\"
+            (or prefix "")
+            (replace-regexp-in-string
+             "/" "\\\\"
+             (string-remove-suffix
+              ".php"
+              (string-remove-prefix dir filename)))))))
 
 (cl-defmethod phpinspect-al-strategy-fill-typehash ((strategy phpinspect-psr0)
                                                     fs

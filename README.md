@@ -16,7 +16,7 @@ WIP. More documentation is in the making.
   (setq-local company-backends '(phpinspect-company-backend))
 
   ;; Shortcut to add use statements for classes you use.
-  (define-key php-mode-map (kbd "C-c u") 'phpinspect-fix-uses-interactive)
+  (define-key php-mode-map (kbd "C-c u") 'phpinspect-fix-imports)
 
   ;; Shortcuts to quickly search/open files of PHP classes.
   (global-set-key (kbd "C-c a") 'phpinspect-find-class-file)

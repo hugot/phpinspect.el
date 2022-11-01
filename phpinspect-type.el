@@ -104,6 +104,7 @@ See https://wiki.php.net/rfc/static_return_type ."
   (car (last (split-string fqn "\\\\"))))
 
 (cl-defmethod phpinspect--type-bare-name ((type phpinspect--type))
+  "Return just the name, without namespace part, of TYPE."
   (phpinspect--get-bare-class-name-from-fqn (phpinspect--type-name type)))
 
 (cl-defmethod phpinspect--type= ((type1 phpinspect--type) (type2 phpinspect--type))
@@ -145,7 +146,6 @@ NAMESPACE may be nil, or a string with a namespace FQN."
 
 (defun phpinspect--make-type-resolver (types &optional token-tree namespace)
   "Little wrapper closure to pass around and resolve types with."
-
   (let* ((inside-class
           (if token-tree (or (phpinspect--find-innermost-incomplete-class token-tree)
                              (phpinspect--find-class-token token-tree))))

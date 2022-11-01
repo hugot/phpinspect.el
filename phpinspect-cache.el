@@ -24,14 +24,9 @@
 ;;; Code:
 
 (require 'phpinspect-project)
+(require 'phpinspect-autoload)
 
 (cl-defstruct (phpinspect--cache (:constructor phpinspect--make-cache))
-  (active-projects nil
-                   :type alist
-                   :documentation
-                   "An `alist` that contains the root directory
-                   paths of all currently active phpinspect
-                   projects")
   (projects (make-hash-table :test 'equal :size 10)
             :type hash-table
             :documentation
@@ -54,12 +49,18 @@ then returned.")
 
 (cl-defmethod phpinspect--cache-get-project-create
   ((cache phpinspect--cache) (project-root string))
-  (or (phpinspect--cache-getproject cache project-root)
-      (puthash project-root
-               (phpinspect--make-project-cache
-                :root project-root
-                :worker (phpinspect-make-dynamic-worker))
-               (phpinspect--cache-projects cache))))
+  (let ((project (phpinspect--cache-getproject cache project-root)))
+    (unless project
+      (setq project (puthash project-root
+                             (phpinspect--make-project
+                              :fs (phpinspect-make-fs)
+                              :root project-root
+                              :worker (phpinspect-make-dynamic-worker))
+                             (phpinspect--cache-projects cache)))
+      (let ((autoload (phpinspect-make-autoloader :project project)))
+        (setf (phpinspect--project-autoload project) autoload)
+        (phpinspect-autoloader-refresh autoload)))
+    project))
 
 (provide 'phpinspect-cache)
 ;;; phpinspect.el ends here

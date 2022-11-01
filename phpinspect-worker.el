@@ -31,6 +31,18 @@
 (defvar phpinspect-worker nil
   "Contains the phpinspect worker that is used by all projects.")
 
+(cl-defstruct (phpinspect-index-task
+               (:constructor phpinspect-make-index-task-generated))
+  "Represents an index task that can be executed by a `phpinspect-worker`."
+  (project nil
+           :type phpinspect--project
+           :documentation
+           "The project that the task should be executed for.")
+  (type nil
+        :type phpinspect--type
+        :documentation
+        "The type whose file should be indexed."))
+
 (cl-defstruct (phpinspect-queue-item
                (:constructor phpinspect-make-queue-item))
   (next nil
@@ -210,6 +222,18 @@ on the worker independent of dynamic variables during testing.")
 (cl-defmethod phpinspect-worker-enqueue ((worker phpinspect-worker) task)
   (phpinspect-queue-enqueue (phpinspect-worker-queue worker) task))
 
+(cl-defmethod phpinspect-worker-enqueue ((worker phpinspect-worker)
+                                         (task phpinspect-index-task))
+  "Specialized enqueuement method for index tasks. Prevents
+indexation tasks from being added when there are identical tasks
+already present in the queue."
+  (phpinspect-queue-enqueue-noduplicate (phpinspect-worker-queue worker) task #'phpinspect-index-task=))
+
+(cl-defmethod phpinspect-index-task= ((task1 phpinspect-index-task) (task2 phpinspect-index-task))
+  (and (eq (phpinspect-index-task-project task1)
+           (phpinspect-index-task-project task2))
+       (phpinspect--type= (phpinspect-index-task-type task1) (phpinspect-index-task-type task2))))
+
 (cl-defmethod phpinspect-worker-enqueue ((worker phpinspect-dynamic-worker) task)
   (phpinspect-worker-enqueue (phpinspect-resolve-dynamic-worker worker)
                              task))
@@ -241,7 +265,10 @@ CONTINUE must be a condition-variable"
                (mx (make-mutex))
                (continue (make-condition-variable mx)))
           (if task
-              (phpinspect-task-execute task worker)
+              ;; Execute task if it belongs to a project that has not been
+              ;; purged (meaning that it is still actively used).
+              (unless (phpinspect--project-purged (phpinspect-task-project task))
+                (phpinspect-task-execute task worker))
             ;; else: join with the main thread until wakeup is signaled
             (thread-join main-thread))
 
@@ -292,23 +319,17 @@ CONTINUE must be a condition-variable"
   (interactive)
   (phpinspect-worker-stop phpinspect-worker))
 
-(cl-defstruct (phpinspect-index-task
-               (:constructor phpinspect-make-index-task-generated))
-  "Represents an index task that can be executed by a `phpinspect-worker`."
-  (project nil
-           :type phpinspect--project
-           :documentation
-           "The project that the task should be executed for.")
-  (type nil
-        :type phpinspect--type
-        :documentation
-        "The type whose file should be indexed."))
-
 (cl-defgeneric phpinspect-make-index-task ((project phpinspect--project)
                                           (type phpinspect--type))
   (phpinspect-make-index-task-generated
    :project project
    :type type))
+
+(cl-defgeneric phpinspect-task-project (task)
+  "The project that this task belongs to.")
+
+(cl-defmethod phpinspect-task-project ((task phpinspect-index-task))
+  (phpinspect-index-task-project task))
 
 (cl-defgeneric phpinspect-task-execute (task worker)
   "Execute TASK for WORKER.")
@@ -323,19 +344,19 @@ CONTINUE must be a condition-variable"
                      (phpinspect-index-task-type task)
                      (phpinspect--project-root project))
 
-    (if is-native-type
-        (progn
-          (phpinspect--log "Skipping indexation of native type %s"
-                           (phpinspect-index-task-type task))
+    (cond (is-native-type
+           (phpinspect--log "Skipping indexation of native type %s"
+                            (phpinspect-index-task-type task))
 
-          ;; We can skip pausing when a native type is encountered
-          ;; and skipped, as we haven't done any intensive work that
-          ;; may cause hangups.
-          (setf (phpinspect-worker-skip-next-pause worker) t))
-      (let* ((type (phpinspect-index-task-type task))
-             (root-index (phpinspect--index-type-file project type)))
-        (when root-index
-          (phpinspect--project-add-index project root-index))))))
+           ;; We can skip pausing when a native type is encountered
+           ;; and skipped, as we haven't done any intensive work that
+           ;; may cause hangups.
+           (setf (phpinspect-worker-skip-next-pause worker) t))
+          (t
+           (let* ((type (phpinspect-index-task-type task))
+                  (root-index (phpinspect--index-type-file project type)))
+             (when root-index
+               (phpinspect--project-add-index project root-index)))))))
 
 
 (provide 'phpinspect-worker)

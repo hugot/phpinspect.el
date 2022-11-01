@@ -25,13 +25,25 @@
 
 (require 'phpinspect-class)
 (require 'phpinspect-type)
+(require 'phpinspect-fs)
+(require 'filenotify)
 
-(cl-defstruct (phpinspect--project (:constructor phpinspect--make-project-cache))
+(cl-defstruct (phpinspect--project (:constructor phpinspect--make-project))
   (class-index (make-hash-table :test 'eq :size 100 :rehash-size 40)
                :type hash-table
                :documentation
                "A `hash-table` that contains all of the currently
 indexed classes in the project")
+  (fs nil
+      :type phpinspect-fs
+      :documentation
+      "The filesystem object through which this project's files
+can be accessed.")
+  (autoload nil
+    :type phpinspect-autoload
+    :documentation
+    "The autoload object through which this project's type
+definitions can be retrieved")
   (worker nil
           :type phpinspect-worker
           :documentation
@@ -39,11 +51,34 @@ indexed classes in the project")
   (root nil
         :type string
         :documentation
-        "The root directory of this project"))
+        "The root directory of this project")
+  (purged nil
+          :type boolean
+          :documentation "Whether or not the project has been purged or not.
+Projects get purged when they are removed from the global cache.")
+  (file-watchers (make-hash-table :test #'equal :size 10000 :rehash-size 10000)
+                 :type hash-table
+                 :documentation "All active file watchers in this project,
+indexed by the absolute paths of the files they're watching."))
 
 (cl-defgeneric phpinspect--project-add-class
     ((project phpinspect--project) (class (head phpinspect--indexed-class)))
   "Add an indexed CLASS to PROJECT.")
+
+(cl-defmethod phpinspect--project-purge ((project phpinspect--project))
+  "Disable all background processes for project and put it in a `purged` state."
+  (maphash (lambda (_ watcher) (file-notify-rm-watch watcher))
+           (phpinspect--project-file-watchers project))
+
+  (setf (phpinspect--project-file-watchers project)
+         (make-hash-table :test #'equal :size 10000 :rehash-size 10000))
+  (setf (phpinspect--project-purged project) t))
+
+(cl-defmethod phpinspect--project-watch-file ((project phpinspect--project)
+                                              filepath
+                                              callback)
+  (let ((watcher (file-notify-add-watch filepath '(change) callback)))
+    (puthash filepath watcher (phpinspect--project-file-watchers project))))
 
 (cl-defmethod phpinspect--project-add-return-types-to-index-queueue
   ((project phpinspect--project) methods)
@@ -61,16 +96,15 @@ indexed classes in the project")
 
 (cl-defmethod phpinspect--project-enqueue-if-not-present
   ((project phpinspect--project) (type phpinspect--type))
-  (let ((class (phpinspect--project-get-class project type)))
-    (when (or (not class)
-              (not (or (phpinspect--class-initial-index class)
-                       (phpinspect--class-index-queued class))))
-      (when (not class)
-        (setq class (phpinspect--project-create-class project type)))
-      (phpinspect--log "Adding unpresent class %s to index queue" type)
-      (setf (phpinspect--class-index-queued class) t)
-      (phpinspect-worker-enqueue (phpinspect--project-worker project)
-                                 (phpinspect-make-index-task project type)))))
+  (unless (phpinspect--type-is-native type)
+    (let ((class (phpinspect--project-get-class project type)))
+      (when (or (not class)
+                (not (or (phpinspect--class-initial-index class))))
+        (when (not class)
+          (setq class (phpinspect--project-create-class project type)))
+        (phpinspect--log "Adding unpresent class %s to index queue" type)
+        (phpinspect-worker-enqueue (phpinspect--project-worker project)
+                                   (phpinspect-make-index-task project type))))))
 
 (cl-defmethod phpinspect--project-add-class-attribute-types-to-index-queue
   ((project phpinspect--project) (class phpinspect--class))

@@ -384,13 +384,26 @@ token is \";\", which marks the end of a statement in PHP."
              (cond ,@(mapcar
                       (lambda (handler)
                         `((looking-at ,(plist-get (symbol-value handler) 'regexp))
-                          (let ((token (funcall ,(symbol-function handler)
+                          (let ((start-position (point))
+                                (token (funcall ,(symbol-function handler)
                                                 (match-string 0)
                                                 max-point)))
                             (when token
                               (if (null tokens)
                                   (setq tokens (list token))
-                                (nconc tokens (list token)))))))
+                                (progn
+                                  (nconc tokens (list token))))
+
+                                  ;; When parsing within a buffer that has
+                                  ;; `phpinspect-current-buffer` set, update the
+                                  ;; token location map. Usually, this variable
+                                  ;; is set when `phpinspect-mode` is active.
+                                  (when phpinspect-current-buffer
+                                    (puthash token
+                                             (phpinspect-make-region start-position
+                                                                     (point))
+                                             (phpinspect-buffer-location-map
+                                              phpinspect-current-buffer)))))))
                       handlers)
                    (t (forward-char))))
            (push ,tree-type tokens))))))

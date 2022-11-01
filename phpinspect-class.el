@@ -61,12 +61,7 @@
                  :type bool
                  :documentation
                  "A boolean indicating whether or not this class
-                 has been indexed yet.")
-  (index-queued nil
-                :type bool
-                :documentation
-                "A boolean indicating whether the class type has
-                been queued for indexation"))
+                 has been indexed yet."))
 
 (cl-defmethod phpinspect--class-trigger-update ((class phpinspect--class))
   (dolist (sub (phpinspect--class-subscriptions class))

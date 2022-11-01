@@ -1,4 +1,4 @@
-;; phpinspect.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
+; phpinspect.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021  Free Software Foundation, Inc
 
@@ -38,6 +38,9 @@
 (require 'phpinspect-index)
 (require 'phpinspect-class)
 (require 'phpinspect-worker)
+(require 'phpinspect-autoload)
+(require 'phpinspect-imports)
+(require 'phpinspect-buffer)
 
 (defvar-local phpinspect--buffer-index nil
   "The result of the last successfull parse + index action
@@ -66,16 +69,6 @@ phpinspect")
 
 (defvar phpinspect-eldoc-word-width 14
   "The maximum width of words in eldoc strings.")
-
-(defvar phpinspect-index-executable
-  (concat (file-name-directory
-           (or load-file-name
-               buffer-file-name))
-          "/phpinspect-index.bash")
-  "The path to the exexutable file that indexes class file names.
-Should normally be set to \"phpinspect-index.bash\" in the source
-  file directory.")
-
 
 (cl-defstruct (phpinspect--completion
                (:constructor phpinspect--construct-completion))
@@ -708,7 +701,7 @@ more recent"
 
 (defun phpinspect--init-mode ()
   "Initialize the phpinspect minor mode for the current buffer."
-
+  (setq phpinspect-current-buffer (phpinspect-make-buffer :buffer (current-buffer)))
   (make-local-variable 'company-backends)
   (add-to-list 'company-backends #'phpinspect-company-backend)
 
@@ -755,6 +748,7 @@ users will have to use \\[phpinspect-purge-cache]."
 
 (defun phpinspect--disable-mode ()
   "Clean up the buffer environment for the mode to be disabled."
+  (setq phpinspect-current-buffer nil)
   (kill-local-variable 'phpinspect--buffer-project)
   (kill-local-variable 'phpinspect--buffer-index)
   (kill-local-variable 'company-backends)
@@ -784,8 +778,8 @@ For finding/opening class files see
  `phpinspect-find-class-file' (bound to \\[phpinspect-find-class-file]).
 
 To automatically add missing use statements for used classes to a
-visited file, use `phpinspect-fix-uses-interactive'
-(bound to \\[phpinspect-fix-uses-interactive]].)
+visited file, use `phpinspect-fix-imports'
+(bound to \\[phpinspect-fix-imports]].)
 
 Example configuration:
 
@@ -806,7 +800,7 @@ Example configuration:
     (setq-local company-backends '(phpinspect-company-backend))
 
     ;; Shortcut to add use statements for classes you use.
-    (define-key php-mode-map (kbd \"C-c u\") 'phpinspect-fix-uses-interactive)
+    (define-key php-mode-map (kbd \"C-c u\") 'phpinspect-fix-imports)
 
     ;; Shortcuts to quickly search/open files of PHP classes.
     ;; You can make these local to php-mode, but making them global
@@ -1094,6 +1088,13 @@ If its value is nil, it is created and then returned."
 This effectively purges any cached code information from all
 currently opened projects."
   (interactive)
+  (when phpinspect-cache
+    ;; Allow currently known cached projects to cleanup after themselves
+    (maphash (lambda (_ project)
+               (phpinspect--project-purge project))
+             (phpinspect--cache-projects phpinspect-cache)))
+
+  ;; Assign a fresh cache object
   (setq phpinspect-cache (phpinspect--make-cache)))
 
 (defun phpinspect--locate-dominating-project-file (start-file)
@@ -1146,69 +1147,26 @@ level of START-FILE in stead of `default-directory`."
 	     (json-key-type 'string))
      ,@body))
 
-;; Use statements
-;;;###autoload
-(defun phpinspect-fix-uses-interactive ()
-  "Add missing use statements to the currently visited PHP file."
-  (interactive)
-  (let ((project-root (phpinspect-project-root)))
-    (when project-root
-      (save-buffer)
-      (let* ((phpinspect-json (shell-command-to-string
-			                   (format "cd %s && %s fxu --json %s"
-				                       (shell-quote-argument project-root)
-                                       (shell-quote-argument phpinspect-index-executable)
-				                       (shell-quote-argument buffer-file-name)))))
-	    (let* ((json-object-type 'hash-table)
-		       (json-array-type 'list)
-		       (json-key-type 'string)
-		       (phpinspect-json-data (json-read-from-string phpinspect-json)))
-	      (maphash #'phpinspect-handle-phpinspect-json phpinspect-json-data))))))
-
-(defun phpinspect-handle-phpinspect-json (class-name candidates)
-  "Handle key value pair of classname and FQN's"
-  (let ((ncandidates (length candidates)))
-    (cond ((= 1 ncandidates)
-           (phpinspect-add-use (pop candidates)))
-          ((= 0 ncandidates)
-           (message "No use statement found for class \"%s\"" class-name))
-          (t
-           (phpinspect-add-use (completing-read "Class: " candidates))))))
-
-;; TODO: Implement this using the parser in stead of regexes.
-(defun phpinspect-add-use (fqn) "Add use statement to a php file"
-       (save-excursion
-         (let ((current-char (point)))
-	   (goto-char (point-min))
-	   (cond
-	    ((re-search-forward "^use" nil t) (forward-line 1))
-	    ((re-search-forward "^namespace" nil t) (forward-line 2))
-	    ((re-search-forward
-	      "^\\(abstract \\|/\\* final \\*/ ?\\|final \\|\\)\\(class\\|trait\\|interface\\)"
-              nil )
-	     (forward-line -1)
-	     (phpinspect-goto-first-line-no-comment-up)))
-
-	   (insert (format "use %s;%c" fqn ?\n))
-	   (goto-char current-char))))
-
-(defun phpinspect-goto-first-line-no-comment-up ()
-  "Go up until a line is encountered that does not start with a comment."
-  (when (string-match "^\\( ?\\*\\|/\\)" (thing-at-point 'line t))
-	(forward-line -1)
-	(phpinspect-goto-first-line-no-comment-up)))
-
 (defsubst phpinspect-insert-file-contents (&rest args)
   "Call `phpinspect-insert-file-contents-function' with ARGS as arguments."
   (apply phpinspect-insert-file-contents-function args))
 
-(defun phpinspect-get-all-fqns (&optional fqn-file)
-  (unless fqn-file
-    (setq fqn-file "uses"))
-  (with-temp-buffer
-    (phpinspect-insert-file-contents
-     (concat (phpinspect-project-root) "/.cache/phpinspect/" fqn-file))
-    (split-string (buffer-string) (char-to-string ?\n))))
+(defun phpinspect-get-all-fqns (&optional filter)
+  "Return a list of all FQNS congruent with FILTER in the currently active project.
+
+FILTER must be nil or the symbol 'own' if FILTER is 'own', only
+fully qualified names from the project's source, and not its
+dependencies, are returned."
+  (let* ((project (phpinspect--cache-get-project-create
+                   (phpinspect--get-or-create-global-cache)
+                   (phpinspect-project-root)))
+         (autoloader (phpinspect--project-autoload project)))
+    (let ((fqns))
+      (maphash (lambda (type _) (push (symbol-name type) fqns))
+               (if (eq 'own filter)
+                   (phpinspect-autoloader-own-types autoloader)
+                 (phpinspect-autoloader-types autoloader)))
+      fqns)))
 
 ;;;###autoload
 (defun phpinspect-find-class-file (fqn)
@@ -1230,7 +1188,7 @@ available FQNs for classes in the current project, which aren't
 located in \"vendor\" folder."
   (interactive (list (phpinspect--make-type
                       :name
-                      (completing-read "Class: " (phpinspect-get-all-fqns "uses_own")))))
+                      (completing-read "Class: " (phpinspect-get-all-fqns 'own)))))
   (find-file (phpinspect-type-filepath fqn)))
 
 (defsubst phpinspect-type-filepath (fqn)
@@ -1242,35 +1200,22 @@ located in \"vendor\" folder."
 
 when INDEX-NEW is non-nil, new files are added to the index
 before the search is executed."
-  (when (eq index-new 'index-new)
-    (with-temp-buffer
-      (call-process phpinspect-index-executable nil (current-buffer) nil "index" "--new")))
-  (let* ((default-directory (phpinspect-project-root))
-         (result (with-temp-buffer
-                   (phpinspect--log "dir: %s" default-directory)
-                   (phpinspect--log "class: %s" (string-remove-prefix
-                                                 "\\"
-                                                 (phpinspect--type-name class)))
-                   (list (call-process phpinspect-index-executable
-                                       nil
-                                       (current-buffer)
-                                       nil
-                                       "fp" (string-remove-prefix
-                                             "\\"
-                                             (phpinspect--type-name class)))
-                           (buffer-string)))))
-    (if (not (= (car result) 0))
-        (progn
-          (phpinspect--log "Got non-zero return value %d Retrying with reindex. output: \"%s\""
-                           (car result)
-                           (cadr result))
+  (let* ((project (phpinspect--cache-get-project-create
+                   (phpinspect--get-or-create-global-cache)
+                   (phpinspect-project-root)))
+         (autoloader (phpinspect--project-autoload project)))
+    (when (eq index-new 'index-new)
+      (phpinspect-autoloader-refresh autoloader))
+    (let* ((result (phpinspect-autoloader-resolve autoloader (phpinspect--type-name-symbol class))))
+      (if (not result)
           ;; Index new files and try again if not done already.
           (if (eq index-new 'index-new)
               nil
-            (phpinspect-get-class-filepath class 'index-new)))
-      (concat (string-remove-suffix "/" default-directory)
-              "/"
-              (string-remove-prefix "/" (string-trim (cadr result)))))))
+            (progn
+              (phpinspect--log "Failed finding filepath for type %s. Retrying with reindex."
+                               (phpinspect--type-name class))
+              (phpinspect-get-class-filepath class 'index-new)))
+        result))))
 
 (defun phpinspect-unique-strings (strings)
   (seq-filter
@@ -1283,22 +1228,17 @@ before the search is executed."
    strings))
 
 (defun phpinspect-index-current-project ()
-  "Index all available FQNs in the current project.
-
-Index is stored in files in the .cache directory of
-the project root."
+  "Index all available FQNs in the current project."
   (interactive)
-  (let* ((default-directory (phpinspect-project-root)))
-    (with-current-buffer (get-buffer-create "**phpinspect-index**")
-      (goto-char (point-max))
-      (make-process
-       :command `(,phpinspect-index-executable "index")
-       :name "phpinspect-index-current-project"
-       :buffer (current-buffer))
-
-      (display-buffer (current-buffer) `(display-buffer-at-bottom (window-height . 10)))
-      (set-window-point (get-buffer-window (current-buffer) nil)
-                        (point-max)))))
+  (let* ((project (phpinspect--cache-get-project-create
+                  (phpinspect--get-or-create-global-cache)
+                  (phpinspect-project-root)))
+         (autoloader (phpinspect--project-autoload project)))
+    (phpinspect-autoloader-refresh autoloader)
+    (message (concat "Refreshed project autoloader. Found %d types within project,"
+                     " %d types total.")
+             (hash-table-count (phpinspect-autoloader-own-types autoloader))
+             (hash-table-count (phpinspect-autoloader-types autoloader)))))
 
 (defun phpinspect-unique-lines ()
   (let ((unique-lines (phpinspect-unique-strings (split-string (buffer-string) "\n" nil nil))))

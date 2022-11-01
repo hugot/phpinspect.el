@@ -1,4 +1,4 @@
-;;; phpinspect-test.el --- Unit tests for phpinslect.el  -*- lexical-binding: t; -*-
+;;; phpinspect-test.el --- Unit tests for phpinspect.el  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021 Free Software Foundation, Inc.
 
@@ -500,6 +500,10 @@ class Thing
 (load-file (concat phpinspect-test-directory "/test-worker.el"))
 (load-file (concat phpinspect-test-directory "/test-autoload.el"))
 (load-file (concat phpinspect-test-directory "/test-fs.el"))
+(load-file (concat phpinspect-test-directory "/test-project.el"))
+(load-file (concat phpinspect-test-directory "/test-buffer.el"))
+(load-file (concat phpinspect-test-directory "/test-index.el"))
+
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here
