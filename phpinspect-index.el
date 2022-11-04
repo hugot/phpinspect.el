@@ -217,11 +217,13 @@ function (think \"new\" statements, return types etc.)."
                    (cond (enc-extends
                           (push (funcall type-resolver (phpinspect--make-type
                                                         :name (cadr word)))
-                                extends))
+                                extends)
+                          (push (cadr word) used-types))
                          (enc-implements
                           (push (funcall type-resolver (phpinspect--make-type
                                                         :name (cadr word)))
-                                implements))))))))
+                                implements)
+                          (push (cadr word) used-types))))))))
 
     (dolist (token (caddr class))
       (cond ((phpinspect-scope-p token)
@@ -318,7 +320,6 @@ function (think \"new\" statements, return types etc.)."
     (when doc-block
       (setq methods
             (nconc methods (phpinspect--index-method-annotations type-resolver doc-block))))
-
 
     (let ((class-name (funcall type-resolver (phpinspect--make-type :name class-name))))
       `(,class-name .

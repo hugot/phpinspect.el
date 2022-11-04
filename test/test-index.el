@@ -70,7 +70,7 @@
 (ert-deftest phpinspect-index-used-types-in-class ()
   (let* ((result (phpinspect--index-tokens
                   (phpinspect-parse-string
-                   "<?php namespace Field; class Potato {
+                   "<?php namespace Field; class Potato extends Cheese, Bacon implements Ham, Bagel {
 public function makeThing(): Thing
 {
 if ((new Monkey())->tree() === true) {
@@ -82,7 +82,8 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
     (should (equal
              (mapcar #'phpinspect-intern-name
                      (sort
-                      '("Monkey" "ExtendedThing" "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing")
+                      '("Cheese" "Bacon" "Ham" "Bagel" "Monkey" "ExtendedThing"
+                        "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing")
                       #'string<))
              (sort used-types (lambda (s1 s2) (string< (symbol-name s1) (symbol-name s2))))))))
 
