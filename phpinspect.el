@@ -42,6 +42,11 @@
 (require 'phpinspect-imports)
 (require 'phpinspect-buffer)
 
+(defvar phpinspect-auto-reindex nil
+  "Whether or not phpinspect should automatically search for new
+files. The current implementation is clumsy and can result in
+serious performance hits. Enable at your own risk (:")
+
 (defvar-local phpinspect--buffer-index nil
   "The result of the last successfull parse + index action
   executed by phpinspect for the current buffer")
@@ -1211,7 +1216,7 @@ before the search is executed."
           ;; Index new files and try again if not done already.
           (if (eq index-new 'index-new)
               nil
-            (progn
+            (when phpinspect-auto-reindex
               (phpinspect--log "Failed finding filepath for type %s. Retrying with reindex."
                                (phpinspect--type-name class))
               (phpinspect-get-class-filepath class 'index-new)))
