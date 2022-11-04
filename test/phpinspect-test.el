@@ -242,47 +242,6 @@
                                (funcall type-resolver (phpinspect--make-type
                                                        :name "Dupuis\\GastonLagaffe"))))))
 
-(ert-deftest phpinspect-index-static-methods ()
-  (let* ((class-tokens
-          `(:root
-            (:class
-             (:declaration (:word "class") (:word "Potato"))
-             (:block
-              (:static
-               (:function (:declaration (:word "function")
-                                        (:word "staticMethod")
-                                        (:list (:variable "untyped")
-                                               (:comma)
-                                               (:word "array")
-                                               (:variable "things")))
-                          (:block)))))))
-         (index (phpinspect--index-tokens class-tokens))
-         (expected-index
-          `(phpinspect--root-index
-            (imports)
-            (classes
-             (,(phpinspect--make-type :name"\\Potato" :fully-qualified t)
-              phpinspect--indexed-class
-              (class-name . ,(phpinspect--make-type :name "\\Potato" :fully-qualified t))
-              (imports)
-              (methods)
-              (static-methods . (,(phpinspect--make-function
-                                   :name "staticMethod"
-                                   :scope '(:public)
-                                   :arguments `(("untyped" nil)
-                                                ("things" ,(phpinspect--make-type :name "\\array"
-                                                                                  :fully-qualified t)))
-                                   :return-type phpinspect--null-type)))
-              (static-variables)
-              (variables)
-              (constants)
-              (extends)
-              (implements)))
-            (functions))))
-    ;; (pp expected-index)
-    ;; (pp index))
-    (should (equal expected-index index))))
-
 (ert-deftest phpinspect-resolve-type-from-context ()
   (let* ((token-tree (phpinspect-parse-string "
 namespace Amazing;

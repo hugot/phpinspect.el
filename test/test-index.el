@@ -101,3 +101,45 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
     (dolist (set blocks)
       (let ((result (phpinspect--find-used-types-in-tokens (car set))))
         (should (equal (cadr set) result))))))
+
+(ert-deftest phpinspect-index-method-annotations ()
+  (let* ((result (phpinspect--index-tokens
+                  (phpinspect-parse-string
+                   "<?php
+
+/* @method int peel(bool $fast, array $loose)
+                           * @method Banana duplicate()
+                            @method hold() **/
+                           class Banana {}")))
+         (class (car (alist-get 'classes result)))
+         (methods (alist-get 'methods class)))
+    (should (= 3 (length methods)))
+    (dolist (method methods)
+      (should (member (phpinspect--function-name method)
+                      '("duplicate" "hold" "peel")))
+
+      (cond ((string= (phpinspect--function-name method)
+                      "duplicate")
+             (should (phpinspect--type=
+                      (phpinspect--make-type :name "\\Banana" :fully-qualified t)
+                      (phpinspect--function-return-type method))))
+            ((string= (phpinspect--function-name method)
+                      "peel")
+             (should (phpinspect--type=
+                      (phpinspect--make-type :name "\\int" :fully-qualified t)
+                      (phpinspect--function-return-type method)))
+
+             (should (= 2 (length (phpinspect--function-arguments method))))
+             (should (phpinspect--type=
+                      (phpinspect--make-type :name "\\array" :fully-qualified t)
+                      (car (alist-get
+                            "loose" (phpinspect--function-arguments method) nil nil #'string=))))
+             (should (phpinspect--type=
+                      (phpinspect--make-type :name "\\bool" :fully-qualified t)
+                      (car (alist-get
+                            "fast" (phpinspect--function-arguments method) nil nil #'string=)))))
+            ((string= (phpinspect--function-name method)
+                      "hold")
+             (should (phpinspect--type=
+                      (phpinspect--make-type :name "\\void" :fully-qualified t)
+                      (phpinspect--function-return-type method))))))))

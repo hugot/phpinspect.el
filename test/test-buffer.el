@@ -49,11 +49,11 @@ populated when the variable is set and the data in it is accurate."
       (should class-region)
       (should classname-region)
       ;; Character position of the start of the class token.
-      (should (= 417 (phpinspect-region-start class-region)))
-      (should (= 2173 (phpinspect-region-end class-region)))
+      (should (= 611 (phpinspect-region-start class-region)))
+      (should (= 2367 (phpinspect-region-end class-region)))
 
-      (should (= 423 (phpinspect-region-start classname-region)))
-      (should (= 440 (phpinspect-region-end classname-region))))))
+      (should (= 617 (phpinspect-region-start classname-region)))
+      (should (= 634 (phpinspect-region-end classname-region))))))
 
 (ert-deftest phpinspect-parse-buffer-no-current ()
   "Confirm that the parser is still functional with

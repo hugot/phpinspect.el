@@ -36,12 +36,6 @@
          (cadr scope))
         (t nil)))
 
-(defun phpinspect-var-annotation-p (token)
-  (phpinspect-token-type-p token :var-annotation))
-
-(defun phpinspect-return-annotation-p (token)
-  (phpinspect-token-type-p token :return-annotation))
-
 (defun phpinspect--index-function-arg-list (type-resolver arg-list &optional add-used-types)
   (let ((arg-index)
         (current-token)
@@ -154,7 +148,36 @@ function (think \"new\" statements, return types etc.)."
                             (cadr class-token))))
     (cadr subtoken)))
 
-(defun phpinspect--index-class (imports type-resolver location-resolver class)
+
+(defsubst phpinspect--index-method-annotations (type-resolver comment)
+  (let ((annotations (seq-filter #'phpinspect-method-annotation-p comment))
+        (methods))
+    (dolist (annotation annotations)
+      (let ((return-type) (name) (arg-list))
+        (when (> (length annotation) 2)
+          (cond ((and (phpinspect-word-p (nth 1 annotation))
+                      (phpinspect-word-p (nth 2 annotation))
+                      (phpinspect-list-p (nth 3 annotation)))
+                 (setq return-type (cadr (nth 1 annotation)))
+                 (setq name (cadr (nth 2 annotation)))
+                 (setq arg-list (nth 3 annotation)))
+                ((and (phpinspect-word-p (nth 1 annotation))
+                      (phpinspect-list-p (nth 2 annotation)))
+                 (setq return-type "void")
+                 (setq name (cadr (nth 1 annotation)))
+                 (setq arg-list (nth 2 annotation))))
+
+          (when name
+            (push (phpinspect--make-function
+                   :scope '(:public)
+                   :name name
+                   :return-type (funcall type-resolver (phpinspect--make-type :name return-type))
+                   :arguments (phpinspect--index-function-arg-list type-resolver arg-list))
+                  methods)))))
+    methods))
+
+
+(defun phpinspect--index-class (imports type-resolver location-resolver class &optional doc-block)
   "Create an alist with relevant attributes of a parsed class."
   (phpinspect--log "INDEXING CLASS")
   (let ((methods)
@@ -291,6 +314,12 @@ function (think \"new\" statements, return types etc.)."
                   (setf (phpinspect--variable-type variable)
                         (funcall type-resolver constructor-parameter-type))))))))
 
+    ;; Add method annotations to methods
+    (when doc-block
+      (setq methods
+            (nconc methods (phpinspect--index-method-annotations type-resolver doc-block))))
+
+
     (let ((class-name (funcall type-resolver (phpinspect--make-type :name class-name))))
       `(,class-name .
                     (phpinspect--indexed-class
@@ -314,20 +343,23 @@ Accounts for namespaces that are defined with '{}' blocks."
       (cdaddr namespace)
     (cdr namespace)))
 
-(defun phpinspect--index-classes
-    (imports classes type-resolver-factory location-resolver &optional namespace indexed)
-  "Index the class tokens in `classes`, using the imports in `imports`
-as Fully Qualified names. `namespace` will be assumed the root
-namespace if not provided"
-  (if classes
-      (let ((class (pop classes)))
-        (push (phpinspect--index-class
-               imports (funcall type-resolver-factory imports class namespace)
-               location-resolver class)
-              indexed)
-        (phpinspect--index-classes imports classes type-resolver-factory
-                                   location-resolver namespace indexed))
-    (nreverse indexed)))
+(defun phpinspect--index-classes-in-tokens
+    (imports tokens type-resolver-factory location-resolver &optional namespace indexed)
+  "Index the class tokens among TOKENS.
+
+NAMESPACE will be assumed the root namespace if not provided"
+  (let ((comment-before)
+        (indexed))
+    (dolist (token tokens)
+      (cond ((phpinspect-doc-block-p token)
+             (setq comment-before token))
+            ((phpinspect-class-p token)
+             (push (phpinspect--index-class
+                    imports (funcall type-resolver-factory imports token namespace)
+                    location-resolver token comment-before)
+                   indexed)
+             (setq comment-before nil))))
+    indexed))
 
 (defun phpinspect--use-to-type (use)
   (let* ((fqn (cadr (cadr use)))
@@ -346,9 +378,9 @@ namespace if not provided"
   (mapcar #'phpinspect--use-to-type uses))
 
 (defun phpinspect--index-namespace (namespace type-resolver-factory location-resolver)
-  (phpinspect--index-classes
+  (phpinspect--index-classes-in-tokens
    (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p namespace))
-   (seq-filter #'phpinspect-class-p namespace)
+   namespace
    type-resolver-factory location-resolver (cadadr namespace) nil))
 
 (defun phpinspect--index-namespaces
@@ -414,11 +446,8 @@ Return value is a list of the types that are \"newed\"."
                 (phpinspect--index-namespaces (seq-filter #'phpinspect-namespace-p tokens)
                                               type-resolver-factory
                                               location-resolver)
-                (phpinspect--index-classes
-                 imports
-                 (seq-filter #'phpinspect-class-p tokens)
-                 type-resolver-factory
-                 location-resolver)))
+                (phpinspect--index-classes-in-tokens
+                 imports tokens type-resolver-factory location-resolver)))
       ,(append '(used-types)
                (phpinspect--find-used-types-in-tokens tokens))
       (functions))

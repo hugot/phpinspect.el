@@ -13,7 +13,15 @@ use Twig\Environment;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Annotation\Route;
 
-class AddressController
+/**
+ * @method int holdUp(Something $thing)
+ * gaerfawe awjfawijef;aw';ajef0()Eawea
+ *
+ * @method Potato holdUp(OtherThing $thing)
+ * (afwa fae $eafw)
+ * @method noReturnType(Thing $thing)
+ */
+ class AddressController
 {
     const A_CONSTANT_FOR_THE_SAKE_OF_HAVING_ONE = 'a value';
     public const ARRAY_CONSTANT = [

@@ -173,6 +173,18 @@ Type can be any of the token types returned by
   "Get the argument list of a function"
   (seq-find #'phpinspect-list-p (seq-find #'phpinspect-declaration-p php-func nil) nil))
 
+(defun phpinspect-annotation-p (token)
+  (phpinspect-token-type-p token :annotation))
+
+(defun phpinspect-method-annotation-p (token)
+  (phpinspect-token-type-p token :method-annotation))
+
+(defun phpinspect-var-annotation-p (token)
+  (phpinspect-token-type-p token :var-annotation))
+
+(defun phpinspect-return-annotation-p (token)
+  (phpinspect-token-type-p token :return-annotation))
+
 (defsubst phpinspect-variable-p (token)
   (phpinspect-token-type-p token :variable))
 
@@ -429,16 +441,23 @@ token is \";\", which marks the end of a statement in PHP."
 
 (defsubst phpinspect--parse-annotation-parameters (parameter-amount)
   (let* ((words)
+         (list-handler (phpinspect-handler 'list))
+         (list-regexp (phpinspect-handler-regexp 'list))
          (word-handler (phpinspect-handler 'word))
          (word-regexp (phpinspect-handler-regexp 'word))
          (variable-handler (phpinspect-handler 'variable))
-         (variable-regexp (phpinspect-handler-regexp 'variable)))
-    (while (not (or (looking-at "\\*/") (= (length words) parameter-amount)))
-      (forward-char)
-      (cond ((looking-at word-regexp)
+         (variable-regexp (phpinspect-handler-regexp 'variable))
+         (annotation-regexp (phpinspect-handler-regexp 'annotation)))
+    (while (not (or (looking-at annotation-regexp)
+                    (= (point) (point-max))
+                    (= (length words) parameter-amount)))
+      (cond ((looking-at list-regexp)
+             (push (funcall list-handler (match-string 0) (point-max)) words))
+            ((looking-at word-regexp)
              (push (funcall word-handler (match-string 0)) words))
             ((looking-at variable-regexp)
-             (push (funcall variable-handler (match-string 0)) words))))
+             (push (funcall variable-handler (match-string 0)) words))
+            (t (forward-char))))
     (nreverse words)))
 
 (phpinspect-defhandler annotation (start-token &rest _ignored)
@@ -463,6 +482,9 @@ token is \";\", which marks the end of a statement in PHP."
                  ;; The type of the param, and the param's $name
                  (append (list :param-annotation)
                          (phpinspect--parse-annotation-parameters 2)))
+              ((string= annotation-name "method")
+               (append (list :method-annotation)
+                       (phpinspect--parse-annotation-parameters 3)))
               (t
                (list :annotation annotation-name))))
     (list :annotation nil)))
@@ -481,11 +503,21 @@ token is \";\", which marks the end of a statement in PHP."
   (forward-char (length start-token))
 
   (cond ((string-match "/\\*" start-token)
-         (let* ((continue-condition (lambda () (not (looking-at "\\*/"))))
+         (let* ((region-start (point))
+                ;; Move to the end of the comment region
+                (region-end
+                 (progn
+                   (while (not (or (= max-point (point)) (looking-at "\\*/")))
+                     (forward-char))
+                   (point)))
+                (comment-contents (buffer-substring region-start region-end))
                 (parser (phpinspect-get-parser-create
                          :doc-block
                          '(annotation whitespace)))
-                (doc-block (funcall parser (current-buffer) max-point continue-condition)))
+                (doc-block (with-temp-buffer
+                             (insert comment-contents)
+                             (goto-char (point-min))
+                             (funcall parser (current-buffer) (point-max)))))
            (forward-char 2)
            doc-block))
         (t
