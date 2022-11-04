@@ -143,10 +143,6 @@ indexed by the absolute paths of the files they're watching."))
     (puthash class-name class (phpinspect--project-class-index project))
     (phpinspect--project-add-class-attribute-types-to-index-queue project class)))
 
-(cl-defgeneric phpinspect--project-get-class
-    ((project phpinspect--project) (class-fqn phpinspect--type))
-  "Get indexed class by name of CLASS-FQN stored in PROJECT.")
-
 (cl-defmethod phpinspect--project-set-class
   ((project phpinspect--project) (class-fqn phpinspect--type) (class phpinspect--class))
   (puthash (phpinspect--type-name-symbol class-fqn)
@@ -171,6 +167,7 @@ indexed by the absolute paths of the files they're watching."))
 
 (cl-defmethod phpinspect--project-get-class
   ((project phpinspect--project) (class-fqn phpinspect--type))
+  "Get indexed class by name of CLASS-FQN stored in PROJECT."
   (gethash (phpinspect--type-name-symbol class-fqn)
            (phpinspect--project-class-index project)))
 

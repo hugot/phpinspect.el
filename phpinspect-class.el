@@ -145,32 +145,26 @@
       (phpinspect--function-return-type method))))
 
 (cl-defmethod phpinspect--class-get-method-list ((class phpinspect--class))
-  (let ((methods))
-    (maphash (lambda (key method)
-               (push method methods))
-             (phpinspect--class-methods class))
-    methods))
+  (hash-table-values (phpinspect--class-methods class)))
 
 (cl-defmethod phpinspect--class-get-static-method-list ((class phpinspect--class))
-  (let ((methods))
-    (maphash (lambda (key method)
-               (push method methods))
-             (phpinspect--class-static-methods class))
-    methods))
+  (hash-table-values (phpinspect--class-static-methods class)))
+
 
 (cl-defmethod phpinspect--merge-method ((class-name phpinspect--type)
                                         (existing phpinspect--function)
                                         (method phpinspect--function))
   (let ((new-return-type (phpinspect--resolve-late-static-binding
-                          class-name
-                          (phpinspect--function-return-type method))))
+                          (phpinspect--function-return-type method)
+                          class-name)))
     (unless (phpinspect--type= new-return-type phpinspect--null-type)
       (phpinspect--log "method return type %s" (phpinspect--function-return-type method))
       (setf (phpinspect--function-return-type existing)
             new-return-type))
 
     (setf (phpinspect--function-arguments existing)
-          (phpinspect--function-arguments method))))
+          (phpinspect--function-arguments method)))
+  existing)
 
 (cl-defmethod phpinspect--class-update-static-method ((class phpinspect--class)
                                                       (method phpinspect--function))
@@ -194,12 +188,12 @@
 
 (cl-defmethod phpinspect--class-incorporate ((class phpinspect--class)
                                              (other-class phpinspect--class))
-  (let ((class-index (phpinspect--class-index other-class)))
-    (dolist (method (alist-get 'methods class-index))
-      (phpinspect--class-update-method class method))
 
-    (dolist (method (alist-get 'static-methods class-index))
-      (phpinspect--class-update-static-method class method))))
+  (dolist (method (phpinspect--class-get-method-list other-class))
+    (phpinspect--class-update-method class method))
+
+    (dolist (method (phpinspect--class-get-static-method-list other-class))
+      (phpinspect--class-update-static-method class method)))
 
 
 
