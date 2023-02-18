@@ -82,6 +82,28 @@
       (should (phpinspect--type= (phpinspect--make-type :name "\\DateTime")
                                  result)))))
 
+(ert-deftest phpinspect-get-pattern-type-in-block ()
+  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $this->potato = $foo;"))
+         (context (phpinspect--get-resolvecontext tokens))
+         (project-root "could never be a real project root")
+         (phpinspect-project-root-function
+          (lambda (&rest _ignored) project-root))
+         (project (phpinspect--make-project
+                              :fs (phpinspect-make-virtual-fs)
+                              :root project-root
+                              :worker (phpinspect-make-worker))))
+
+    (puthash project-root project (phpinspect--cache-projects phpinspect-cache))
+
+    (let ((result (phpinspect-get-pattern-type-in-block
+                   context (phpinspect--make-pattern :m `(:variable "this")
+                                                     :m `(:object-attrib (:word "potato")))
+                   (phpinspect-function-block
+                    (car (phpinspect--resolvecontext-enclosing-tokens context)))
+                   (phpinspect--make-type-resolver-for-resolvecontext context))))
+      (should (phpinspect--type= (phpinspect--make-type :name "\\DateTime")
+                                 result)))))
+
 (ert-deftest phpinspect-get-variable-type-in-block-array-access ()
   (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0];"))
          (context (phpinspect--get-resolvecontext tokens))
