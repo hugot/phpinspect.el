@@ -105,7 +105,7 @@
                                  result)))))
 
 (ert-deftest phpinspect-get-variable-type-in-block-array-access ()
-  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0];"))
+  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0];"))
          (context (phpinspect--get-resolvecontext tokens))
          (project-root "could never be a real project root")
          (phpinspect-project-root-function
@@ -118,13 +118,22 @@
     (puthash project-root project (phpinspect--cache-projects phpinspect-cache))
 
     (let* ((function-token (car (phpinspect--resolvecontext-enclosing-tokens context)))
-            (result (phpinspect-get-variable-type-in-block
-                   context "bar"
-                   (phpinspect-function-block function-token)
-                   (phpinspect--make-type-resolver-for-resolvecontext context)
-                   (phpinspect-function-argument-list function-token))))
+           (result1 (phpinspect-get-variable-type-in-block
+                     context "bar"
+                     (phpinspect-function-block function-token)
+                     (phpinspect--make-type-resolver-for-resolvecontext context)
+                     (phpinspect-function-argument-list function-token)))
+           (result2 (phpinspect-get-variable-type-in-block
+                     context "bark"
+                     (phpinspect-function-block function-token)
+                     (phpinspect--make-type-resolver-for-resolvecontext context)
+                     (phpinspect-function-argument-list function-token))))
+
       (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
-                                 result)))))
+                                 result1))
+      (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
+                                 result2)))))
+
 
 (ert-deftest phpinspect-get-variable-type-in-block-array-foreach ()
   (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; foreach ($foo as $bar) {$bar->"))

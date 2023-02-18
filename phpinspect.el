@@ -659,17 +659,8 @@ resolve types of function argument variables."
                resolvecontext concat-pattern php-block
                type-resolver function-arg-list))))
 
-    ;; Detect array access
-    (if (and last-assignment-value result
-             (< 1 (length last-assignment-value))
-             (phpinspect-array-p (car (last last-assignment-value))))
-        (progn
-          (phpinspect--log (concat
-                            "Detected array access in last assignment of pattern %s"
-                            ", collection type: %s")
-                           pattern-code result)
-          (phpinspect--type-contains result))
-      result)))
+    ; return
+    result))
 
 
 (defun phpinspect--interpret-expression-type-in-context
@@ -708,7 +699,10 @@ EXPRESSION."
          (funcall
           type-resolver (phpinspect--make-type :name (cadadr expression))))
         ((and (> (length expression) 1)
-              (seq-find #'phpinspect-attrib-p expression))
+              (or (seq-find #'phpinspect-attrib-p expression)
+                  (and (= 2 (length expression))
+                       (phpinspect-variable-p (car expression))
+                       (phpinspect-array-p (car (last expression))))))
          (phpinspect--log "Variable was assigned with a derived statement")
          (phpinspect-get-derived-statement-type-in-block
           resolvecontext expression php-block
