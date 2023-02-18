@@ -173,6 +173,9 @@ Type can be any of the token types returned by
   "Get the argument list of a function"
   (seq-find #'phpinspect-list-p (seq-find #'phpinspect-declaration-p php-func nil) nil))
 
+(defun phpinspect-function-block (token)
+  (cadr token))
+
 (defun phpinspect-annotation-p (token)
   (phpinspect-token-type-p token :annotation))
 
@@ -236,7 +239,8 @@ Type can be any of the token types returned by
   (phpinspect-token-type-p object :use))
 
 (defun phpinspect-comment-p (token)
-  (phpinspect-token-type-p token :comment))
+  (or (phpinspect-token-type-p token :comment)
+      (phpinspect-token-type-p token :doc-block)))
 
 (defsubst phpinspect-class-block (class)
   (caddr class))
@@ -444,7 +448,8 @@ token is \";\", which marks the end of a statement in PHP."
          (list-handler (phpinspect-handler 'list))
          (list-regexp (phpinspect-handler-regexp 'list))
          (word-handler (phpinspect-handler 'word))
-         (word-regexp (phpinspect-handler-regexp 'word))
+         ;; Return annotations may end with "[]" for collections.
+         (word-regexp (concat (phpinspect-handler-regexp 'word) "\\(\\[\\]\\)?"))
          (variable-handler (phpinspect-handler 'variable))
          (variable-regexp (phpinspect-handler-regexp 'variable))
          (annotation-regexp (phpinspect-handler-regexp 'annotation)))
@@ -740,9 +745,15 @@ nature like argument lists"
 ;; TODO: Look into using different names for function and class :declaration tokens. They
 ;; don't necessarily require the same handlers to parse.
 (defsubst phpinspect-get-or-create-declaration-parser ()
-  (phpinspect-get-parser-create :declaration
-                                '(comment word list terminator tag)
-                                #'phpinspect-end-of-token-p))
+  (let ((parser (phpinspect-get-parser-create
+                 :declaration
+                 '(comment word list terminator tag)
+                 #'phpinspect-end-of-token-p)))
+    (lambda (&rest arguments)
+      (let ((result (apply parser arguments)))
+        (if (phpinspect-terminator-p (car (last result)))
+          (butlast result)
+          result)))))
 
 
 (phpinspect-defhandler function-keyword (start-token max-point)

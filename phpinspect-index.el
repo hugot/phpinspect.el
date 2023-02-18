@@ -72,17 +72,17 @@ function (think \"new\" statements, return types etc.)."
 
     ;; @return annotation. When dealing with a collection, we want to store the
     ;; type of its members.
-    (let* ((is-collection
-            (when type
-              (member (phpinspect--type-name type) phpinspect-collection-types)))
-           (return-annotation-type
-            (when (or (phpinspect--should-prefer-return-annotation type) is-collection)
-              (cadadr
-               (seq-find #'phpinspect-return-annotation-p
-                         comment-before)))))
-      (phpinspect--log "found return annotation %s when type is %s"
-                       return-annotation-type
-                       type)
+    (let* ((return-annotation-type
+            (cadadr (seq-find #'phpinspect-return-annotation-p comment-before)))
+           (is-collection
+            (and type
+                 (phpinspect--type-is-collection type))))
+      (phpinspect--log "found return annotation %s in %s when type is %s"
+                       return-annotation-type comment-before type)
+
+      (when (string-suffix-p "[]" return-annotation-type)
+        (setq is-collection t)
+        (setq return-annotation-type (string-trim-right return-annotation-type "\\[\\]")))
 
       (when return-annotation-type
         (cond ((phpinspect--should-prefer-return-annotation type)
@@ -104,8 +104,7 @@ function (think \"new\" statements, return types etc.)."
     (phpinspect--make-function
      :scope `(,(car scope))
      :name (cadadr (cdr declaration))
-     :return-type (if type (funcall type-resolver type)
-                    phpinspect--null-type)
+     :return-type (or type phpinspect--null-type)
      :arguments (phpinspect--index-function-arg-list
                  type-resolver
                  (phpinspect-function-argument-list php-func)

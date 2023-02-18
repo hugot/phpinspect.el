@@ -30,6 +30,7 @@
 ;; data types that are used in tests so that we don't depend on some global
 ;; worker object for tests.
 (phpinspect-ensure-worker)
+(phpinspect-purge-cache)
 
 (defvar phpinspect-test-directory
   (file-name-directory
@@ -59,6 +60,104 @@
 (defun phpinspect-test-parse-fixture-code (name)
   (phpinspect-parse-file
    (concat phpinspect-test-php-file-directory "/" name ".php")))
+
+(ert-deftest phpinspect-get-variable-type-in-block ()
+  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $bar = $foo;"))
+         (context (phpinspect--get-resolvecontext tokens))
+         (project-root "could never be a real project root")
+         (phpinspect-project-root-function
+          (lambda (&rest _ignored) project-root))
+         (project (phpinspect--make-project
+                              :fs (phpinspect-make-virtual-fs)
+                              :root project-root
+                              :worker (phpinspect-make-worker))))
+
+    (puthash project-root project (phpinspect--cache-projects phpinspect-cache))
+
+    (let ((result (phpinspect-get-variable-type-in-block
+                   context "foo"
+                   (phpinspect-function-block
+                    (car (phpinspect--resolvecontext-enclosing-tokens context)))
+                   (phpinspect--make-type-resolver-for-resolvecontext context))))
+      (should (phpinspect--type= (phpinspect--make-type :name "\\DateTime")
+                                 result)))))
+
+(ert-deftest phpinspect-get-variable-type-in-block-array-access ()
+  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0];"))
+         (context (phpinspect--get-resolvecontext tokens))
+         (project-root "could never be a real project root")
+         (phpinspect-project-root-function
+          (lambda (&rest _ignored) project-root))
+         (project (phpinspect--make-project
+                              :fs (phpinspect-make-virtual-fs)
+                              :root project-root
+                              :worker (phpinspect-make-worker))))
+
+    (puthash project-root project (phpinspect--cache-projects phpinspect-cache))
+
+    (let* ((function-token (car (phpinspect--resolvecontext-enclosing-tokens context)))
+            (result (phpinspect-get-variable-type-in-block
+                   context "bar"
+                   (phpinspect-function-block function-token)
+                   (phpinspect--make-type-resolver-for-resolvecontext context)
+                   (phpinspect-function-argument-list function-token))))
+      (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
+                                 result)))))
+
+(ert-deftest phpinspect-get-variable-type-in-block-array-foreach ()
+  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; foreach ($foo as $bar) {$bar->"))
+         (context (phpinspect--get-resolvecontext tokens))
+         (project-root "could never be a real project root")
+         (phpinspect-project-root-function
+          (lambda (&rest _ignored) project-root))
+         (project (phpinspect--make-project
+                   :fs (phpinspect-make-virtual-fs)
+                   :root project-root
+                   :worker (phpinspect-make-worker))))
+
+    (puthash project-root project (phpinspect--cache-projects phpinspect-cache))
+
+    (let* ((function-token (seq-find #'phpinspect-function-p
+                                     (phpinspect--resolvecontext-enclosing-tokens context)))
+           (result (phpinspect-get-variable-type-in-block
+                    context "bar"
+                    (phpinspect-function-block function-token)
+                    (phpinspect--make-type-resolver-for-resolvecontext context)
+                    (phpinspect-function-argument-list function-token))))
+
+      (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
+                                 result)))))
+
+(ert-deftest phpinspect--find-assignments-in-token ()
+  (let* ((tokens (cadr
+                  (phpinspect-parse-string "{ $foo = ['nr 1']; $bar = $nr2; if (true === ($foo = $nr3)) { $foo = $nr4; $notfoo = $nr5; if ([] === ($foo = [ $nr6 ])){ $foo = [ $nr7 ];}}}")))
+         (expected '(((:variable "foo")
+                      (:assignment "=")
+                      (:array
+                       (:variable "nr7")))
+                     ((:variable "foo")
+                      (:assignment "=")
+                      (:array
+                       (:variable "nr6")))
+                     ((:variable "notfoo")
+                      (:assignment "=")
+                      (:variable "nr5"))
+                     ((:variable "foo")
+                      (:assignment "=")
+                      (:variable "nr4"))
+                     ((:variable "foo")
+                      (:assignment "=")
+                      (:variable "nr3"))
+                     ((:variable "bar")
+                      (:assignment "=")
+                      (:variable "nr2"))
+                     ((:variable "foo")
+                      (:assignment "=")
+                      (:array
+                       (:string "nr 1")))))
+         (assignments (phpinspect--find-assignments-in-token tokens)))
+
+    (should (equal expected assignments))))
 
 (ert-deftest phpinspect-parse-namespaced-class ()
   "Test phpinspect-parse on a namespaced class"
@@ -456,6 +555,29 @@ class Thing
                      (phpinspect--get-last-statement-in-token
                       (phpinspect-parse-string php-code-bare))))))
 
+(ert-deftest phpinspect--find-assignments-by-predicate ()
+  (let* ((token '(:block
+                  (:variable "bam") (:object-attrib "boom") (:assignment "=")
+                  (:variable "beng") (:terminator)
+                  (:variable "notbam") (:word "nonsense") (:assignment "=") (:string) (:terminator)
+                  (:variable "bam") (:comment) (:object-attrib "boom") (:assignment "=")
+                  (:variable "wat") (:object-attrib "call") (:terminator)))
+         (result (phpinspect--find-assignments-by-predicate
+                  token
+                  (phpinspect--match-sequence-lambda :m `(:variable "bam") :m `(:object-attrib "boom")))))
+
+    (should (= 2 (length result)))
+    (dolist (assignment result)
+      (should (equal '((:variable "bam") (:object-attrib "boom"))
+                     (phpinspect--assignment-to assignment))))
+
+    (should (equal '((:variable "beng"))
+                   (phpinspect--assignment-from (cadr result))))
+
+    (should (equal '((:variable "wat") (:object-attrib "call"))
+                   (phpinspect--assignment-from (car result))))))
+
+
 (load-file (concat phpinspect-test-directory "/test-worker.el"))
 (load-file (concat phpinspect-test-directory "/test-autoload.el"))
 (load-file (concat phpinspect-test-directory "/test-fs.el"))
@@ -464,7 +586,7 @@ class Thing
 (load-file (concat phpinspect-test-directory "/test-index.el"))
 (load-file (concat phpinspect-test-directory "/test-class.el"))
 (load-file (concat phpinspect-test-directory "/test-type.el"))
-
+(load-file (concat phpinspect-test-directory "/test-util.el"))
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here

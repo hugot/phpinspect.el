@@ -26,7 +26,8 @@
 (require 'phpinspect-util)
 
 (cl-defstruct (phpinspect--type
-               (:constructor phpinspect--make-type-generated))
+               (:constructor phpinspect--make-type-generated)
+               (:copier phpinspect--copy-type))
   "Represents an instance of a PHP type in the phpinspect syntax tree."
   (name-symbol nil
                :type symbol
@@ -97,6 +98,13 @@ See https://wiki.php.net/rfc/static_return_type ."
       (when (phpinspect--type= type native)
         (throw 'found t)))))
 
+(defsubst phpinspect--type-is-collection (type)
+  (catch 'found
+    (dolist (collection phpinspect-collection-types)
+      (when (phpinspect--type= type collection)
+        (throw 'found t)))))
+
+
 (cl-defmethod phpinspect--type-name ((type phpinspect--type))
   (symbol-name (phpinspect--type-name-symbol type)))
 
@@ -142,6 +150,8 @@ NAMESPACE may be nil, or a string with a namespace FQN."
      type
      (phpinspect--resolve-type-name types namespace (phpinspect--type-name type)))
     (setf (phpinspect--type-fully-qualified type) t))
+  (when (phpinspect--type-is-collection type)
+    (setf (phpinspect--type-collection type) t))
   type)
 
 (defun phpinspect--make-type-resolver (types &optional token-tree namespace)

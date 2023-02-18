@@ -41,14 +41,11 @@ as keys and project caches as values."))
   ((cache phpinspect--cache) (project-root string))
   (gethash project-root (phpinspect--cache-projects cache)))
 
-(cl-defgeneric phpinspect--cache-get-project-create
-    ((cache phpinspect--cache) (project-root string))
-  "Get a project that is located in PROJECT-ROOT from CACHE.
-If no such project exists in the cache yet, it is created and
-then returned.")
-
 (cl-defmethod phpinspect--cache-get-project-create
   ((cache phpinspect--cache) (project-root string))
+    "Get a project that is located in PROJECT-ROOT from CACHE.
+If no such project exists in the cache yet, it is created and
+then returned."
   (let ((project (phpinspect--cache-getproject cache project-root)))
     (unless project
       (setq project (puthash project-root

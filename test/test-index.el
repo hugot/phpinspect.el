@@ -55,6 +55,7 @@
                                    :scope '(:public)
                                    :arguments `(("untyped" nil)
                                                 ("things" ,(phpinspect--make-type :name "\\array"
+                                                                                  :collection t
                                                                                   :fully-qualified t)))
                                    :return-type phpinspect--null-type)))
               (static-variables)

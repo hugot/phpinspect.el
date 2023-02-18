@@ -63,4 +63,12 @@ class AuthToken
     {
         return $this->creation_time;
     }
+
+    /**
+     * @return DateTime[]
+     */
+    public function arrayReturn(): array
+    {
+        return [ new \DateTime() ];
+    }
 }
