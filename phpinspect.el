@@ -604,41 +604,6 @@ resolve types of function argument variables."
     (phpinspect-get-pattern-type-in-block
      resolvecontext (phpinspect--make-pattern :m `(:variable ,variable-name))
      php-block type-resolver function-arg-list)))
-    ;; else
-    ;; (let* ((assignments
-    ;;         (phpinspect--find-assignments-by-predicate
-    ;;          php-block (phpinspect--match-sequence-lambda
-    ;;                     :m `(:variable ,variable-name))))
-    ;;        (last-assignment (when assignments (car (last assignments))))
-    ;;        (last-assignment-value (when last-assignment
-    ;;                                 (phpinspect--assignment-from last-assignment)))
-    ;;        (result))
-
-    ;;   (if (not assignments)
-    ;;       (progn
-    ;;         (phpinspect--log "No assignments found for variable %s, checking function arguments"
-    ;;                          variable-name)
-    ;;         (setq result (phpinspect-get-variable-type-in-function-arg-list
-    ;;                       variable-name type-resolver function-arg-list)))
-    ;;     (setq result
-    ;;           (phpinspect--interpret-expression-type-in-context
-    ;;            resolvecontext php-block type-resolver
-    ;;            last-assignment-value function-arg-list)))
-
-    ;;   (phpinspect--log "Type interpreted from last assignment expression of variable %s: %s"
-    ;;                    variable-name result)
-
-    ;;   ;; Detect array access
-    ;;   (if (and last-assignment-value result
-    ;;            (< 1 (length last-assignment-value))
-    ;;            (phpinspect-array-p (car (last last-assignment-value))))
-    ;;       (progn
-    ;;         (phpinspect--log (concat
-    ;;                           "Detected array access in last assignment of variable %s"
-    ;;                           ", collection type: %s")
-    ;;                          variable-name result)
-    ;;         (phpinspect--type-contains result))
-    ;;     result))))
 
 (defun phpinspect-get-pattern-type-in-block
     (resolvecontext pattern php-block type-resolver &optional function-arg-list)

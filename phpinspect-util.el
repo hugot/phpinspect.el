@@ -85,49 +85,6 @@ pattern. See `phpinspect--match-sequence'."
   "Match SEQUENCE to PATTERN."
   (funcall (phpinspect--pattern-matcher pattern) sequence))
 
-;; (defmacro phpinspect--match-sequence (sequence &rest pattern)
-;;   "Match SEQUENCE to positional matchers defined in PATTERN.
-
-;; PATTERN is a plist with the allowed keys being :m and :f. Each
-;; key-value pair in the plist defines a match operation that is
-;; applied to the corresponding index of SEQUENCE (so for ex.: key 0
-;; is applied to pos. 0 of SEQUENCE, key 1 to pos. 1, and so on).
-
-;; Possible match operations:
-
-;; :m - This key can be used to match a list element to the literal
-;; value supplied for it, using the `equal' comparison function. For
-;; example, providing `(\"foobar\") as value will result in the
-;; comparison (equal (elt SEQUENCE pos) `(\"foobar\")). There is one
-;; exception to this rule: using the symbol * as value for the :m
-;; key will match anything, essentially skipping comparison for the
-;; element at this position in SEQUENCE.
-
-;; :f - This key can be used to match a list element by executing
-;; the function provided as value. The function is executed with the
-;; list element as argument, and will be considered as matching if
-;; it evaluates to a non-nil value."
-;;   (let ((pattern-length (length pattern))
-;;         (count 0)
-;;         (sequence-pos 0)
-;;         (and-statement))
-;;     (while (< count pattern-length)
-;;       (let ((key (elt pattern count))
-;;             (value (elt pattern (+ count 1))))
-;;         (unless (keywordp key)
-;;           (error (format "Invalid, expected keyword, got %s" key)))
-
-;;         (cond ((eq key :m)
-;;                (unless (eq value '*)
-;;                  (push `(equal ,value (elt ,sequence ,sequence-pos)) and-statement)))
-;;               ((eq key :f)
-;;                (push `(,value (elt ,sequence ,sequence-pos)) and-statement))
-;;               (t (error (format "Invalid keyword: %s" key))))
-;;         (setq count (+ count 2)
-;;               sequence-pos (+ sequence-pos 1))))
-
-;;     `(when (= ,sequence-pos (length ,sequence)) (and ,@and-statement))))
-
 (defun phpinspect--match-sequence (sequence &rest pattern)
   "Match SEQUENCE to positional matchers defined in PATTERN.
 
@@ -151,31 +108,29 @@ the function provided as value. The function is executed with the
 list element as argument, and will be considered as matching if
 it evaluates to a non-nil value."
   (let* ((pattern-length (length pattern))
-        (count 0)
-        (sequence-pos 0)
-        (sequence-length (/ pattern-length 2)))
+         (count 0)
+         (sequence-pos 0)
+         (sequence-length (/ pattern-length 2)))
 
     (and (= sequence-length (length sequence))
-           (catch 'found
-             (while (< count pattern-length)
-               (let ((key (elt pattern count))
-                     (value (elt pattern (+ count 1))))
-                 (unless (keywordp key)
-                   (error (format "Invalid, expected keyword, got %s" key)))
+         (catch 'found
+           (while (< count pattern-length)
+             (let ((key (elt pattern count))
+                   (value (elt pattern (+ count 1))))
+               (unless (keywordp key)
+                 (error (format "Invalid, expected keyword, got %s" key)))
 
-                 (cond ((eq key :m)
-                        (unless (eq value '*)
-                          (unless (equal value (elt sequence sequence-pos))
-                            (throw 'found nil))))
-                        ((eq key :f)
-                         (unless (funcall value (elt sequence sequence-pos))
-                           (throw 'found nil)))
-                        (t (error (format "Invalid keyword: %s" key))))
-                       (setq count (+ count 2)
-                             sequence-pos (+ sequence-pos 1))))
-             (throw 'found t)))))
-
-
+               (cond ((eq key :m)
+                      (unless (eq value '*)
+                        (unless (equal value (elt sequence sequence-pos))
+                          (throw 'found nil))))
+                     ((eq key :f)
+                      (unless (funcall value (elt sequence sequence-pos))
+                        (throw 'found nil)))
+                     (t (error (format "Invalid keyword: %s" key))))
+               (setq count (+ count 2)
+                     sequence-pos (+ sequence-pos 1))))
+           (throw 'found t)))))
 
 (defun phpinspect--pattern-concat (pattern1 pattern2)
   (let* ((pattern1-sequence-length (/ (length (phpinspect--pattern-code pattern1)) 2)))
