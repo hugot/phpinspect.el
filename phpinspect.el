@@ -699,10 +699,9 @@ EXPRESSION."
          (funcall
           type-resolver (phpinspect--make-type :name (cadadr expression))))
         ((and (> (length expression) 1)
-              (or (seq-find #'phpinspect-attrib-p expression)
-                  (and (= 2 (length expression))
-                       (phpinspect-variable-p (car expression))
-                       (phpinspect-array-p (car (last expression))))))
+              (seq-find (lambda (part) (or (phpinspect-attrib-p part)
+                                               (phpinspect-array-p part)))
+                        expression))
          (phpinspect--log "Variable was assigned with a derived statement")
          (phpinspect-get-derived-statement-type-in-block
           resolvecontext expression php-block
