@@ -1,0 +1,6 @@
+pipeline:
+  steps:
+    - name: test
+      image: silex/emacs:28.1-ci
+      commands:
+        - emacs -L ./ -batch -l ert -l ./phpinspect.el -l ./test/phpinspect-test.el -f ert-run-tests-batch-and-exit
