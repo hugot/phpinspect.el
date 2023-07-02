@@ -484,7 +484,7 @@ class Thing
          (phpinspect-eldoc-word-width 100))
     (phpinspect-purge-cache)
     (phpinspect-cache-project-class
-     (phpinspect-project-root)
+     (phpinspect-current-project-root)
      (cdar (alist-get 'classes (cdr index))))
 
     (should (string= "getThis: ($moment DateTime, $thing Thing, $other): Thing"
@@ -510,7 +510,7 @@ class Thing
          (phpinspect-eldoc-word-width 100))
     (phpinspect-purge-cache)
     (phpinspect-cache-project-class
-     (phpinspect-project-root)
+     (phpinspect-current-project-root)
      (cdar (alist-get 'classes (cdr index))))
 
     (should (string= "doThing: ($moment DateTime, $thing Thing, $other): Thing"
@@ -538,7 +538,7 @@ class Thing
          (context (phpinspect--get-resolvecontext tokens)))
     (phpinspect-purge-cache)
     (phpinspect-cache-project-class
-     (phpinspect-project-root)
+     (phpinspect-current-project-root)
      (cdar (alist-get 'classes (cdr index))))
 
     (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
@@ -567,7 +567,7 @@ class Thing
          (context (phpinspect--get-resolvecontext tokens)))
     (phpinspect-purge-cache)
     (phpinspect-cache-project-class
-     (phpinspect-project-root)
+     (phpinspect-current-project-root)
      (cdar (alist-get 'classes (cdr index))))
 
     (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")

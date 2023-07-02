@@ -35,7 +35,7 @@
                (:constructor phpinspect-make-index-task-generated))
   "Represents an index task that can be executed by a `phpinspect-worker`."
   (project nil
-           :type phpinspect--project
+           :type phpinspect-project
            :documentation
            "The project that the task should be executed for.")
   (type nil
@@ -267,7 +267,7 @@ CONTINUE must be a condition-variable"
           (if task
               ;; Execute task if it belongs to a project that has not been
               ;; purged (meaning that it is still actively used).
-              (unless (phpinspect--project-purged (phpinspect-task-project task))
+              (unless (phpinspect-project-purged (phpinspect-task-project task))
                 (phpinspect-task-execute task worker))
             ;; else: join with the main thread until wakeup is signaled
             (thread-join main-thread))
@@ -319,7 +319,7 @@ CONTINUE must be a condition-variable"
   (interactive)
   (phpinspect-worker-stop phpinspect-worker))
 
-(cl-defgeneric phpinspect-make-index-task ((project phpinspect--project)
+(cl-defgeneric phpinspect-make-index-task ((project phpinspect-project)
                                           (type phpinspect--type))
   (phpinspect-make-index-task-generated
    :project project
@@ -342,7 +342,7 @@ CONTINUE must be a condition-variable"
                          (phpinspect-index-task-type task))))
     (phpinspect--log "Indexing class %s for project in %s from index thread"
                      (phpinspect-index-task-type task)
-                     (phpinspect--project-root project))
+                     (phpinspect-project-root project))
 
     (cond (is-native-type
            (phpinspect--log "Skipping indexation of native type %s"
@@ -356,7 +356,7 @@ CONTINUE must be a condition-variable"
            (let* ((type (phpinspect-index-task-type task))
                   (root-index (phpinspect--index-type-file project type)))
              (when root-index
-               (phpinspect--project-add-index project root-index)))))))
+               (phpinspect-project-add-index project root-index)))))))
 
 
 (provide 'phpinspect-worker)

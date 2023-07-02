@@ -28,9 +28,9 @@
 
 (ert-deftest phpinspect-project-purge ()
   (let ((project (phpinspect--make-project)))
-    (phpinspect--project-purge project)
+    (phpinspect-project-purge project)
 
-    (should (eq t (phpinspect--project-purged project)))))
+    (should (eq t (phpinspect-project-purged project)))))
 
 (ert-deftest phpinspect-project-watch-file-and-purge ()
   (let* ((root (make-temp-file "phpinspect-test" 'dir))
@@ -38,9 +38,9 @@
          (worker (phpinspect-make-worker))
          (watch-file (concat root "/watch1"))
          (project (phpinspect--make-project :fs fs :root root)))
-    (phpinspect--project-watch-file project watch-file
+    (phpinspect-project-watch-file project watch-file
                                     (lambda (&rest ignored)))
 
-    (phpinspect--project-purge project)
+    (phpinspect-project-purge project)
 
-    (should (= 0 (length (hash-table-values (phpinspect--project-file-watchers project)))))))
+    (should (= 0 (length (hash-table-values (phpinspect-project-file-watchers project)))))))

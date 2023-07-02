@@ -136,7 +136,7 @@ statement of the innermost incomplete token as subject
 accompanied by all of its enclosing tokens."
   (unless resolvecontext
     (setq resolvecontext (phpinspect--make-resolvecontext
-                          :project-root (phpinspect-project-root))))
+                          :project-root (phpinspect-current-project-root))))
 
   (let ((last-token (car (last token)))
         (last-encountered-token (car
@@ -160,14 +160,14 @@ accompanied by all of its enclosing tokens."
 
 (defsubst phpinspect-cache-project-class (project-root indexed-class)
   (when project-root
-    (phpinspect--project-add-class
+    (phpinspect-project-add-class
      (phpinspect--cache-get-project-create (phpinspect--get-or-create-global-cache)
                                            project-root)
      indexed-class)))
 
 (defsubst phpinspect-get-cached-project-class (project-root class-fqn)
   (when project-root
-    (phpinspect--project-get-class
+    (phpinspect-project-get-class
      (phpinspect--cache-get-project-create (phpinspect--get-or-create-global-cache)
                                            project-root)
      class-fqn)))
@@ -354,7 +354,7 @@ TODO:
       (let* ((type-of-previous-statement
               (phpinspect-resolve-type-from-context resolvecontext type-resolver))
              (method-name-sym (phpinspect-intern-name (cadr (cadar (last statement 2)))))
-             (class (phpinspect--project-get-class-create
+             (class (phpinspect-project-get-class-create
                      (phpinspect--cache-get-project-create
                       (phpinspect--get-or-create-global-cache)
                       (phpinspect--resolvecontext-project-root resolvecontext))
@@ -768,7 +768,7 @@ EXPRESSION."
 
 (defun phpinspect--get-variables-for-class (buffer-classes class-name &optional static)
   (let ((class (phpinspect-get-or-create-cached-project-class
-                (phpinspect-project-root)
+                (phpinspect-current-project-root)
                 class-name)))
     ;; TODO return static variables/constants when static is set
     (when class
@@ -828,18 +828,18 @@ users will have to use \\[phpinspect-purge-cache]."
     (let ((imports (alist-get 'imports phpinspect--buffer-index))
           (project (phpinspect--cache-get-project-create
                     (phpinspect--get-or-create-global-cache)
-                    (phpinspect-project-root))))
+                    (phpinspect-current-project-root))))
 
       (dolist (class (alist-get 'classes phpinspect--buffer-index))
         (when class
-          (phpinspect--project-add-class project (cdr class))
+          (phpinspect-project-add-class project (cdr class))
 
           (let ((imports (alist-get 'imports (cdr class))))
             (when imports
-              (phpinspect--project-enqueue-imports project imports)))))
+              (phpinspect-project-enqueue-imports project imports)))))
 
 
-      (when imports (phpinspect--project-enqueue-imports project imports)))))
+      (when imports (phpinspect-project-enqueue-imports project imports)))))
 
 
 (defun phpinspect--disable-mode ()
@@ -1187,7 +1187,7 @@ currently opened projects."
   (when phpinspect-cache
     ;; Allow currently known cached projects to cleanup after themselves
     (maphash (lambda (_ project)
-               (phpinspect--project-purge project))
+               (phpinspect-project-purge project))
              (phpinspect--cache-projects phpinspect-cache)))
 
   ;; Assign a fresh cache object
@@ -1229,7 +1229,7 @@ level of START-FILE in stead of `default-directory`."
                            (string= parent-without-vendor "")))
               (phpinspect--find-project-root parent-without-vendor))))))))
 
-(defsubst phpinspect-project-root ()
+(defsubst phpinspect-current-project-root ()
   "Call `phpinspect-project-root-function' with ARGS as arguments."
   (unless (and (boundp 'phpinspect--buffer-project) phpinspect--buffer-project)
     (set (make-local-variable 'phpinspect--buffer-project) (funcall phpinspect-project-root-function)))
@@ -1255,8 +1255,8 @@ fully qualified names from the project's source, and not its
 dependencies, are returned."
   (let* ((project (phpinspect--cache-get-project-create
                    (phpinspect--get-or-create-global-cache)
-                   (phpinspect-project-root)))
-         (autoloader (phpinspect--project-autoload project)))
+                   (phpinspect-current-project-root)))
+         (autoloader (phpinspect-project-autoload project)))
     (let ((fqns))
       (maphash (lambda (type _) (push (symbol-name type) fqns))
                (if (eq 'own filter)
@@ -1298,8 +1298,8 @@ when INDEX-NEW is non-nil, new files are added to the index
 before the search is executed."
   (let* ((project (phpinspect--cache-get-project-create
                    (phpinspect--get-or-create-global-cache)
-                   (phpinspect-project-root)))
-         (autoloader (phpinspect--project-autoload project)))
+                   (phpinspect-current-project-root)))
+         (autoloader (phpinspect-project-autoload project)))
     (when (eq index-new 'index-new)
       (phpinspect-autoloader-refresh autoloader))
     (let* ((result (phpinspect-autoloader-resolve
@@ -1329,8 +1329,8 @@ before the search is executed."
   (interactive)
   (let* ((project (phpinspect--cache-get-project-create
                   (phpinspect--get-or-create-global-cache)
-                  (phpinspect-project-root)))
-         (autoloader (phpinspect--project-autoload project)))
+                  (phpinspect-current-project-root)))
+         (autoloader (phpinspect-project-autoload project)))
     (phpinspect-autoloader-refresh autoloader)
     (message (concat "Refreshed project autoloader. Found %d types within project,"
                      " %d types total.")

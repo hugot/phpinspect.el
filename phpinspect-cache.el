@@ -55,7 +55,7 @@ then returned."
                               :worker (phpinspect-make-dynamic-worker))
                              (phpinspect--cache-projects cache)))
       (let ((autoload (phpinspect-make-autoloader :project project)))
-        (setf (phpinspect--project-autoload project) autoload)
+        (setf (phpinspect-project-autoload project) autoload)
         (phpinspect-autoloader-refresh autoload)))
     project))
 

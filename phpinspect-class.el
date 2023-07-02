@@ -27,7 +27,7 @@
 
 (cl-defstruct (phpinspect--class (:constructor phpinspect--make-class-generated))
   (project nil
-           :type phpinspect--project
+           :type phpinspect-project
            :documentaton
            "The project that this class belongs to")
   (index nil
@@ -85,7 +85,7 @@
          #'phpinspect--class-p
          (mapcar
           (lambda (class-name)
-            (phpinspect--project-get-class-create (phpinspect--class-project class)
+            (phpinspect-project-get-class-create (phpinspect--class-project class)
                                            class-name))
           `(,@(alist-get 'implements index) ,@(alist-get 'extends index)))))
 

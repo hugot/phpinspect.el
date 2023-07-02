@@ -87,7 +87,7 @@ buffer position to insert the use statement at."
              (format "%c%cuse %s;%c%c" ?\n ?\n fqn ?\n ?\n))))))))
 
 (defun phpinspect-add-use-interactive (typename buffer project &optional namespace-token)
-  (let* ((autoloader (phpinspect--project-autoload project))
+  (let* ((autoloader (phpinspect-project-autoload project))
          (fqn-bags (phpinspect-autoloader-type-name-fqn-bags autoloader)))
 
     (let ((fqns (gethash typename fqn-bags)))
@@ -117,7 +117,7 @@ that there are import (\"use\") statements for them."
              (imports (alist-get 'imports index))
              (project (phpinspect--cache-get-project-create
                        (phpinspect--get-or-create-global-cache)
-                       (phpinspect-project-root))))
+                       (phpinspect-current-project-root))))
         (dolist (class classes)
           (let* ((class-imports (alist-get 'imports class))
                  (used-types (alist-get 'used-types class))
@@ -137,7 +137,7 @@ that there are import (\"use\") statements for them."
                                               "\\"
                                               (symbol-name type)))
                                      (phpinspect-autoloader-types
-                                      (phpinspect--project-autoload project))))
+                                      (phpinspect-project-autoload project))))
                   (phpinspect-add-use-interactive
                    type phpinspect-current-buffer project namespace)
                   ;; Buffer has been modified by adding type, update tree +

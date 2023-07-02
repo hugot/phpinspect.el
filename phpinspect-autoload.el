@@ -57,7 +57,7 @@
 (cl-defstruct (phpinspect-autoloader
                (:constructor phpinspect-make-autoloader))
   (project nil
-           :type phpinspect--project
+           :type phpinspect-project
            :documentation "The project that this autoloader can find files for")
   (own-types (make-hash-table :test 'eq :size 10000 :rehash-size 10000)
              :type hash-table
@@ -111,8 +111,8 @@ bareword typenames."))
 (cl-defmethod phpinspect-autoloader-refresh ((autoloader phpinspect-autoloader))
   "Refresh autoload definitions by reading composer.json files
   from the project and vendor folders."
-  (let* ((project-root (phpinspect--project-root (phpinspect-autoloader-project autoloader)))
-         (fs (phpinspect--project-fs (phpinspect-autoloader-project autoloader)))
+  (let* ((project-root (phpinspect-project-root (phpinspect-autoloader-project autoloader)))
+         (fs (phpinspect-project-fs (phpinspect-autoloader-project autoloader)))
          (vendor-dir (concat project-root "/vendor"))
          (composer-json-path (concat project-root "/composer.json"))
          (composer-json)

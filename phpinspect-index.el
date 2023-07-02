@@ -462,7 +462,7 @@ Return value is a list of the types that are \"newed\"."
     (let ((project (phpinspect--cache-get-project-create
                     (phpinspect--get-or-create-global-cache)
                     project-root)))
-      (phpinspect--project-get-class-create project class-fqn))))
+      (phpinspect-project-get-class-create project class-fqn))))
 
 (defun phpinspect--index-current-buffer ()
   (phpinspect--index-tokens (phpinspect-parse-current-buffer)))
@@ -471,11 +471,11 @@ Return value is a list of the types that are \"newed\"."
   "Index a PHP file for classes and the methods they have"
   (phpinspect--index-tokens (phpinspect-parse-current-buffer)))
 
-(cl-defmethod phpinspect--index-type-file ((project phpinspect--project)
+(cl-defmethod phpinspect--index-type-file ((project phpinspect-project)
                                            (type phpinspect--type))
   (condition-case error
       (let* ((class-file (with-temp-buffer
-                           (cd (phpinspect--project-root project))
+                           (cd (phpinspect-project-root project))
                            (phpinspect-type-filepath type)))
              (visited-buffer (when class-file (find-buffer-visiting class-file)))
              (new-index)
