@@ -171,5 +171,51 @@ indexed by the absolute paths of the files they're watching."))
   (gethash (phpinspect--type-name-symbol class-fqn)
            (phpinspect-project-class-index project)))
 
+(cl-defmethod phpinspect-project-get-type-filepath
+  ((project phpinspect-project) (type phpinspect--type) &optional index-new)
+  "Retrieve filepath to TYPE definition file.
+
+when INDEX-NEW is non-nil, new files are added to the index
+before the search is executed."
+  (let* ((autoloader (phpinspect-project-autoload project)))
+    (when (eq index-new 'index-new)
+      (phpinspect-autoloader-refresh autoloader))
+    (let* ((result (phpinspect-autoloader-resolve
+                    autoloader (phpinspect--type-name-symbol type))))
+      (if (not result)
+          ;; Index new files and try again if not done already.
+          (if (eq index-new 'index-new)
+              nil
+            (when phpinspect-auto-reindex
+              (phpinspect--log "Failed finding filepath for type %s. Retrying with reindex."
+                               (phpinspect--type-name type))
+              (phpinspect-project-get-type-filepath project type 'index-new)))
+        result))))
+
+(cl-defmethod phpinspect-project-index-type-file
+  ((project phpinspect-project) (type phpinspect--type))
+  "Index the file that TYPE is expected to be defined in."
+
+  (condition-case error
+      (let* ((file (phpinspect-project-get-type-filepath project type))
+             (visited-buffer (when file (find-buffer-visiting file)))
+             (new-index)
+             (class-index))
+        (when file
+          (if visited-buffer
+              (with-current-buffer visited-buffer (phpinspect-index-current-buffer))
+            (with-temp-buffer (phpinspect-project-index-file project file)))))
+    (file-missing
+     (phpinspect--log "Failed to find file for type %s:  %s" type error)
+     nil)))
+
+(cl-defmethod phpinspect-project-index-file
+  ((project phpinspect-project) (filename string))
+  "Index "
+  (let ((fs (phpinspect-project-fs project)))
+    (with-temp-buffer
+      (phpinspect-fs-insert-file-contents fs filename 'prefer-async)
+      (phpinspect-index-current-buffer))))
+
 (provide 'phpinspect-project)
 ;;; phpinspect-project.el ends here

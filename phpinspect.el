@@ -824,7 +824,7 @@ Assuming that files are only changed from within Emacs, this
 keeps the cache valid.  If changes are made outside of Emacs,
 users will have to use \\[phpinspect-purge-cache]."
   (when (and (boundp 'phpinspect-mode) phpinspect-mode)
-    (setq phpinspect--buffer-index (phpinspect--index-current-buffer))
+    (setq phpinspect--buffer-index (phpinspect-index-current-buffer))
     (let ((imports (alist-get 'imports phpinspect--buffer-index))
           (project (phpinspect--cache-get-project-create
                     (phpinspect--get-or-create-global-cache)
@@ -1298,21 +1298,9 @@ when INDEX-NEW is non-nil, new files are added to the index
 before the search is executed."
   (let* ((project (phpinspect--cache-get-project-create
                    (phpinspect--get-or-create-global-cache)
-                   (phpinspect-current-project-root)))
-         (autoloader (phpinspect-project-autoload project)))
-    (when (eq index-new 'index-new)
-      (phpinspect-autoloader-refresh autoloader))
-    (let* ((result (phpinspect-autoloader-resolve
-                    autoloader (phpinspect--type-name-symbol class))))
-      (if (not result)
-          ;; Index new files and try again if not done already.
-          (if (eq index-new 'index-new)
-              nil
-            (when phpinspect-auto-reindex
-              (phpinspect--log "Failed finding filepath for type %s. Retrying with reindex."
-                               (phpinspect--type-name class))
-              (phpinspect-get-class-filepath class 'index-new)))
-        result))))
+                   (phpinspect-current-project-root))))
+    (phpinspect-project-get-type-filepath project class index-new)))
+
 
 (defun phpinspect-unique-strings (strings)
   (seq-filter

@@ -454,9 +454,6 @@ Return value is a list of the types that are \"newed\"."
     ;; TODO: Implement function indexation
     ))
 
-(defun phpinspect-index-file (file-name)
-  (phpinspect--index-tokens (phpinspect-parse-file file-name)))
-
 (defun phpinspect-get-or-create-cached-project-class (project-root class-fqn)
   (when project-root
     (let ((project (phpinspect--cache-get-project-create
@@ -464,29 +461,9 @@ Return value is a list of the types that are \"newed\"."
                     project-root)))
       (phpinspect-project-get-class-create project class-fqn))))
 
-(defun phpinspect--index-current-buffer ()
-  (phpinspect--index-tokens (phpinspect-parse-current-buffer)))
-
 (defun phpinspect-index-current-buffer ()
   "Index a PHP file for classes and the methods they have"
   (phpinspect--index-tokens (phpinspect-parse-current-buffer)))
-
-(cl-defmethod phpinspect--index-type-file ((project phpinspect-project)
-                                           (type phpinspect--type))
-  (condition-case error
-      (let* ((class-file (with-temp-buffer
-                           (cd (phpinspect-project-root project))
-                           (phpinspect-type-filepath type)))
-             (visited-buffer (when class-file (find-buffer-visiting class-file)))
-             (new-index)
-             (class-index))
-        (when class-file
-          (if visited-buffer
-              (with-current-buffer visited-buffer (phpinspect--index-current-buffer))
-            (phpinspect-index-file class-file))))
-    (file-missing
-     (phpinspect--log "Failed to find file for type %s:  %s" type error)
-     nil)))
 
 (provide 'phpinspect-index)
 ;;; phpinspect-index.el ends here

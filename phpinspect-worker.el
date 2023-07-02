@@ -162,7 +162,7 @@ BODY can be any form."
                     :type bool
                     :documentation
                     "Whether or not the thread should continue
-running. If this is nil, the thread isstopped.")
+running. If this is nil, the thread is stopped.")
   (skip-next-pause nil
                    :type bool
                    :documentation
@@ -274,7 +274,8 @@ CONTINUE must be a condition-variable"
 
           ;; Pause for a second after indexing something, to allow user input to
           ;; interrupt the thread.
-          (unless (phpinspect-worker-skip-next-pause worker)
+          (unless (or (not (input-pending-p))
+                      (phpinspect-worker-skip-next-pause worker))
             (phpinspect-thread-pause 1 mx continue))
           (setf (phpinspect-worker-skip-next-pause worker) nil))))
     (phpinspect--log "Worker thread exiting")
@@ -354,7 +355,7 @@ CONTINUE must be a condition-variable"
            (setf (phpinspect-worker-skip-next-pause worker) t))
           (t
            (let* ((type (phpinspect-index-task-type task))
-                  (root-index (phpinspect--index-type-file project type)))
+                  (root-index (phpinspect-project-index-type-file project type)))
              (when root-index
                (phpinspect-project-add-index project root-index)))))))
 

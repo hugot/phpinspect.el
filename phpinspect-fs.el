@@ -23,6 +23,9 @@
 
 ;;; Code:
 
+(defconst phpinspect--cat-executable (executable-find "cat")
+  "The executable used to read files asynchronously from the filesystem.")
+
 (cl-defstruct (phpinspect-fs (:constructor phpinspect-make-fs)))
 
 (cl-defstruct (phpinspect-virtual-fs (:constructor phpinspect-make-virtual-fs))
@@ -47,7 +50,14 @@
 (cl-defgeneric phpinspect-fs-file-exists-p (fs file))
 (cl-defgeneric phpinspect-fs-file-directory-p (fs file))
 (cl-defgeneric phpinspect-fs-file-modification-time (fs file))
-(cl-defgeneric phpinspect-fs-insert-file-contents (fs file))
+(cl-defgeneric phpinspect-fs-insert-file-contents (fs file &optional prefer-async)
+  "Insert file contents of FILE.
+
+When PREFER-ASYNC is set and FS supports it, effort is made to
+execute the insertion asynchronously in scenario's where this can
+prevent the main thread (or other running threads) from stalling
+while the current thread executes. When running in the main
+thread, PREFER-ASYNC has no effect.")
 (cl-defgeneric phpinspect-fs-directory-files (fs directory match))
 (cl-defgeneric phpinspect-fs-directory-files-recursively (fs directory match))
 
@@ -81,10 +91,50 @@
     (when attributes
       (file-attribute-modification-time attributes))))
 
-(cl-defmethod phpinspect-fs-insert-file-contents ((fs phpinspect-fs) file)
-  (insert-file-contents-literally file))
 
-(cl-defmethod phpinspect-fs-insert-file-contents ((fs phpinspect-virtual-fs) file)
+(defsubst phpinspect--insert-file-contents-asynchronously (file)
+  "Inserts FILE contents into the current buffer asynchronously, while blocking the current thread.
+
+Errors when executed in main thread, as it should be used to make
+background operations less invasive. Usage in the main thread can
+only be the result of a logic error."
+  (let* ((thread (current-thread))
+         (mx (make-mutex))
+         (condition (make-condition-variable mx))
+         (err)
+         (sentinel
+          (lambda (process event)
+            (with-mutex mx
+              (if (string-match-p "^\\(deleted\\|exited\\|failed\\|connection\\)" event)
+                  (progn
+                    (setq err (format "cat process %s failed with event: %s" process event))
+                    (condition-notify condition))
+                (when (string-match-p "^finished" event)
+                  (condition-notify condition)))))))
+    (when (not phpinspect--cat-executable)
+      (error
+       "ERROR: phpinspect--insert-file-contents-asynchronously called when cat-executable is not set"))
+
+    (when (eq thread main-thread)
+      (error "ERROR: phpinspect--insert-file-contents-asynchronously called from main-thread"))
+
+    (with-mutex mx
+      (make-process :name "phpinspect--insert-file-contents-asynchronously"
+                    :command `(,phpinspect--cat-executable ,file)
+                    :buffer (current-buffer)
+                    :sentinel sentinel)
+
+      (condition-wait condition)
+      (when err (error err)))))
+
+(cl-defmethod phpinspect-fs-insert-file-contents ((fs phpinspect-fs) file &optional prefer-async)
+  "Insert file contents from FILE. "
+  (if (and prefer-async (not (eq (current-thread) main-thread))
+           phpinspect--cat-executable)
+      (phpinspect--insert-file-contents-asynchronously file)
+    (insert-file-contents-literally file)))
+
+(cl-defmethod phpinspect-fs-insert-file-contents ((fs phpinspect-virtual-fs) file &optional _ignored)
   (let ((file-obj (gethash file (phpinspect-virtual-fs-files fs))))
     (when file (insert (or (phpinspect-virtual-file-contents file-obj) "")))))
 
