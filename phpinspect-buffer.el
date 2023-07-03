@@ -34,6 +34,15 @@ buffer. This variable is only set for buffers where
 (defalias 'phpinspect-region-start #'car)
 (defalias 'phpinspect-region-end #'cadr)
 
+(defsubst phpinspect-region-size (region)
+  (- (phpinspect-region-end region) (phpinspect-region-start region)))
+
+(defsubst phpinspect-region> (reg1 reg2)
+  (> (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
+
+(defsubst phpinspect-region< (reg1 reg2)
+  (< (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
+
 (cl-defstruct (phpinspect-buffer (:constructor phpinspect-make-buffer))
   "An object containing phpinspect related metadata linked to an
 emacs buffer."
@@ -76,6 +85,10 @@ linked with."
                   (>= (phpinspect-region-end region) point))
          (push token tokens)))
      (phpinspect-buffer-location-map buffer))
-    tokens))
+    (sort tokens (lambda (tok1 tok2)
+                   (phpinspect-region< (phpinspect-buffer-token-location tok1)
+                                       (phpinspect-buffer-token-location tok2))))))
+
+
 
 (provide 'phpinspect-buffer)
