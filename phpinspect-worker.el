@@ -297,7 +297,11 @@ CONTINUE must be a condition-variable"
     (progn
       (setf (phpinspect-worker-continue-running worker) t)
       (setf (phpinspect-worker-thread worker)
-            (make-thread (phpinspect-worker-make-thread-function worker))))))
+            ;; Use with-temp-buffer so as to not associate thread with the
+            ;; current buffer. Otherwise, the buffer associated with this thread
+            ;; will be unkillable while the thread is running.
+            (with-temp-buffer
+              (make-thread (phpinspect-worker-make-thread-function worker)))))))
 
 (cl-defmethod phpinspect-worker-start ((worker phpinspect-dynamic-worker))
   (phpinspect-worker-start (phpinspect-resolve-dynamic-worker worker)))
