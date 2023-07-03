@@ -197,11 +197,14 @@ on the worker independent of dynamic variables during testing.")
 (cl-defgeneric phpinspect-worker-make-wakeup-function (worker)
   "Create a function that can be used to wake up WORKER's thread.")
 
+(cl-defmethod phpinspect-worker-wakeup ((worker phpinspect-worker))
+  (when (eq main-thread (thread--blocker (phpinspect-worker-thread worker)))
+    (thread-signal (phpinspect-worker-thread worker)
+                   'phpinspect-wakeup-thread nil)))
+
 (cl-defmethod phpinspect-worker-make-wakeup-function ((worker phpinspect-worker))
   (lambda ()
-    (when (eq main-thread (thread--blocker (phpinspect-worker-thread worker)))
-      (thread-signal (phpinspect-worker-thread worker)
-                     'phpinspect-wakeup-thread nil))))
+    (phpinspect-worker-wakeup worker)))
 
 (cl-defmethod phpinspect-worker-make-wakeup-function ((worker phpinspect-dynamic-worker))
   (phpinspect-worker-make-wakeup-function (phpinspect-resolve-dynamic-worker worker)))
@@ -303,7 +306,8 @@ CONTINUE must be a condition-variable"
   "Stop the worker")
 
 (cl-defmethod phpinspect-worker-stop ((worker phpinspect-worker))
-  (setf (phpinspect-worker-continue-running worker) nil))
+  (setf (phpinspect-worker-continue-running worker) nil)
+  (phpinspect-worker-wakeup worker))
 
 (cl-defmethod phpinspect-worker-stop ((worker phpinspect-dynamic-worker))
   (phpinspect-worker-stop (phpinspect-resolve-dynamic-worker worker)))
