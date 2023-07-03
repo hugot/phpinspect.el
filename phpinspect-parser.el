@@ -351,14 +351,14 @@ parser function is then returned in byte-compiled form."
           (phpinspect-parser-compile (symbol-value parser-symbol))))))
 
 (defun phpinspect-purge-parser-cache ()
-  "Empty `phpinspect-parser-obarray`.
+  "Unset functions in  `phpinspect-parser-obarray`.
 
 This is useful when you need to change parser handlers or parsers
 during runtime.  Parsers are implemented with macros, so changing
 handler functions without calling this function will often not
 have any effect."
   (interactive)
-  (setq phpinspect-parser-obarray (obarray-make)))
+  (obarray-map #'fmakunbound phpinspect-parser-obarray))
 
 (defun phpinspect-make-parser-function (tree-type handler-list &optional delimiter-predicate)
   "Create a parser function using the handlers by names defined in HANDLER-LIST.
