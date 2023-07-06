@@ -23,6 +23,10 @@
 
 ;;; Code:
 
+;;(require 'phpinspect-tree)
+(require 'phpinspect-edtrack)
+(require 'phpinspect-bmap)
+
 (defvar phpinspect-parser-obarray (obarray-make)
   "An obarray containing symbols for all phpinspect (sub)parsers.")
 
@@ -50,7 +54,11 @@
              (documentation (intern handler-name phpinspect-handler-obarray))))
     (pop-to-buffer (current-buffer))))
 
-(defsubst phpinspect--strip-last-char (string)
+(defsubst phpinspect--strip-word-end-space (string)
+  (when phpinspect-parse-context
+    (phpinspect-pctx-register-whitespace
+     phpinspect-parse-context
+     (substring string (- (length string) 1) (length string))))
   (substring string 0 (- (length string) 1)))
 
 (defsubst phpinspect-munch-token-without-attribs (string token-keyword)
@@ -173,9 +181,6 @@ Type can be any of the token types returned by
   "Get the argument list of a function"
   (seq-find #'phpinspect-list-p (seq-find #'phpinspect-declaration-p php-func nil) nil))
 
-(defun phpinspect-function-block (token)
-  (cadr token))
-
 (defun phpinspect-annotation-p (token)
   (phpinspect-token-type-p token :annotation))
 
@@ -201,8 +206,13 @@ Type can be any of the token types returned by
   (or (phpinspect-token-type-p token :array)
       (phpinspect-incomplete-array-p token)))
 
+(defsubst phpinspect-incomplete-root-p (token)
+  (and (phpinspect-root-p token)
+       (seq-find #'phpinspect-incomplete-token-p (cdr token))))
+
 (defsubst phpinspect-incomplete-token-p (token)
-  (or (phpinspect-incomplete-class-p token)
+  (or (phpinspect-incomplete-root-p token)
+      (phpinspect-incomplete-class-p token)
       (phpinspect-incomplete-block-p token)
       (phpinspect-incomplete-list-p token)
       (phpinspect-incomplete-array-p token)
@@ -220,6 +230,18 @@ Type can be any of the token types returned by
       (phpinspect-end-of-token-p token)
       (phpinspect-const-p token)
       (phpinspect-static-p token)))
+
+(defsubst phpinspect-enclosing-token-p (token)
+  "Returns t when a token can enclose other tokens"
+  (or
+   (phpinspect-list-p token)
+   (phpinspect-block-p token)
+   (phpinspect-class-p token)
+   (phpinspect-function-p token)
+   (phpinspect-array-p token)
+   (phpinspect-scope-p token)
+   (phpinspect-static-p token)
+   (phpinspect-const-p token)))
 
 (defun phpinspect-namespace-keyword-p (token)
   (and (phpinspect-word-p token) (string= (car (last token)) "namespace")))
@@ -346,9 +368,14 @@ parser function is then returned in byte-compiled form."
     (unless parser-symbol
       (error "Phpinspect: No parser found by name %s" name))
 
-    (or (symbol-function parser-symbol)
-        (defalias parser-symbol
-          (phpinspect-parser-compile (symbol-value parser-symbol))))))
+    (if (and phpinspect-parse-context
+             (phpinspect-pctx-incremental phpinspect-parse-context))
+        (let ((func (phpinspect-parser-compile-incremental (symbol-value parser-symbol))))
+          (lambda (&rest arguments)
+            (apply func phpinspect-parse-context arguments)))
+      (or (symbol-function parser-symbol)
+          (defalias parser-symbol
+            (phpinspect-parser-compile (symbol-value parser-symbol)))))))
 
 (defun phpinspect-purge-parser-cache ()
   "Unset functions in  `phpinspect-parser-obarray`.
@@ -359,6 +386,16 @@ handler functions without calling this function will often not
 have any effect."
   (interactive)
   (obarray-map #'fmakunbound phpinspect-parser-obarray))
+
+(defmacro phpinspect-pctx-save-whitespace (pctx &rest body)
+  (declare (indent 1))
+  (let ((save-sym (gensym)))
+    `(let ((,save-sym (phpinspect-pctx-whitespace-before ,pctx)))
+       (unwind-protect
+           (progn
+             (setf (phpinspect-pctx-whitespace-before ,pctx) nil)
+             ,@body)
+         (setf (phpinspect-pctx-whitespace-before ,pctx) ,save-sym)))))
 
 (defun phpinspect-make-parser-function (tree-type handler-list &optional delimiter-predicate)
   "Create a parser function using the handlers by names defined in HANDLER-LIST.
@@ -390,7 +427,7 @@ token is \";\", which marks the end of a statement in PHP."
         (delimiter-predicate (if (symbolp delimiter-predicate)
                                  `(quote ,delimiter-predicate)
                                delimiter-predicate)))
-    `(lambda (buffer max-point &optional continue-condition)
+    `(lambda (buffer max-point &optional continue-condition &rest _ignored)
        (with-current-buffer buffer
          (let ((tokens)
                (delimiter-predicate (when (functionp ,delimiter-predicate) ,delimiter-predicate)))
@@ -402,29 +439,233 @@ token is \";\", which marks the end of a statement in PHP."
              (cond ,@(mapcar
                       (lambda (handler)
                         `((looking-at ,(plist-get (symbol-value handler) 'regexp))
-                          (let ((start-position (point))
-                                (token (funcall ,(symbol-function handler)
+                          (let ((token (funcall ,(symbol-function handler)
                                                 (match-string 0)
                                                 max-point)))
                             (when token
                               (if (null tokens)
                                   (setq tokens (list token))
                                 (progn
-                                  (nconc tokens (list token))))
-
-                                  ;; When parsing within a buffer that has
-                                  ;; `phpinspect-current-buffer` set, update the
-                                  ;; token location map. Usually, this variable
-                                  ;; is set when `phpinspect-mode` is active.
-                                  (when phpinspect-current-buffer
-                                    (puthash token
-                                             (phpinspect-make-region start-position
-                                                                     (point))
-                                             (phpinspect-buffer-location-map
-                                              phpinspect-current-buffer)))))))
+                                  (nconc tokens (list token))))))))
                       handlers)
                    (t (forward-char))))
-           (push ,tree-type tokens))))))
+           (push ,tree-type tokens)
+
+           ;; Return
+           tokens)))))
+
+(defvar phpinspect-parse-context nil
+  "An instance of `phpinspect-pctx' that is used when
+parsing. Usually used in combination with
+`phpinspect-with-parse-context'")
+
+(defmacro phpinspect-with-parse-context (ctx &rest body)
+  (declare (indent 1))
+  (let ((old-ctx phpinspect-parse-context))
+    `(unwind-protect
+         (progn
+           (setq phpinspect-parse-context ,ctx)
+           ,@body)
+       (setq phpinspect-parse-context ,old-ctx))))
+
+(cl-defstruct (phpinspect-pctx (:constructor phpinspect-make-pctx))
+  "Parser Context"
+  (incremental nil)
+  (edtrack nil
+           :type phpinspect-edtrack)
+  (bmap (phpinspect-make-bmap)
+        :type phpinspect-bmap)
+  (previous-bmap nil
+                 :type phpinspect-bmap)
+  (whitespace-before ""
+                     :type string))
+
+(defsubst phpinspect-pctx-register-token (pctx token start end)
+  (phpinspect-bmap-register
+   (phpinspect-pctx-bmap pctx) start end token (phpinspect-pctx-consume-whitespace pctx)))
+
+(defsubst phpinspect-pctx-register-whitespace (pctx whitespace)
+  (setf (phpinspect-pctx-whitespace-before pctx) whitespace))
+
+(defsubst phpinspect-pctx-consume-whitespace (pctx)
+  (let ((whitespace (phpinspect-pctx-whitespace-before pctx)))
+    (setf (phpinspect-pctx-whitespace-before pctx) "")
+    whitespace))
+
+(defun phpinspect-make-bmap-parser-function (tree-type handler-list &optional delimiter-predicate)
+  "Like `phpinspect-make-parser-function', but returned function is able to reuse an already parsed tree."
+  (let ((handlers (mapcar
+                   (lambda (handler-name)
+                     (let* ((handler-name (symbol-name handler-name))
+                            (handler (intern-soft handler-name phpinspect-handler-obarray)))
+                       (if handler
+                           handler
+                         (error "No handler found by name \"%s\"" handler-name))))
+                   handler-list))
+        (delimiter-predicate (if (symbolp delimiter-predicate)
+                                 `(quote ,delimiter-predicate)
+                               delimiter-predicate)))
+    `(lambda (context buffer max-point &optional continue-condition root)
+       (with-current-buffer buffer
+         (let* ((tokens)
+                (root-start (point))
+                (bmap (phpinspect-pctx-bmap context))
+                (previous-bmap (phpinspect-pctx-previous-bmap context))
+                (edtrack (phpinspect-pctx-edtrack context))
+                (taint-iterator (when edtrack (phpinspect-edtrack-make-taint-iterator edtrack)))
+                (delimiter-predicate (when (functionp ,delimiter-predicate) ,delimiter-predicate)))
+           (phpinspect-pctx-save-whitespace context
+            (while (and (< (point) max-point)
+                        (if continue-condition (funcall continue-condition) t)
+                        (not (if delimiter-predicate
+                                 (funcall delimiter-predicate (car (last tokens)))
+                               nil)))
+              (cond ,@(mapcar
+                       (lambda (handler)
+                         `((looking-at ,(plist-get (symbol-value handler) 'regexp))
+                           (let* ((match (match-string 0))
+                                  (start-position (point))
+                                  (original-position
+                                   (when (and previous-bmap edtrack)
+                                     (phpinspect-edtrack-original-position-at-point edtrack start-position)))
+                                  (existing-meta)
+                                  (current-end-position)
+                                  (token))
+                             (when (and previous-bmap edtrack)
+                               (setq existing-meta (phpinspect-bmap-token-starting-at previous-bmap original-position))
+
+                               (when existing-meta
+                                 (setq current-end-position (phpinspect-edtrack-current-position-at-point
+                                                             edtrack (phpinspect-meta-end existing-meta)))))
+
+                             (if (and existing-meta
+                                      (not (or (phpinspect-root-p (phpinspect-meta-token existing-meta))
+                                               (phpinspect-taint-iterator-token-is-tainted-p taint-iterator existing-meta))))
+                                 (progn
+                                   (setq token (phpinspect-meta-token existing-meta))
+
+                                   ;; Re-register existing token
+                                   (let ((delta (- start-position original-position)))
+                                     (phpinspect-bmap-overlay
+                                      bmap previous-bmap existing-meta delta
+                                      (phpinspect-pctx-consume-whitespace context)))
+
+                                   (goto-char current-end-position))
+                               (progn
+                                 (setq token (funcall ,(symbol-function handler) match max-point))
+                                 (when token
+                                   (phpinspect-pctx-register-token context token start-position (point)))))
+                             (when token
+                               (if (null tokens)
+                                   (setq tokens (list token))
+                                 (progn
+                                   (nconc tokens (list token))))))))
+                       handlers)
+                    (t (forward-char)))))
+           (push ,tree-type tokens)
+           (when root
+             (phpinspect-pctx-register-token context tokens root-start (point)))
+
+           ;; Return
+           tokens)))))
+
+(defun phpinspect-make-incremental-parser-function (tree-type handler-list &optional delimiter-predicate)
+  "Like `phpinspect-make-parser-function', but returned function is able to reuse an already parsed tree."
+  (let ((handlers (mapcar
+                   (lambda (handler-name)
+                     (let* ((handler-name (symbol-name handler-name))
+                            (handler (intern-soft handler-name phpinspect-handler-obarray)))
+                       (if handler
+                           handler
+                         (error "No handler found by name \"%s\"" handler-name))))
+                   handler-list))
+        (delimiter-predicate (if (symbolp delimiter-predicate)
+                                 `(quote ,delimiter-predicate)
+                               delimiter-predicate)))
+    `(lambda (context buffer max-point &optional continue-condition root)
+       (with-current-buffer buffer
+         (let* ((tokens (list ,tree-type))
+                (root-start (point))
+                (bmap (phpinspect-pctx-bmap context))
+                (previous-bmap (phpinspect-pctx-previous-bmap context))
+                (edtrack (phpinspect-pctx-edtrack context))
+                (taint-iterator (when edtrack (phpinspect-edtrack-make-taint-iterator edtrack)))
+
+                ;; Loop variables
+                (start-position)
+                (original-position)
+                (current-end-position)
+                (existing-meta)
+                (token)
+                (delimiter-predicate (when (functionp ,delimiter-predicate) ,delimiter-predicate)))
+           (phpinspect-pctx-save-whitespace context
+            (while (and (< (point) max-point)
+                        (if continue-condition (funcall continue-condition) t)
+                        (not (if delimiter-predicate
+                                 (funcall delimiter-predicate (car (last tokens)))
+                               nil)))
+              (setq start-position (point))
+
+              (cond ((and previous-bmap edtrack
+                          (setq existing-meta
+                                (phpinspect-bmap-token-starting-at
+                                 previous-bmap
+                                 (setq original-position
+                                       (phpinspect-edtrack-original-position-at-point edtrack start-position))))
+                          (not (or (phpinspect-root-p (phpinspect-meta-token existing-meta))
+                                   (phpinspect-taint-iterator-token-is-tainted-p taint-iterator existing-meta))))
+                     (setq current-end-position (phpinspect-edtrack-current-position-at-point
+                                                 edtrack (phpinspect-meta-end existing-meta)))
+
+                     (setq token (phpinspect-meta-token existing-meta))
+                     ;;(message "reusing token %s" token)
+
+
+                     ;; Re-register existing token
+                     (phpinspect-bmap-overlay
+                      bmap previous-bmap existing-meta (- start-position original-position)
+                      (phpinspect-pctx-consume-whitespace context))
+
+                     ;; Check if we can fast-forward to more siblings
+                     (when (phpinspect-meta-right-siblings existing-meta)
+                       (dolist (sibling (phpinspect-meta-right-siblings existing-meta))
+                         (setq existing-meta (phpinspect-bmap-token-meta previous-bmap sibling))
+                         (unless (phpinspect-taint-iterator-region-is-tainted-p
+                                  taint-iterator current-end-position (phpinspect-meta-end existing-meta))
+                           (nconc tokens (list token))
+                           (setq token (phpinspect-meta-token existing-meta))
+                           (phpinspect-bmap-overlay
+                            bmap previous-bmap existing-meta (- start-position original-position)
+                            (phpinspect-pctx-consume-whitespace context))
+
+                           (setq current-end-position (phpinspect-edtrack-current-position-at-point
+                                                       edtrack (phpinspect-meta-end existing-meta))))))
+
+                     ;;(message "Current pos: %d, end pos: %d" (point) current-end-position)
+                     (goto-char current-end-position)
+
+                     ;; Skip over whitespace after so that we don't do a full
+                     ;; run down all of the handlers during the next iteration
+                     (when (looking-at (phpinspect-handler-regexp 'whitespace))
+                       (funcall (phpinspect-handler 'whitespace) (match-string 0))))
+                    ,@(mapcar
+                       (lambda (handler)
+                         `((looking-at ,(plist-get (symbol-value handler) 'regexp))
+                           (setq token (funcall ,(symbol-function handler) (match-string 0) max-point))
+                           (when token
+                             (phpinspect-pctx-register-token context token start-position (point)))))
+                       handlers)
+                    (t (forward-char)))
+              (when token
+                (nconc tokens (list token))
+                (setq token nil))))
+           (when root
+             (phpinspect-pctx-register-token context tokens root-start (point)))
+
+         ;; Return
+         tokens)))))
+
+
 
 (cl-defstruct (phpinspect-parser (:constructor phpinspect-make-parser))
   (tree-keyword "root"
@@ -450,7 +691,10 @@ parsed token. When the predicate returns a non-nil value, the parser stops
 executing.")
   (func nil
         :type function
-        :documentation "The parser function."))
+        :documentation "The parser function.")
+  (incremental-func nil
+                    :type function
+                    :documentation "Incemental parser function"))
 
 (cl-defmethod phpinspect-parser-compile ((parser phpinspect-parser))
   "Create/return parser function."
@@ -458,6 +702,16 @@ executing.")
       (setf (phpinspect-parser-func parser)
             (byte-compile
              (phpinspect-make-parser-function
+              (intern (concat ":" (phpinspect-parser-tree-keyword parser)))
+              (phpinspect-parser-handlers parser)
+              (phpinspect-parser-delimiter-predicate parser))))))
+
+(cl-defmethod phpinspect-parser-compile-incremental ((parser phpinspect-parser))
+  "Like `phpinspect-parser-compile', but for an incremental version of the parser function."
+  (or (phpinspect-parser-incremental-func parser)
+      (setf (phpinspect-parser-incremental-func parser)
+            (byte-compile
+             (phpinspect-make-incremental-parser-function
               (intern (concat ":" (phpinspect-parser-tree-keyword parser)))
               (phpinspect-parser-handlers parser)
               (phpinspect-parser-delimiter-predicate parser))))))
@@ -567,18 +821,17 @@ executing.")
                    (while (not (or (= max-point (point)) (looking-at "\\*/")))
                      (forward-char))
                    (point)))
-                (comment-contents (buffer-substring region-start region-end))
                 (parser (phpinspect-get-parser-func 'doc-block))
-                (doc-block (with-temp-buffer
-                             (insert comment-contents)
-                             (goto-char (point-min))
-                             (funcall parser (current-buffer) (point-max)))))
+                (doc-block (save-restriction
+                             (goto-char region-start)
+                             (narrow-to-region region-start region-end)
+                             (funcall parser (current-buffer) (point-max) nil 'root))))
            (forward-char 2)
            doc-block))
         (t
          (let ((parser (phpinspect-get-parser-func 'comment))
                (end-position (line-end-position)))
-           (funcall parser (current-buffer) end-position)))))
+           (funcall parser (current-buffer) end-position nil 'root)))))
 
 (phpinspect-defhandler variable (start-token &rest _ignored)
   "Handler for tokens indicating reference to a variable"
@@ -590,7 +843,9 @@ executing.")
 
 (phpinspect-defhandler whitespace (whitespace &rest _ignored)
   "Handler that discards whitespace"
-  (regexp "[[:blank:]]+")
+  (regexp "[[:blank:]\n]+")
+  (when phpinspect-parse-context
+    (phpinspect-pctx-register-whitespace phpinspect-parse-context whitespace))
   (forward-char (length whitespace)))
 
 (phpinspect-defhandler equals (equals &rest _ignored)
@@ -616,11 +871,11 @@ executing.")
 (phpinspect-defhandler use-keyword (start-token max-point)
   "Handler for the use keyword and tokens that might follow to give it meaning"
   (regexp (concat "use" (phpinspect--word-end-regex)))
-  (setq start-token (phpinspect--strip-last-char start-token))
+  (setq start-token (phpinspect--strip-word-end-space start-token))
   (forward-char (length start-token))
 
   (let ((parser (phpinspect-get-parser-func 'use)))
-    (funcall parser (current-buffer) max-point)))
+    (funcall parser (current-buffer) max-point nil 'root)))
 
 (phpinspect-defhandler attribute-reference (start-token &rest _ignored)
   "Handler for references to object attributes, or static class attributes."
@@ -648,7 +903,7 @@ executing.")
  either a block has been parsed or another namespace keyword has
  been encountered."
   (regexp (concat "namespace" (phpinspect--word-end-regex)))
-  (setq start-token (phpinspect--strip-last-char start-token))
+  (setq start-token (phpinspect--strip-word-end-space start-token))
   (forward-char (length start-token))
   (funcall (phpinspect-get-parser-func 'namespace)
            (current-buffer)
@@ -663,17 +918,17 @@ executing.")
 (phpinspect-defhandler const-keyword (start-token max-point)
   "Handler for the const keyword."
   (regexp (concat "const" (phpinspect--word-end-regex)))
-  (setq start-token (phpinspect--strip-last-char start-token))
+  (setq start-token (phpinspect--strip-word-end-space start-token))
   (forward-char (length start-token))
   (let* ((parser (phpinspect-get-parser-func 'const))
-         (token (funcall parser (current-buffer) max-point)))
+         (token (funcall parser (current-buffer) max-point nil 'root)))
     (when (phpinspect-incomplete-token-p (car (last token)))
       (setcar token :incomplete-const))
     token))
 
 (phpinspect-defhandler string (start-token &rest _ignored)
   "Handler for strings"
-  (regexp "\"\\|'")
+  (regexp "\\(\"\\|'\\)")
   (list :string (phpinspect--munch-string start-token)))
 
 (phpinspect-defparser block-without-scopes
@@ -692,7 +947,7 @@ static keywords with the same meaning as in a class block."
          (continue-condition (lambda ()
                                (not (and (char-equal (char-after) ?})
                                          (setq complete-block t)))))
-         (parsed (funcall parser (current-buffer) max-point continue-condition)))
+         (parsed (funcall parser (current-buffer) max-point continue-condition 'root)))
     (if complete-block
         (forward-char)
       (setcar parsed :incomplete-block))
@@ -714,7 +969,7 @@ static keywords with the same meaning as in a class block."
          (continue-condition (lambda ()
                                (not (and (char-equal (char-after) ?})
                                          (setq complete-block t)))))
-         (parsed (funcall parser (current-buffer) max-point continue-condition)))
+         (parsed (funcall parser (current-buffer) max-point continue-condition 'root)))
     (if complete-block
         (forward-char)
       (setcar parsed :incomplete-block))
@@ -819,11 +1074,14 @@ nature like argument lists"
 (phpinspect-defhandler function-keyword (start-token max-point)
   "Handler for the function keyword and tokens that follow to give it meaning"
   (regexp (concat "function" (phpinspect--word-end-regex)))
-  (setq start-token (phpinspect--strip-last-char start-token))
+  (setq start-token (phpinspect--strip-word-end-space start-token))
   (let* ((parser (phpinspect-get-or-create-declaration-parser))
-         (continue-condition (lambda () (not (char-equal (char-after) ?{))))
-         (declaration (funcall parser (current-buffer) max-point continue-condition)))
-    (if (phpinspect-end-of-token-p (car (last declaration)))
+         (continue-condition (lambda () (not (or (char-equal (char-after) ?{)
+                                                 (char-equal (char-after) ?})))))
+         (declaration (funcall parser (current-buffer) max-point continue-condition 'root)))
+
+    (if (or (phpinspect-end-of-token-p (car (last declaration)))
+            (not (looking-at (phpinspect-handler-regexp 'block))))
         (list :function declaration)
       (list :function
             declaration
@@ -854,7 +1112,7 @@ nature like argument lists"
                        (concat word (phpinspect--word-end-regex)))
                      (list "public" "private" "protected")
                      "\\|"))
-  (setq start-token (phpinspect--strip-last-char start-token))
+  (setq start-token (phpinspect--strip-word-end-space start-token))
   (forward-char (length start-token))
   (funcall (phpinspect-get-parser-func
             (cond ((string= start-token "public") 'scope-public)
@@ -871,7 +1129,7 @@ nature like argument lists"
 (phpinspect-defhandler static-keyword (start-token max-point)
   "Handler for the static keyword"
   (regexp (concat "static" (phpinspect--word-end-regex)))
-  (setq start-token (phpinspect--strip-last-char start-token))
+  (setq start-token (phpinspect--strip-word-end-space start-token))
   (forward-char (length start-token))
   (funcall (phpinspect-get-parser-func 'static)
            (current-buffer)
@@ -913,11 +1171,12 @@ nature like argument lists"
 the properties of the class"
   (regexp (concat "\\(abstract\\|final\\|class\\|interface\\|trait\\)"
                   (phpinspect--word-end-regex)))
-  (setq start-token (phpinspect--strip-last-char start-token))
+  (setq start-token (phpinspect--strip-word-end-space start-token))
   (list :class (funcall (phpinspect-get-or-create-declaration-parser)
                         (current-buffer)
                         max-point
-                        (lambda () (not (char-equal (char-after) ?{))))
+                        (lambda () (not (char-equal (char-after) ?{)))
+                        'root)
         (funcall (phpinspect-handler 'class-block)
                  (char-to-string (char-after)) max-point)))
 
@@ -936,8 +1195,7 @@ the properties of the class"
       (re-search-forward "<\\?php\\|<\\?" nil t)
       (funcall (phpinspect-get-parser-func 'root)
                (current-buffer)
-               point))))
-
+               point nil 'root))))
 
 (provide 'phpinspect-parser)
 ;;; phpinspect-parser.el ends here

@@ -62,8 +62,11 @@
    (concat phpinspect-test-php-file-directory "/" name ".php")))
 
 (ert-deftest phpinspect-get-variable-type-in-block ()
-  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $bar = $foo;"))
+  (let* ((code "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $bar = $foo; Whatever comes after don't matter.")
+         (bmap (phpinspect-parse-string-to-bmap code))
+         (tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $bar = $foo;"))
          (context (phpinspect--get-resolvecontext tokens))
+         (bmap-context (phpinspect-get-resolvecontext bmap (- (length code) 36)))
          (project-root "could never be a real project root")
          (phpinspect-project-root-function
           (lambda (&rest _ignored) project-root))
@@ -78,13 +81,22 @@
                    context "foo"
                    (phpinspect-function-block
                     (car (phpinspect--resolvecontext-enclosing-tokens context)))
-                   (phpinspect--make-type-resolver-for-resolvecontext context))))
+                   (phpinspect--make-type-resolver-for-resolvecontext context)))
+          (bmap-result (phpinspect-get-variable-type-in-block
+                        bmap-context "foo"
+                        (phpinspect-function-block
+                         (car (phpinspect--resolvecontext-enclosing-tokens context)))
+                        (phpinspect--make-type-resolver-for-resolvecontext context))))
       (should (phpinspect--type= (phpinspect--make-type :name "\\DateTime")
-                                 result)))))
+                                 result))
+
+      (should (phpinspect--type= (phpinspect--make-type :name "\\DateTime")
+                                 bmap-result)))))
 
 (ert-deftest phpinspect-get-pattern-type-in-block ()
-  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $this->potato = $foo;"))
-         (context (phpinspect--get-resolvecontext tokens))
+  (let* ((code "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $this->potato = $foo;")
+         (bmap (phpinspect-parse-string-to-bmap "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $this->potato = $foo;"))
+         (context (phpinspect-get-resolvecontext bmap (length code)))
          (project-root "could never be a real project root")
          (phpinspect-project-root-function
           (lambda (&rest _ignored) project-root))
@@ -104,9 +116,25 @@
       (should (phpinspect--type= (phpinspect--make-type :name "\\DateTime")
                                  result)))))
 
+(ert-deftest phpinspect-get-resolvecontext-multi-strategy ()
+  (let* ((code1 "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0]; $borknest = [$bork]; $barknest = $borknest[0][0]; }}")
+         (code2  "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0]; $borknest = [$bork]; $barknest = $borknest[0][0]")
+         (bmap (phpinspect-parse-string-to-bmap code1))
+         (tokens (phpinspect-parse-string code2))
+         (context1 (phpinspect-get-resolvecontext bmap (- (length code1) 4)))
+         (context2 (phpinspect--get-resolvecontext tokens)))
+
+    (should (equal (phpinspect--resolvecontext-subject context1)
+                   (phpinspect--resolvecontext-subject context2)))
+    (should (= (length (phpinspect--resolvecontext-enclosing-tokens context1))
+               (length (phpinspect--resolvecontext-enclosing-tokens context2))))))
+
+
+
 (ert-deftest phpinspect-get-variable-type-in-block-array-access ()
-  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0]; $borknest = [$bork]; $barknest = $borknest[0][0]"))
-         (context (phpinspect--get-resolvecontext tokens))
+  (let* ((code "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0]; $borknest = [$bork]; $barknest = $borknest[0][0]; }}")
+         (tokens (phpinspect-parse-string-to-bmap code))
+         (context (phpinspect-get-resolvecontext tokens (- (length code) 4)))
          (project-root "could never be a real project root")
          (phpinspect-project-root-function
           (lambda (&rest _ignored) project-root))
@@ -136,8 +164,9 @@
 
 
 (ert-deftest phpinspect-get-variable-type-in-block-array-foreach ()
-  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; foreach ($foo as $bar) {$bar->"))
-         (context (phpinspect--get-resolvecontext tokens))
+  (let* ((code "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; foreach ($foo as $bar) {$bar->")
+         (bmap (phpinspect-parse-string-to-bmap code))
+         (context (phpinspect-get-resolvecontext bmap (length code)))
          (project-root "could never be a real project root")
          (phpinspect-project-root-function
           (lambda (&rest _ignored) project-root))
@@ -161,8 +190,9 @@
 
 
 (ert-deftest phpinspect-get-variable-type-in-block-nested-array ()
-  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = [[$baz]]; foreach ($foo[0] as $bar) {$bar->"))
-         (context (phpinspect--get-resolvecontext tokens))
+  (let* ((code "class Foo { function a(\\Thing $baz) { $foo = [[$baz]]; foreach ($foo[0] as $bar) {$bar->")
+         (bmap (phpinspect-parse-string-to-bmap code))
+         (context (phpinspect-get-resolvecontext bmap (length code)))
          (project-root "could never be a real project root")
          (phpinspect-project-root-function
           (lambda (&rest _ignored) project-root))
@@ -286,120 +316,10 @@
                           (phpinspect-test-read-fixture-data "IndexClass1"))))
     (should (equal index expected-result))))
 
-(ert-deftest phpinspect-index-tokens-class ()
-  (let* ((index1
-          (phpinspect--index-tokens
-           (phpinspect-test-read-fixture-data "IndexClass1")))
-         (index2
-          (phpinspect-test-read-fixture-serialization "IndexClass1-indexed"))
-         (index1-class (cdr (alist-get 'classes index1)))
-         (index2-class (cdr (alist-get 'classes index2))))
-    (dolist (key '(class-name imports methods static-methods static-variables variables constants extends implements))
-      (should (equal (alist-get key index1-class)
-                     (alist-get key index2-class))))))
-
-(ert-deftest phpinspect-get-resolvecontext ()
-  (let ((resolvecontext (phpinspect--get-resolvecontext
-                         (phpinspect-test-read-fixture-data "IncompleteClass"))))
-
-    (should (equal (phpinspect--resolvecontext-subject resolvecontext)
-                   '((:variable "this")
-                     (:object-attrib (:word "em"))
-                     (:object-attrib nil))))
-
-    (should (phpinspect-root-p
-             (car (last (phpinspect--resolvecontext-enclosing-tokens
-                         resolvecontext)))))
-
-    (should (phpinspect-incomplete-list-p
-             (car (phpinspect--resolvecontext-enclosing-tokens
-                   resolvecontext))))
-
-    (should (phpinspect-incomplete-function-p
-             (cadr (phpinspect--resolvecontext-enclosing-tokens
-                    resolvecontext))))
-
-    (should (phpinspect-incomplete-class-p
-             (cadddr (phpinspect--resolvecontext-enclosing-tokens
-                      resolvecontext))))))
-
-(ert-deftest phpinspect-type-resolver-for-resolvecontext ()
-  (let* ((resolvecontext (phpinspect--get-resolvecontext
-                         (phpinspect-test-read-fixture-data "IncompleteClass")))
-         (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
-                         resolvecontext)))
-
-    (should (phpinspect--type= (phpinspect--make-type :name  "\\array")
-                               (funcall type-resolver
-                                        (phpinspect--make-type :name "array"))))
-    (should (phpinspect--type= (phpinspect--make-type :name  "\\array")
-                               (funcall type-resolver
-                                        (phpinspect--make-type :name "\\array"))))
-    (should (phpinspect--type= (phpinspect--make-type
-                                :name  "\\Symfony\\Component\\HttpFoundation\\Response")
-                     (funcall type-resolver (phpinspect--make-type :name "Response"))))
-    (should (phpinspect--type= (phpinspect--make-type :name  "\\Response")
-                               (funcall type-resolver
-                                        (phpinspect--make-type :name "\\Response"))))
-    (should (phpinspect--type= (phpinspect--make-type :name  "\\App\\Controller\\GastonLagaffe")
-                               (funcall type-resolver
-                                        (phpinspect--make-type :name "GastonLagaffe"))))
-    (should (phpinspect--type=
-             (phpinspect--make-type :name  "\\App\\Controller\\Dupuis\\GastonLagaffe")
-             (funcall type-resolver
-                      (phpinspect--make-type :name "Dupuis\\GastonLagaffe"))))))
-
-(ert-deftest phpinspect-type-resolver-for-resolvecontext-namespace-block ()
-  (let* ((resolvecontext (phpinspect--get-resolvecontext
-                          (phpinspect-test-read-fixture-data
-                           "IncompleteClassBlockedNamespace")))
-         (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
-                         resolvecontext)))
-
-    (should (phpinspect--type= (phpinspect--make-type :name "\\array")
-                               (funcall type-resolver (phpinspect--make-type :name "array"))))
-    (should (phpinspect--type= (phpinspect--make-type :name  "\\array")
-                               (funcall type-resolver (phpinspect--make-type :name "\\array"))))
-    (should (phpinspect--type= (phpinspect--make-type
-                                :name  "\\Symfony\\Component\\HttpFoundation\\Response")
-                               (funcall type-resolver (phpinspect--make-type :name "Response"))))
-    (should (phpinspect--type= (phpinspect--make-type :name  "\\Response")
-                               (funcall type-resolver (phpinspect--make-type :name "\\Response"))))
-    (should (phpinspect--type= (phpinspect--make-type :name  "\\App\\Controller\\GastonLagaffe")
-                               (funcall type-resolver (phpinspect--make-type
-                                                       :name "GastonLagaffe"))))
-    (should (phpinspect--type= (phpinspect--make-type
-                                :name  "\\App\\Controller\\Dupuis\\GastonLagaffe")
-                     (funcall type-resolver (phpinspect--make-type :name "Dupuis\\GastonLagaffe"))))))
-
-(ert-deftest phpinspect-type-resolver-for-resolvecontext-multiple-namespace-blocks ()
-  (let* ((resolvecontext (phpinspect--get-resolvecontext
-                          (phpinspect-test-read-fixture-data
-                           "IncompleteClassMultipleNamespaces")))
-         (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
-                         resolvecontext)))
-
-    (should (phpinspect--type= (phpinspect--make-type :name "\\array")
-                               (funcall type-resolver
-                                        (phpinspect--make-type :name "array"))))
-    (should (phpinspect--type= (phpinspect--make-type :name  "\\array")
-                               (funcall type-resolver
-                                        (phpinspect--make-type :name "\\array"))))
-    (should (phpinspect--type= (phpinspect--make-type
-                                :name  "\\Symfony\\Component\\HttpFoundation\\Response")
-                     (funcall type-resolver (phpinspect--make-type :name "Response"))))
-    (should (phpinspect--type= (phpinspect--make-type :name  "\\Response")
-                               (funcall type-resolver
-                                        (phpinspect--make-type :name "\\Response"))))
-    (should (phpinspect--type= (phpinspect--make-type :name  "\\App\\Controller\\GastonLagaffe")
-                     (funcall type-resolver (phpinspect--make-type :name "GastonLagaffe"))))
-    (should (phpinspect--type= (phpinspect--make-type
-                                :name  "\\App\\Controller\\Dupuis\\GastonLagaffe")
-                               (funcall type-resolver (phpinspect--make-type
-                                                       :name "Dupuis\\GastonLagaffe"))))))
 
 (ert-deftest phpinspect-resolve-type-from-context ()
-  (let* ((token-tree (phpinspect-parse-string "
+  (let* ((pctx (phpinspect-make-pctx :incremental t))
+         (code "
 namespace Amazing;
 
 class FluffBall
@@ -416,8 +336,18 @@ class FluffBall
         $ball = $this->fluffer;
 
         if ($ball) {
-            if(isset($ball->fluff()->poof->upFluff->"))
-        (fluffer  (phpinspect-parse-string "
+            if(isset($ball->fluff()->poof->upFluff->)) {
+                $this->beFluffy();
+            }
+        }
+
+        $ball->fluff()->poof->
+     }
+}")
+         (token-tree (phpinspect-with-parse-context pctx
+                       (phpinspect-parse-string code)))
+         (bmap (phpinspect-pctx-bmap pctx))
+         (fluffer  (phpinspect-parse-string "
 namespace Amazing;
 
 use Vendor\\FluffLib\\Fluff;
@@ -448,7 +378,7 @@ class FlufferUpper
     }
 }"))
         (phpinspect-project-root-function (lambda () "phpinspect-test"))
-        (context (phpinspect--get-resolvecontext token-tree)))
+        (context (phpinspect-get-resolvecontext bmap 310)))
 
     (setf (phpinspect--resolvecontext-project-root context)
           "phpinspect-test")
@@ -461,6 +391,14 @@ class FlufferUpper
 
     (should (phpinspect--type=
              (phpinspect--make-type :name "\\Vendor\\FluffLib\\DoubleFluffer")
+             (phpinspect-resolve-type-from-context
+              context
+              (phpinspect--make-type-resolver-for-resolvecontext
+               context))))
+
+    (setq context (phpinspect-get-resolvecontext bmap 405))
+    (should (phpinspect--type=
+             (phpinspect--make-type :name "\\Vendor\\FluffLib\\FlufferUpper")
              (phpinspect-resolve-type-from-context
               context
               (phpinspect--make-type-resolver-for-resolvecontext
@@ -477,7 +415,7 @@ class Thing
 
     function doStuff()
     {
-        $this->getThis(")
+        $this->getThis(new \DateTime(), bla)")
          (tokens (phpinspect-parse-string php-code))
          (index (phpinspect--index-tokens tokens))
          (phpinspect-project-root-function (lambda () "phpinspect-test"))
@@ -490,6 +428,10 @@ class Thing
     (should (string= "getThis: ($moment DateTime, $thing Thing, $other): Thing"
                    (with-temp-buffer
                      (insert php-code)
+                     (backward-char)
+                     (setq-local phpinspect-current-buffer
+                                 (phpinspect-make-buffer :buffer (current-buffer)))
+                     (phpinspect-buffer-parse phpinspect-current-buffer)
                      (phpinspect-eldoc-function))))))
 
 (ert-deftest phpinspect-eldoc-function-for-static-method ()
@@ -516,11 +458,14 @@ class Thing
     (should (string= "doThing: ($moment DateTime, $thing Thing, $other): Thing"
                    (with-temp-buffer
                      (insert php-code)
+                     (setq-local phpinspect-current-buffer
+                                 (phpinspect-make-buffer :buffer (current-buffer)))
                      (phpinspect-eldoc-function))))))
 
 
 (ert-deftest phpinspect-resolve-type-from-context-static-method ()
-  (let* ((php-code "
+  (with-temp-buffer
+    (insert "
 class Thing
 {
     static function doThing(\\DateTime $moment, Thing $thing, $other): static
@@ -531,11 +476,14 @@ class Thing
     function doStuff()
     {
         self::doThing()->")
-         (tokens (phpinspect-parse-string php-code))
+  (let* ((bmap (phpinspect-make-bmap))
+         (tokens (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t
+                                                                      :bmap bmap)
+                   (phpinspect-parse-current-buffer)))
          (index (phpinspect--index-tokens tokens))
          (phpinspect-project-root-function (lambda () "phpinspect-test"))
          (phpinspect-eldoc-word-width 100)
-         (context (phpinspect--get-resolvecontext tokens)))
+         (context (phpinspect-get-resolvecontext bmap (point))))
     (phpinspect-purge-cache)
     (phpinspect-cache-project-class
      (phpinspect-current-project-root)
@@ -545,10 +493,11 @@ class Thing
                                (phpinspect-resolve-type-from-context
                                 context
                                 (phpinspect--make-type-resolver-for-resolvecontext
-                                 context))))))
+                                 context)))))))
 
 (ert-deftest phpinspect-resolve-type-from-context-static-method-with-preceding-words ()
-  (let* ((php-code "
+  (with-temp-buffer
+    (insert "
 class Thing
 {
     static function doThing(\\DateTime $moment, Thing $thing, $other): static
@@ -560,21 +509,24 @@ class Thing
     {
         if (true) {
             return self::doThing()->")
-         (tokens (phpinspect-parse-string php-code))
-         (index (phpinspect--index-tokens tokens))
-         (phpinspect-project-root-function (lambda () "phpinspect-test"))
-         (phpinspect-eldoc-word-width 100)
-         (context (phpinspect--get-resolvecontext tokens)))
-    (phpinspect-purge-cache)
-    (phpinspect-cache-project-class
-     (phpinspect-current-project-root)
-     (cdar (alist-get 'classes (cdr index))))
+    (let* ((bmap (phpinspect-make-bmap))
+           (tokens (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t
+                                                                        :bmap bmap)
+                     (phpinspect-parse-current-buffer)))
+           (index (phpinspect--index-tokens tokens))
+           (phpinspect-project-root-function (lambda () "phpinspect-test"))
+           (phpinspect-eldoc-word-width 100)
+           (context (phpinspect-get-resolvecontext bmap (point))))
+      (phpinspect-purge-cache)
+      (phpinspect-cache-project-class
+       (phpinspect-current-project-root)
+       (cdar (alist-get 'classes (cdr index))))
 
-    (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
-                     (phpinspect-resolve-type-from-context
-                      context
-                      (phpinspect--make-type-resolver-for-resolvecontext
-                       context))))))
+      (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
+                                 (phpinspect-resolve-type-from-context
+                                  context
+                                  (phpinspect--make-type-resolver-for-resolvecontext
+                                   context)))))))
 
 (ert-deftest phpinspect-get-last-statement-in-token-with-static-attribute-context ()
   (let* ((php-code-function "
@@ -634,6 +586,16 @@ class Thing
     (should (equal '((:variable "wat") (:object-attrib "call"))
                    (phpinspect--assignment-from (car result))))))
 
+(ert-deftest phpinspect-parse-function-missing-open-block ()
+  (let ((parsed (phpinspect-parse-string "function bla() echo 'Hello'}")))
+    (should (equal '(:root (:function
+                            (:declaration (:word "function") (:word "bla") (:list)
+                                          (:word "echo") (:word "Hello"))))
+                   parsed))))
+
+(ert-deftest phpinspect-parse-string-token ()
+  (let ((parsed (phpinspect-parse-string "<?php 'string'")))
+    (should (equal '(:root (:string "string")) parsed))))
 
 (load-file (concat phpinspect-test-directory "/test-worker.el"))
 (load-file (concat phpinspect-test-directory "/test-autoload.el"))
@@ -644,6 +606,9 @@ class Thing
 (load-file (concat phpinspect-test-directory "/test-class.el"))
 (load-file (concat phpinspect-test-directory "/test-type.el"))
 (load-file (concat phpinspect-test-directory "/test-util.el"))
+(load-file (concat phpinspect-test-directory "/test-bmap.el"))
+(load-file (concat phpinspect-test-directory "/test-edtrack.el"))
+(load-file (concat phpinspect-test-directory "/test-resolvecontext.el"))
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here

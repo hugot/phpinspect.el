@@ -461,6 +461,12 @@ Return value is a list of the types that are \"newed\"."
                     project-root)))
       (phpinspect-project-get-class-create project class-fqn))))
 
+
+(cl-defmethod phpinspect-index-get-class
+  ((index (head phpinspect--root-index) (class-name phpinspect--type)))
+  (alist-get class-name (alist-get 'classes index)
+             nil nil #'phpinspect--type=))
+
 (defun phpinspect-index-current-buffer ()
   "Index a PHP file for classes and the methods they have"
   (phpinspect--index-tokens (phpinspect-parse-current-buffer)))

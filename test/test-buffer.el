@@ -1,4 +1,4 @@
-;;; test-buffer.el --- Unit tests for phpinspect.el  -*- lexical-binding: t; -*-
+;; test-buffer.el --- Unit tests for phpinspect.el  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021 Free Software Foundation, Inc.
 
@@ -27,33 +27,27 @@
 (require 'phpinspect-parser)
 (require 'phpinspect-buffer)
 
-(ert-deftest phpinspect-parse-buffer-location-map ()
-  "Confirm that the location map of `phpinspect-current-buffer' is
-populated when the variable is set and the data in it is accurate."
-  (let* ((location-map)
-         (parsed)
+
+(ert-deftest phpinspect-buffer-region-lookups ()
+  (let* ((parsed)
          (class))
     (with-temp-buffer
       (insert-file-contents (concat phpinspect-test-php-file-directory "/NamespacedClass.php"))
       (setq phpinspect-current-buffer
             (phpinspect-make-buffer :buffer (current-buffer)))
       (setq parsed (phpinspect-buffer-parse phpinspect-current-buffer))
-      (setq location-map
-            (phpinspect-buffer-location-map phpinspect-current-buffer)))
 
-    (let* ((class (seq-find #'phpinspect-class-p
-                            (seq-find #'phpinspect-namespace-p parsed)))
-           (class-region (gethash class location-map))
-           (classname-region (gethash (car (cddadr class)) location-map)))
-      (should class)
-      (should class-region)
-      (should classname-region)
-      ;; Character position of the start of the class token.
-      (should (= 611 (phpinspect-region-start class-region)))
-      (should (= 2367 (phpinspect-region-end class-region)))
+      (let* ((class (seq-find #'phpinspect-class-p
+                              (seq-find #'phpinspect-namespace-p parsed)))
+             (classname (car (cddadr class))))
 
-      (should (= 617 (phpinspect-region-start classname-region)))
-      (should (= 634 (phpinspect-region-end classname-region))))))
+        (let ((tokens (phpinspect-buffer-tokens-enclosing-point
+                       phpinspect-current-buffer 617)))
+          (should (eq classname
+                      (phpinspect-meta-token (car tokens))))
+          (should (phpinspect-declaration-p (phpinspect-meta-token (cadr tokens))))
+          (should (eq class (phpinspect-meta-token (caddr tokens)))))))))
+
 
 (ert-deftest phpinspect-parse-buffer-no-current ()
   "Confirm that the parser is still functional with
@@ -66,3 +60,77 @@ populated when the variable is set and the data in it is accurate."
       (setq parsed (phpinspect-parse-current-buffer)))
 
     (should (cdr parsed))))
+
+(cl-defstruct (phpinspect-document (:constructor phpinspect-make-document))
+  (buffer (get-buffer-create
+                  (generate-new-buffer-name " **phpinspect-document** shadow buffer") t)
+                 :type buffer
+                 :documentation
+                 "A hidden buffer with a reference version of the document."))
+
+(cl-defmethod phpinspect-document-apply-edit
+  ((document phpinspect-document) start end delta contents)
+  (with-current-buffer (phpinspect-document-buffer document)
+      (goto-char start)
+      (delete-region (point) (- end delta))
+      (insert contents)))
+
+(cl-defmethod phpinspect-document-set-contents
+  ((document phpinspect-document) (contents string))
+  (with-current-buffer (phpinspect-document-buffer document)
+    (erase-buffer)
+    (insert contents)))
+
+(cl-defmethod phpinspect-document-contents ((document phpinspect-document))
+  (with-current-buffer (phpinspect-document-buffer document)
+    (buffer-string)))
+
+(ert-deftest phpinspect-buffer-parse-incrementally ()
+  (let* ((document (phpinspect-make-document))
+         (buffer (phpinspect-make-buffer
+                  :buffer (phpinspect-document-buffer document)))
+         (parsed))
+    ;; TODO: write tests for more complicated cases (multiple edits, etc.)
+    (phpinspect-document-set-contents document "<?php function Bello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }")
+
+    (setq parsed (phpinspect-buffer-parse buffer))
+    (should parsed)
+
+    (let* ((enclosing-bello (phpinspect-buffer-tokens-enclosing-point buffer 18))
+           (bello (car enclosing-bello))
+           (enclosing-bello1)
+           (bello1)
+           (bello2))
+      (should (equal '(:word "Bello") (phpinspect-meta-token bello)))
+      (should parsed)
+
+      ;; Delete function block opening brace
+      (phpinspect-document-apply-edit document 24 24 -1 "")
+      (should (string= "<?php function Bello()  echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }"
+                       (phpinspect-document-contents document)))
+      (phpinspect-buffer-register-edit buffer 24 24 1)
+      (setq parsed (phpinspect-buffer-parse buffer))
+      (should parsed)
+      (setq enclosing-bello1 (phpinspect-buffer-tokens-enclosing-point buffer 18))
+      (setq bello1 (car enclosing-bello1))
+      (should (eq (phpinspect-meta-token bello) (phpinspect-meta-token bello1)))
+
+      (should (phpinspect-declaration-p (phpinspect-meta-token (phpinspect-meta-parent bello))))
+      (should (phpinspect-declaration-p (phpinspect-meta-token (phpinspect-meta-parent bello1))))
+
+      (should (phpinspect-function-p (phpinspect-meta-token (phpinspect-meta-parent (phpinspect-meta-parent bello)))))
+      (should (phpinspect-function-p (phpinspect-meta-token (phpinspect-meta-parent (phpinspect-meta-parent bello1)))))
+
+      (let ((function (phpinspect-meta-token (phpinspect-meta-parent (phpinspect-meta-parent bello1)))))
+        (should (= 2 (length function)))
+        (should (phpinspect-declaration-p (cadr function)))
+        (should (member '(:word "Bello") (cadr function))))
+
+      (phpinspect-document-apply-edit document 24 25 1 "{")
+      (should (string= "<?php function Bello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }"
+                       (phpinspect-document-contents document)))
+      (phpinspect-buffer-register-edit buffer 24 25 0)
+      (setq parsed (phpinspect-buffer-parse buffer))
+      (should parsed)
+      (setq bello2 (car (phpinspect-buffer-tokens-enclosing-point buffer 18)))
+      (should (eq (phpinspect-meta-token bello) (phpinspect-meta-token bello2))))))

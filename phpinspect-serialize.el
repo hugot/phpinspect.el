@@ -87,10 +87,11 @@
      (imports . ,,(append '(list)
                           (mapcar #'phpinspect--serialize-import
                                   (alist-get 'imports index))))
-     (classes ,,@(mapcar (lambda (cons-class)
-                           `(list ,(phpinspect--serialize-type (car cons-class))
-                                  ,(phpinspect--serialize-indexed-class (cdr cons-class))))
-                         (alist-get 'classes index)))
+     (classes . ,(list
+                 ,@(mapcar (lambda (cons-class)
+                              `(cons ,(phpinspect--serialize-type (car cons-class))
+                                     ,(phpinspect--serialize-indexed-class (cdr cons-class))))
+                            (alist-get 'classes index))))
      (functions . ,,(append '(list)
                             (mapcar #'phpinspect--serialize-function
                                     (alist-get 'functions index))))))

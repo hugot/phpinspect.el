@@ -23,72 +23,74 @@
 
 ;;; Code:
 
+;;(require 'phpinspect-tree)
+(require 'phpinspect-bmap)
+(require 'phpinspect-edtrack)
+
 (defvar-local phpinspect-current-buffer nil
   "An instance of `phpinspect-buffer' local to the active
 buffer. This variable is only set for buffers where
 `phpinspect-mode' is active. Also see `phpinspect-buffer'.")
-
-(defsubst phpinspect-make-region (start end)
-  (list start end))
-
-(defalias 'phpinspect-region-start #'car)
-(defalias 'phpinspect-region-end #'cadr)
-
-(defsubst phpinspect-region-size (region)
-  (- (phpinspect-region-end region) (phpinspect-region-start region)))
-
-(defsubst phpinspect-region> (reg1 reg2)
-  (> (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
-
-(defsubst phpinspect-region< (reg1 reg2)
-  (< (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
 
 (cl-defstruct (phpinspect-buffer (:constructor phpinspect-make-buffer))
   "An object containing phpinspect related metadata linked to an
 emacs buffer."
   (buffer nil
           :type buffer
-          :documentation "The underlying emacs buffer")
-  (location-map (make-hash-table :test 'eq :size 400 :rehash-size 400)
-                :type hash-table
-                :documentation
-                "A map that lets us look up the character
-positions of a token within this buffer.")
+          :documentation "The associated emacs buffer")
   (tree nil
-        :type list
         :documentation
-        "An instance of a token tree as returned by
-`phpinspect--index-tokens'. Meant to be eventually consistent
-with the contents of the buffer."))
+        "Parsed token tree that resulted from last parse")
+  (map nil
+       :type phpinspect-bmap)
+  (edit-tracker (phpinspect-make-edtrack)
+                :type phpinspect-edtrack))
 
 (cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer))
   "Parse the PHP code in the the emacs buffer that this object is
 linked with."
-  (with-current-buffer (phpinspect-buffer-buffer buffer)
-    (setf (phpinspect-buffer-location-map buffer)
-          (make-hash-table :test 'eq
-                           :size 400
-                           :rehash-size 400))
+  (if (or (not (phpinspect-buffer-tree buffer))
+          (phpinspect-edtrack-taint-pool (phpinspect-buffer-edit-tracker buffer)))
+      (with-current-buffer (phpinspect-buffer-buffer buffer)
+        (let* ((map (phpinspect-make-bmap))
+               (buffer-map (phpinspect-buffer-map buffer))
+               (ctx (phpinspect-make-pctx
+                     :bmap map
+                     :incremental t
+                     :previous-bmap buffer-map
+                     :edtrack (phpinspect-buffer-edit-tracker buffer))))
+          (phpinspect-with-parse-context ctx
+            (let ((parsed (phpinspect-parse-current-buffer)))
+              (setf (phpinspect-buffer-map buffer) map)
+              (setf (phpinspect-buffer-tree buffer) parsed)
+              (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
 
-    (let ((tree (phpinspect-parse-current-buffer)))
-      (setf (phpinspect-buffer-tree buffer) tree)
-      tree)))
+              ;; return
+              parsed))))
+    ;; Else: Just return last parse result
+    (phpinspect-buffer-tree buffer)))
 
-(cl-defmethod phpinspect-buffer-token-location ((buffer phpinspect-buffer) token)
-  (gethash token (phpinspect-buffer-location-map buffer)))
+
+(cl-defmethod phpinspect-buffer-reparse ((buffer phpinspect-buffer))
+  (setf (phpinspect-buffer-map buffer) (phpinspect-make-bmap))
+  (phpinspect-buffer-parse buffer))
+
+(defsubst phpinspect-buffer-parse-map (buffer)
+  (phpinspect-buffer-parse buffer)
+  (phpinspect-buffer-map buffer))
+
+(cl-defmethod phpinspect-buffer-register-edit
+  ((buffer phpinspect-buffer) (start integer) (end integer) (pre-change-length integer))
+  (phpinspect-edtrack-register-edit
+   (phpinspect-buffer-edit-tracker buffer) start end pre-change-length))
 
 (cl-defmethod phpinspect-buffer-tokens-enclosing-point ((buffer phpinspect-buffer) point)
-  (let ((tokens))
-    (maphash
-     (lambda (token region)
-       (when (and (<= (phpinspect-region-start region) point)
-                  (>= (phpinspect-region-end region) point))
-         (push token tokens)))
-     (phpinspect-buffer-location-map buffer))
-    (sort tokens (lambda (tok1 tok2)
-                   (phpinspect-region< (phpinspect-buffer-token-location tok1)
-                                       (phpinspect-buffer-token-location tok2))))))
+  (phpinspect-bmap-tokens-overlapping (phpinspect-buffer-map buffer) point))
 
+(cl-defmethod phpinspect-buffer-token-meta ((buffer phpinspect-buffer) token)
+  (phpinspect-bmap-token-meta (phpinspect-buffer-map buffer) token))
 
+(cl-defmethod phpinspect-buffer-location-resover ((buffer phpinspect-buffer))
+  (phpinspect-bmap-make-location-resolver (phpinspect-buffer-map buffer)))
 
 (provide 'phpinspect-buffer)

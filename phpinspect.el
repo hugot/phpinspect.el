@@ -41,6 +41,7 @@
 (require 'phpinspect-autoload)
 (require 'phpinspect-imports)
 (require 'phpinspect-buffer)
+(require 'phpinspect-resolvecontext)
 
 (defvar phpinspect-auto-reindex nil
   "Whether or not phpinspect should automatically search for new
@@ -57,9 +58,6 @@ phpinspect")
 
 (defvar phpinspect-insert-file-contents-function #'insert-file-contents-literally
   "Function that phpinspect uses to insert file contents into a buffer.")
-
-(defvar phpinspect-project-root-function #'phpinspect--find-project-root
-  "Function that phpinspect uses to find the root directory of a project.")
 
 (defvar phpinspect-type-filepath-function #'phpinspect-get-class-filepath
   "Function that phpinspect uses to find the filepath of a class by its FQN.")
@@ -106,56 +104,6 @@ candidate. Candidates can be indexed functions and variables.")
                        (phpinspect--type-bare-name
                         (phpinspect--function-return-type completion-candidate)))
    :kind 'function))
-
-(cl-defstruct (phpinspect--resolvecontext
-            (:constructor phpinspect--make-resolvecontext))
-  (subject nil
-           :type phpinspect--token
-           :documentation
-           "The statement we're trying to resolve the type of.")
-  (project-root nil
-                :type string
-                :documentation
-                "The root directory of the project we're resolving types for.")
-  (enclosing-tokens nil
-                    :type list
-                    :documentation
-                    "Tokens that enclose the subject."))
-
-(cl-defmethod phpinspect--resolvecontext-push-enclosing-token
-  ((resolvecontext phpinspect--resolvecontext) enclosing-token)
-  "Add ENCLOSING-TOKEN to RESOLVECONTEXTs enclosing token stack."
-  (push enclosing-token (phpinspect--resolvecontext-enclosing-tokens
-                         resolvecontext)))
-
-(defun phpinspect--get-resolvecontext (token &optional resolvecontext)
-  "Find the deepest nested incomplete token in TOKEN.
-If RESOLVECONTEXT is nil, it is created.  Returns RESOLVECONTEXT
-of type `phpinspect--resolvecontext' containing the last
-statement of the innermost incomplete token as subject
-accompanied by all of its enclosing tokens."
-  (unless resolvecontext
-    (setq resolvecontext (phpinspect--make-resolvecontext
-                          :project-root (phpinspect-current-project-root))))
-
-  (let ((last-token (car (last token)))
-        (last-encountered-token (car
-                                 (phpinspect--resolvecontext-enclosing-tokens
-                                  resolvecontext))))
-    (unless (and (or (phpinspect-function-p last-encountered-token)
-                 (phpinspect-class-p last-encountered-token))
-             (phpinspect-block-p token))
-        ;; When a class or function has been inserted already, its block
-        ;; doesn't need to be added on top.
-      (phpinspect--resolvecontext-push-enclosing-token resolvecontext token))
-
-    (if (phpinspect-incomplete-token-p last-token)
-        (phpinspect--get-resolvecontext last-token resolvecontext)
-    ;; else
-    (setf (phpinspect--resolvecontext-subject resolvecontext)
-          (phpinspect--get-last-statement-in-token token))
-
-    resolvecontext)))
 
 
 (defsubst phpinspect-cache-project-class (project-root indexed-class)
@@ -273,6 +221,16 @@ accompanied by all of its enclosing tokens."
    (current-buffer)
    (point-max)))
 
+(defun phpinspect-parse-string-to-bmap (string)
+  (with-temp-buffer
+    (insert string)
+    (let ((context (phpinspect-make-pctx :incremental t
+                                         :bmap (phpinspect-make-bmap))))
+      (phpinspect-with-parse-context context
+        (phpinspect-parse-current-buffer))
+
+      (phpinspect-pctx-bmap context))))
+
 (defun phpinspect-parse-string (string)
   (with-temp-buffer
     (insert string)
@@ -324,22 +282,32 @@ TODO:
  - Respect `eldoc-echo-area-use-multiline-p`
  - This function is too big and has repetitive code. Split up and simplify.
 "
-  (phpinspect--log "Starting eldoc function execution")
-  (let* ((token-tree (phpinspect-parse-buffer-until-point (current-buffer) (point)))
-         (resolvecontext (phpinspect--get-resolvecontext token-tree))
-         (incomplete-token (car (phpinspect--resolvecontext-enclosing-tokens
-                                 resolvecontext)))
+  (let* ((token-map (phpinspect-buffer-parse-map phpinspect-current-buffer))
+         (resolvecontext (phpinspect-get-resolvecontext token-map (point)))
+         (parent-token (car (phpinspect--resolvecontext-enclosing-tokens
+                                      resolvecontext)))
          (enclosing-token (cadr (phpinspect--resolvecontext-enclosing-tokens
                                  resolvecontext)))
-         (statement (phpinspect--get-last-statement-in-token
-                     enclosing-token))
+         (statement (phpinspect--resolvecontext-subject resolvecontext))
+         (arg-list)
          (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
                                resolvecontext))
          (static))
-    (phpinspect--log "Enclosing token: %s" enclosing-token)
-    (phpinspect--log "reference token: %s" (car (last statement 2)))
 
-    (when (and (phpinspect-incomplete-list-p incomplete-token)
+    (phpinspect--log  "Eldoc statement before checking outside list: %s" statement)
+    (when (and (phpinspect-list-p parent-token) enclosing-token)
+      (setq statement
+            (phpinspect-find-statement-before-point
+             token-map (phpinspect-bmap-token-meta token-map enclosing-token)
+             (phpinspect-meta-end
+              (phpinspect-bmap-token-meta token-map parent-token)))))
+
+    (phpinspect--log "Enclosing token: %s" enclosing-token)
+    (phpinspect--log  "Eldoc statement: %s" statement)
+
+    (setq arg-list (seq-find #'phpinspect-list-p (reverse statement)))
+
+    (when (and (phpinspect-list-p arg-list)
                enclosing-token
                (or (phpinspect-object-attrib-p (car (last statement 2)))
                    (setq static (phpinspect-static-attrib-p (car (last statement 2))))))
@@ -370,7 +338,7 @@ TODO:
         (when method
           (let ((arg-count -1)
                 (comma-count
-                 (length (seq-filter #'phpinspect-comma-p incomplete-token))))
+                 (length (seq-filter #'phpinspect-comma-p arg-list))))
             (concat (truncate-string-to-width
                      (phpinspect--function-name method) phpinspect-eldoc-word-width) ": ("
                      (mapconcat
@@ -794,10 +762,14 @@ more recent"
         (phpinspect--log "Failed to find methods for class %s :(" class))
       methods))
 
+(defun phpinspect-after-change-function (start end pre-change-length)
+  (when phpinspect-current-buffer
+    (phpinspect-buffer-register-edit phpinspect-current-buffer start end pre-change-length)))
 
 (defun phpinspect--init-mode ()
   "Initialize the phpinspect minor mode for the current buffer."
   (setq phpinspect-current-buffer (phpinspect-make-buffer :buffer (current-buffer)))
+  (add-hook 'after-change-functions #'phpinspect-after-change-function)
   (make-local-variable 'company-backends)
   (add-to-list 'company-backends #'phpinspect-company-backend)
 
@@ -824,7 +796,9 @@ Assuming that files are only changed from within Emacs, this
 keeps the cache valid.  If changes are made outside of Emacs,
 users will have to use \\[phpinspect-purge-cache]."
   (when (and (boundp 'phpinspect-mode) phpinspect-mode)
-    (setq phpinspect--buffer-index (phpinspect-index-current-buffer))
+    (setq phpinspect--buffer-index
+          (phpinspect--index-tokens
+           (phpinspect-buffer-reparse phpinspect-current-buffer)))
     (let ((imports (alist-get 'imports phpinspect--buffer-index))
           (project (phpinspect--cache-get-project-create
                     (phpinspect--get-or-create-global-cache)
@@ -997,7 +971,7 @@ level of a token. Nested variables are ignored."
     strings))
 
 (defun phpinspect--suggest-attributes-at-point
-    (token-tree resolvecontext &optional static)
+    (resolvecontext &optional static)
   "Suggest object or class attributes at point.
 
 TOKEN-TREE must be a syntax tree containing enough context to
@@ -1027,25 +1001,6 @@ static variables and static methods."
                    type
                    static)
                   (funcall method-lister type)))))))
-
-(defun phpinspect--make-type-resolver-for-resolvecontext
-    (resolvecontext)
-  (let ((namespace-or-root
-         (seq-find #'phpinspect-namespace-or-root-p
-                   (phpinspect--resolvecontext-enclosing-tokens
-                    resolvecontext)))
-        (namespace-name))
-    (when (phpinspect-namespace-p namespace-or-root)
-      (setq namespace-name (cadadr namespace-or-root))
-      (setq namespace-or-root (phpinspect-namespace-body namespace-or-root)))
-
-      (phpinspect--make-type-resolver
-       (phpinspect--uses-to-types
-        (seq-filter #'phpinspect-use-p namespace-or-root))
-       (seq-find #'phpinspect-class-p
-                   (phpinspect--resolvecontext-enclosing-tokens
-                    resolvecontext))
-       namespace-name)))
 
 (defun phpinspect--get-last-statement-in-token (token)
   (setq token (cond ((phpinspect-function-p token)
@@ -1097,9 +1052,9 @@ static variables and static methods."
     (seq-filter #'phpinspect--variable-name variables)))
 
 (defun phpinspect--suggest-at-point ()
-      (phpinspect--log "Entering suggest at point." )
-  (let* ((token-tree (phpinspect-parse-buffer-until-point (current-buffer) (point)))
-         (resolvecontext (phpinspect--get-resolvecontext token-tree))
+  (phpinspect--log "Entering suggest at point. Point: %d" (point))
+  (let* ((bmap (phpinspect-buffer-parse-map phpinspect-current-buffer))
+         (resolvecontext (phpinspect-get-resolvecontext bmap (point)))
          (last-tokens (last (phpinspect--resolvecontext-subject resolvecontext) 2)))
     (phpinspect--log "Subject: %s" (phpinspect--resolvecontext-subject
                                     resolvecontext))
@@ -1107,11 +1062,10 @@ static variables and static methods."
     (cond ((and (phpinspect-object-attrib-p (car last-tokens))
                 (phpinspect-word-p (cadr last-tokens)))
            (phpinspect--log "word-attributes")
-           (phpinspect--suggest-attributes-at-point token-tree
-                                                    resolvecontext))
+           (phpinspect--suggest-attributes-at-point resolvecontext))
           ((phpinspect-object-attrib-p (cadr last-tokens))
            (phpinspect--log "object-attributes")
-           (phpinspect--suggest-attributes-at-point token-tree resolvecontext))
+           (phpinspect--suggest-attributes-at-point resolvecontext))
           ((phpinspect-static-attrib-p (cadr last-tokens))
            (phpinspect--log "static-attributes")
            (phpinspect--suggest-attributes-at-point token-tree resolvecontext t))
@@ -1192,48 +1146,6 @@ currently opened projects."
 
   ;; Assign a fresh cache object
   (setq phpinspect-cache (phpinspect--make-cache)))
-
-(defun phpinspect--locate-dominating-project-file (start-file)
-  "Locate the first dominating file in `phpinspect-project-root-file-list`.
-Starts looking at START-FILE and then recurses up the directory
-hierarchy as long as no matching files are found.  See also
-`locate-dominating-file'."
-  (let ((dominating-file))
-    (seq-find (lambda (file)
-                (setq dominating-file (locate-dominating-file start-file file)))
-              phpinspect-project-root-file-list)
-    dominating-file))
-
-(defun phpinspect--find-project-root (&optional start-file)
-  "(Attempt to) Find the root directory of the visited PHP project.
-If a found project root has a parent directory called \"vendor\",
-the search continues upwards. See also
-`phpinspect--locate-dominating-project-file'.
-
-If START-FILE is provided, searching starts at the directory
-level of START-FILE in stead of `default-directory`."
-  (let ((project-file (phpinspect--locate-dominating-project-file
-                       (or start-file default-directory))))
-    (phpinspect--log "Checking for project root at  %s" project-file)
-    (when project-file
-      (let* ((directory (file-name-directory project-file))
-             (directory-slugs (split-string (expand-file-name directory) "/")))
-        (if (not (member "vendor" directory-slugs))
-            (expand-file-name directory)
-          ;; else. Only continue if the parent directory is not "/"
-          (let ((parent-without-vendor
-                 (string-join (seq-take-while (lambda (s) (not (string= s "vendor" )))
-                                              directory-slugs)
-                              "/")))
-            (when (not (or (string= parent-without-vendor "/")
-                           (string= parent-without-vendor "")))
-              (phpinspect--find-project-root parent-without-vendor))))))))
-
-(defsubst phpinspect-current-project-root ()
-  "Call `phpinspect-project-root-function' with ARGS as arguments."
-  (unless (and (boundp 'phpinspect--buffer-project) phpinspect--buffer-project)
-    (set (make-local-variable 'phpinspect--buffer-project) (funcall phpinspect-project-root-function)))
-  phpinspect--buffer-project)
 
 
 (defmacro phpinspect-json-preset (&rest body)
