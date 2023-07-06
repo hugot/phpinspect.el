@@ -23,35 +23,13 @@
 
 ;;; Code:
 
+(require 'phpinspect-tree)
+
 (defvar-local phpinspect-current-buffer nil
   "An instance of `phpinspect-buffer' local to the active
 buffer. This variable is only set for buffers where
 `phpinspect-mode' is active. Also see `phpinspect-buffer'.")
 
-(defsubst phpinspect-make-region (start end)
-  (list start end))
-
-(defalias 'phpinspect-region-start #'car)
-(defalias 'phpinspect-region-end #'cadr)
-
-(defsubst phpinspect-region-size (region)
-  (- (phpinspect-region-end region) (phpinspect-region-start region)))
-
-(defsubst phpinspect-region> (reg1 reg2)
-  (> (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
-
-(defsubst phpinspect-region< (reg1 reg2)
-  (< (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
-
-(defsubst phpinspect-region-overlaps-point (reg point)
-  (and (>= (phpinspect-region-end reg) point)
-       (<= (phpinspect-region-start reg) point)))
-
-(defsubst phpinspect-region-overlaps (reg1 reg2)
-  (or (phpinspect-region-reg2s-point reg1 (phpinspect-region-start reg2))
-      (phpinspect-region-reg2s-point reg1 (phpinspect-region-end reg2))
-      (phpinspect-region-reg2s-point reg2 (phpinspect-region-start reg1))
-      (phpinspect-region-reg2s-point reg2 (phpinspect-region-end reg1))))
 
 (cl-defstruct (phpinspect-token-metadata (:constructor phpinspect-make-token-metadata))
   "An object that represents the metadata associated with a parsed token."

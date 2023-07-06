@@ -188,6 +188,46 @@ the start of the list."
 
     (should (= 4 (seq-length list)))))
 
+(ert-deftest phpinspect-ll-seq-find ()
+  (let ((list (phpinspect-make-ll)))
+    (phpinspect-ll-push "target1" list)
+    (phpinspect-ll-push "target2" list)
+    (phpinspect-ll-push "target3" list)
+    (phpinspect-ll-push "target4" list)
+
+    (should-not (seq-find #'not list))
+    (should (string= "target1" (seq-find (lambda (s) (string= "target1" s))
+                                         list)))
+    (should (string= "target2" (seq-find (lambda (s) (string= "target2" s))
+                                         list)))
+    (should (string= "target3" (seq-find (lambda (s) (string= "target3" s))
+                                         list)))
+    (should (string= "target4" (seq-find (lambda (s) (string= "target4" s))
+                                         list)))))
+
+(ert-deftest phpinspect-slice-seq-find ()
+  (let ((list (phpinspect-make-ll))
+        (target1 "target1")
+        (target4 "target4")
+        (slice))
+    (phpinspect-ll-push target1 list)
+    (phpinspect-ll-push "target2" list)
+    (phpinspect-ll-push "target3" list)
+    (phpinspect-ll-push target4 list)
+
+    (setq slice (phpinspect-make-slice :start (phpinspect-ll-link list target4)
+                                       :end (phpinspect-ll-link list target1)))
+
+    (should-not (seq-find #'not slice))
+    (should (string= "target1" (seq-find (lambda (s) (string= "target1" s))
+                                         slice)))
+    (should (string= "target2" (seq-find (lambda (s) (string= "target2" s))
+                                         slice)))
+    (should (string= "target3" (seq-find (lambda (s) (string= "target3" s))
+                                         slice)))
+    (should (string= "target4" (seq-find (lambda (s) (string= "target4" s))
+                                         slice)))))
+
 (ert-deftest phpinspect-slice-detach ()
   (let ((list (phpinspect-make-ll))
         (val1 "c")
@@ -239,10 +279,11 @@ the start of the list."
         (node2 (phpinspect-make-tree :start 20 :end 200))
         (node3 (phpinspect-make-tree :start 9 :end 20))
         (node4 (phpinspect-make-tree :start 21 :end 44)))
-    (phpinspect-tree-insert-node tree node1)
-    (phpinspect-tree-insert-node tree node2)
-    (phpinspect-tree-insert-node tree node3)
-    (phpinspect-tree-insert-node tree node4)
+
+    (should (phpinspect-tree-parent (phpinspect-tree-insert-node tree node1)))
+    (should (phpinspect-tree-parent(phpinspect-tree-insert-node tree node2)))
+    (should (phpinspect-tree-parent (phpinspect-tree-insert-node tree node3)))
+    (should (phpinspect-tree-parent (phpinspect-tree-insert-node tree node4)))
 
     (should (= 0 (phpinspect-tree-start tree)))
     (should (= 500 (phpinspect-tree-end tree)))
@@ -272,6 +313,7 @@ the node iteself if it has been stored intact)."
          (node3-return (phpinspect-tree-insert-node tree node3))
          (node4-return (phpinspect-tree-insert-node tree node4)))
 
+
     (should (eq tree node1-return))
     (should (= 800 (phpinspect-tree-end tree)))
     (should (eq node2 node2-return))
@@ -288,6 +330,7 @@ the node iteself if it has been stored intact)."
         (node3 (phpinspect-make-tree :start 9 :end 20 :value "node3"))
         (node4 (phpinspect-make-tree :start 21 :end 44 :value "node4"))
         (result))
+
     (phpinspect-tree-insert-node tree node1)
     (phpinspect-tree-insert-node tree node2)
     (phpinspect-tree-insert-node tree node3)
@@ -313,3 +356,26 @@ the node iteself if it has been stored intact)."
     (setq result (phpinspect-tree-find-smallest-overlapping-set
                   tree (phpinspect-make-region 24 55)))
     (should (equal '("node4" "node3") result))))
+
+(ert-deftest phpinspect-tree-overlaps-point ()
+  (let ((tree (phpinspect-make-tree :start  5 :end 10)))
+    (should (phpinspect-tree-overlaps tree 5))
+
+    ;; An interval's end is its delimtiter and should not be regarded as part of
+    ;; it.
+    (should-not (phpinspect-tree-overlaps tree 10))
+
+    (should-not (phpinspect-tree-overlaps tree 4))
+    (should-not (phpinspect-tree-overlaps tree 11))))
+
+(ert-deftest phpinspect-tree-overlaps-region ()
+  (let ((tree (phpinspect-make-tree :start  5 :end 10)))
+    (should (phpinspect-tree-overlaps tree (phpinspect-make-region 0 6)))
+    (should-not (phpinspect-tree-overlaps tree (phpinspect-make-region 0 5)))
+    (should (phpinspect-tree-overlaps tree (phpinspect-make-region 9 11)))
+    (should-not (phpinspect-tree-overlaps tree (phpinspect-make-region 10 11)))))
+
+(ert-deftest phpinspect-tree-encloses ()
+  (let ((tree (phpinspect-make-tree :start  5 :end 10)))
+    (should (phpinspect-tree-encloses tree (phpinspect-make-tree :start 5 :end 10)))
+    (should (phpinspect-tree-encloses tree (phpinspect-make-tree :start 5 :end 9)))))

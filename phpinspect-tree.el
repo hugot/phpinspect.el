@@ -331,26 +331,22 @@ belongs to. Return resulting linked list."
   (not (phpinspect-llnode-right list)))
 
 (cl-defmethod phpinspect-tree-overlaps ((tree phpinspect-tree) (point integer))
-    (and (>= (phpinspect-tree-end tree) point)
-         (<= (phpinspect-tree-start tree) point)))
+  (and (> (phpinspect-tree-end tree) point)
+       (<= (phpinspect-tree-start tree) point)))
 
 (cl-defmethod phpinspect-tree-overlaps ((tree1 phpinspect-tree) (tree2 phpinspect-tree))
   (and
    (or (phpinspect-tree-overlaps tree1 (phpinspect-tree-start tree2))
-       (phpinspect-tree-overlaps tree1 (phpinspect-tree-end tree2))
+       (phpinspect-tree-overlaps tree1 (- (phpinspect-tree-end tree2) 1))
        (phpinspect-tree-overlaps tree2 (phpinspect-tree-start tree1))
-       (phpinspect-tree-overlaps tree2 (phpinspect-tree-end tree1)))
-   (not (or (= (phpinspect-tree-start tree1) (phpinspect-tree-end tree2))
-            (= (phpinspect-tree-end tree1) (phpinspect-tree-start tree2))))))
+       (phpinspect-tree-overlaps tree2 (- (phpinspect-tree-end tree1))))))
 
 (cl-defmethod phpinspect-tree-overlaps ((tree phpinspect-tree) region)
   (and
    (or (phpinspect-tree-overlaps tree (phpinspect-region-start region))
-       (phpinspect-tree-overlaps tree (phpinspect-region-end region))
+       (phpinspect-tree-overlaps tree (- (phpinspect-region-end region) 1))
        (phpinspect-region-overlaps-point region (phpinspect-tree-start tree))
-       (phpinspect-region-overlaps-point region (phpinspect-tree-end tree)))
-   (not (or (= (phpinspect-tree-start tree) (phpinspect-region-end region))
-            (= (phpinspect-tree-end tree) (phpinspect-region-start region))))))
+       (phpinspect-region-overlaps-point region (- (phpinspect-tree-end tree) 1)))))
 
 (cl-defmethod phpinspect-tree-encloses ((tree1 phpinspect-tree) (tree2 phpinspect-tree))
   (and (<= (phpinspect-tree-start tree1) (phpinspect-tree-start tree2))
@@ -523,8 +519,6 @@ collectively have the smallest width."
         ;; overlapping set (of one).
         `(,(phpinspect-tree-value tree))))))
 
-
-
 (cl-defmethod phpinspect-tree-insert
   ((tree phpinspect-tree) (start integer) (end integer) value)
   "Insert a new interval from START to END linked to VALUE into TREE.
@@ -532,5 +526,30 @@ collectively have the smallest width."
 Returns the newly created and inserted node."
   (let ((node (phpinspect-make-tree :start start :end end :value value)))
     (phpinspect-tree-insert-node tree node)))
+
+(defsubst phpinspect-make-region (start end)
+  (list start end))
+
+(defalias 'phpinspect-region-start #'car)
+(defalias 'phpinspect-region-end #'cadr)
+
+(defsubst phpinspect-region-size (region)
+  (- (phpinspect-region-end region) (phpinspect-region-start region)))
+
+(defsubst phpinspect-region> (reg1 reg2)
+  (> (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
+
+(defsubst phpinspect-region< (reg1 reg2)
+  (< (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
+
+(defsubst phpinspect-region-overlaps-point (reg point)
+  (and (> (phpinspect-region-end reg) point)
+       (<= (phpinspect-region-start reg) point)))
+
+(defsubst phpinspect-region-overlaps (reg1 reg2)
+  (or (phpinspect-region-reg2s-point reg1 (phpinspect-region-start reg2))
+      (phpinspect-region-reg2s-point reg1 (- (phpinspect-region-end reg2) 1))
+      (phpinspect-region-reg2s-point reg2 (phpinspect-region-start reg1))
+      (phpinspect-region-reg2s-point reg2 (- (phpinspect-region-end reg1) 1))))
 
 (provide 'phpinspect-tree)
