@@ -412,16 +412,18 @@ token is \";\", which marks the end of a statement in PHP."
                                 (progn
                                   (nconc tokens (list token))))
 
-                                  ;; When parsing within a buffer that has
-                                  ;; `phpinspect-current-buffer` set, update the
-                                  ;; token location map. Usually, this variable
-                                  ;; is set when `phpinspect-mode` is active.
-                                  (when phpinspect-current-buffer
-                                    (puthash token
-                                             (phpinspect-make-region start-position
-                                                                     (point))
-                                             (phpinspect-buffer-location-map
-                                              phpinspect-current-buffer)))))))
+                              ;; When parsing within a buffer that has
+                              ;; `phpinspect-current-buffer` set, update the
+                              ;; token metadata maps. Usually, this variable
+                              ;; is set when `phpinspect-mode` is active.
+                              (when phpinspect-current-buffer
+                                (phpinspect-buffer-set-token-metadata
+                                 phpinspect-current-buffer
+                                 token
+                                 (phpinspect-make-token-metadata
+                                  :location (phpinspect-make-region
+                                             start-position (point))
+                                  :handler ,handler)))))))
                       handlers)
                    (t (forward-char))))
            (push ,tree-type tokens))))))

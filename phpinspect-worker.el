@@ -31,18 +31,6 @@
 (defvar phpinspect-worker nil
   "Contains the phpinspect worker that is used by all projects.")
 
-(cl-defstruct (phpinspect-index-task
-               (:constructor phpinspect-make-index-task-generated))
-  "Represents an index task that can be executed by a `phpinspect-worker`."
-  (project nil
-           :type phpinspect-project
-           :documentation
-           "The project that the task should be executed for.")
-  (type nil
-        :type phpinspect--type
-        :documentation
-        "The type whose file should be indexed."))
-
 (cl-defstruct (phpinspect-queue-item
                (:constructor phpinspect-make-queue-item))
   (next nil
@@ -145,9 +133,6 @@ BODY can be any form."
   (when (not (phpinspect-queue-find item thing comparison-func))
     (phpinspect-queue-enqueue item thing)))
 
-(cl-defmethod phpinspect-queue-await-insert ((item phpinspect-queue-item))
-  (condition-wait (phpinspect-queue-item-insert item)))
-
 (cl-defstruct (phpinspect-worker
                (:constructor phpinspect-make-worker-generated))
   (queue nil
@@ -223,19 +208,10 @@ on the worker independent of dynamic variables during testing.")
   "Enqueue a TASK to be executed by WORKER.")
 
 (cl-defmethod phpinspect-worker-enqueue ((worker phpinspect-worker) task)
-  (phpinspect-queue-enqueue (phpinspect-worker-queue worker) task))
-
-(cl-defmethod phpinspect-worker-enqueue ((worker phpinspect-worker)
-                                         (task phpinspect-index-task))
   "Specialized enqueuement method for index tasks. Prevents
 indexation tasks from being added when there are identical tasks
 already present in the queue."
-  (phpinspect-queue-enqueue-noduplicate (phpinspect-worker-queue worker) task #'phpinspect-index-task=))
-
-(cl-defmethod phpinspect-index-task= ((task1 phpinspect-index-task) (task2 phpinspect-index-task))
-  (and (eq (phpinspect-index-task-project task1)
-           (phpinspect-index-task-project task2))
-       (phpinspect--type= (phpinspect-index-task-type task1) (phpinspect-index-task-type task2))))
+  (phpinspect-queue-enqueue-noduplicate (phpinspect-worker-queue worker) task #'phpinspect-task=))
 
 (cl-defmethod phpinspect-worker-enqueue ((worker phpinspect-dynamic-worker) task)
   (phpinspect-worker-enqueue (phpinspect-resolve-dynamic-worker worker)
@@ -328,20 +304,57 @@ CONTINUE must be a condition-variable"
   (interactive)
   (phpinspect-worker-stop phpinspect-worker))
 
+;;; TASKS
+;; The rest of this file contains task definitions. Tasks represent actions that
+;; can be executed by `phpinspect-worker'. Some methods are required to be
+;; implemented for all tasks, while others aren't.
+
+;; REQUIRED METHODS:
+;;  - phpinspect-task-execute
+;;  - phpinspect-task-project
+
+;; OPTIONAL METHODS:
+;;  - phpinspect-task=
+
+;;; Code:
+
+(cl-defgeneric phpinspect-task-execute (task worker)
+  "Execute TASK for WORKER.")
+
+(cl-defmethod phpinspect-task= (task1 task2)
+  "Whether or not TASK1 and TASK2 are set to execute the exact same action."
+  nil)
+
+(cl-defgeneric phpinspect-task-project (task)
+  "The project that this task belongs to.")
+
+
+;;; INDEX TASK
+(cl-defstruct (phpinspect-index-task
+               (:constructor phpinspect-make-index-task-generated))
+  "Represents an index task that can be executed by a `phpinspect-worker`."
+  (project nil
+           :type phpinspect-project
+           :documentation
+           "The project that the task should be executed for.")
+  (type nil
+        :type phpinspect--type
+        :documentation
+        "The type whose file should be indexed."))
+
 (cl-defgeneric phpinspect-make-index-task ((project phpinspect-project)
                                           (type phpinspect--type))
   (phpinspect-make-index-task-generated
    :project project
    :type type))
 
-(cl-defgeneric phpinspect-task-project (task)
-  "The project that this task belongs to.")
-
 (cl-defmethod phpinspect-task-project ((task phpinspect-index-task))
   (phpinspect-index-task-project task))
 
-(cl-defgeneric phpinspect-task-execute (task worker)
-  "Execute TASK for WORKER.")
+(cl-defmethod phpinspect-task= ((task1 phpinspect-index-task) (task2 phpinspect-index-task))
+  (and (eq (phpinspect-index-task-project task1)
+           (phpinspect-index-task-project task2))
+       (phpinspect--type= (phpinspect-index-task-type task1) (phpinspect-index-task-type task2))))
 
 (cl-defmethod phpinspect-task-execute ((task phpinspect-index-task)
                                        (worker phpinspect-worker))
@@ -349,12 +362,12 @@ CONTINUE must be a condition-variable"
   (let ((project (phpinspect-index-task-project task))
         (is-native-type (phpinspect--type-is-native
                          (phpinspect-index-task-type task))))
-    (phpinspect--log "Indexing class %s for project in %s from index thread"
+    (phpinspect--log "Indexing class %s for project in %s as task."
                      (phpinspect-index-task-type task)
                      (phpinspect-project-root project))
 
     (cond (is-native-type
-           (phpinspect--log "Skipping indexation of native type %s"
+           (phpinspect--log "Skipping indexation of native type %s as task"
                             (phpinspect-index-task-type task))
 
            ;; We can skip pausing when a native type is encountered
@@ -367,6 +380,7 @@ CONTINUE must be a condition-variable"
              (when root-index
                (phpinspect-project-add-index project root-index)))))))
 
+;;; PARSE BUFFER TASK
 
 (provide 'phpinspect-worker)
 ;;; phpinspect-worker.el ends here

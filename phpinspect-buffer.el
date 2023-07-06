@@ -43,17 +43,41 @@ buffer. This variable is only set for buffers where
 (defsubst phpinspect-region< (reg1 reg2)
   (< (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
 
+(defsubst phpinspect-region-overlaps-point (reg point)
+  (and (>= (phpinspect-region-end reg) point)
+       (<= (phpinspect-region-start reg) point)))
+
+(defsubst phpinspect-region-overlaps (reg1 reg2)
+  (or (phpinspect-region-reg2s-point reg1 (phpinspect-region-start reg2))
+      (phpinspect-region-reg2s-point reg1 (phpinspect-region-end reg2))
+      (phpinspect-region-reg2s-point reg2 (phpinspect-region-start reg1))
+      (phpinspect-region-reg2s-point reg2 (phpinspect-region-end reg1))))
+
+(cl-defstruct (phpinspect-token-metadata (:constructor phpinspect-make-token-metadata))
+  "An object that represents the metadata associated with a parsed token."
+  (token nil
+         :type phpinspect-token
+         :documentation
+         "The token that metadata is associated with.")
+  (location nil
+            :type phpinspect-region
+            :documentation
+            "The region that token occupies.")
+  (handler nil
+           :type phpinspect-handler
+           :documentation
+           "The handler that was used to parse token. (see `phpinspect-defhandler')"))
+
 (cl-defstruct (phpinspect-buffer (:constructor phpinspect-make-buffer))
   "An object containing phpinspect related metadata linked to an
 emacs buffer."
   (buffer nil
           :type buffer
           :documentation "The underlying emacs buffer")
-  (location-map (make-hash-table :test 'eq :size 400 :rehash-size 400)
+  (metadata-map (make-hash-table :test 'eq :size 400 :rehash-size 400)
                 :type hash-table
                 :documentation
-                "A map that lets us look up the character
-positions of a token within this buffer.")
+                "A map containing metadata associated with tokens.")
   (tree nil
         :type list
         :documentation
@@ -65,7 +89,7 @@ with the contents of the buffer."))
   "Parse the PHP code in the the emacs buffer that this object is
 linked with."
   (with-current-buffer (phpinspect-buffer-buffer buffer)
-    (setf (phpinspect-buffer-location-map buffer)
+    (setf (phpinspect-buffer-metadata-map buffer)
           (make-hash-table :test 'eq
                            :size 400
                            :rehash-size 400))
@@ -74,21 +98,39 @@ linked with."
       (setf (phpinspect-buffer-tree buffer) tree)
       tree)))
 
+(cl-defmethod phpinspect-buffer-set-token-metadata
+  ((buffer phpinspect-buffer) token (metadata phpinspect-token-metadata))
+  "Set the METADATA associated with TOKEN that was parsed in BUFFER"
+  (puthash token metadata (phpinspect-buffer-metadata-map buffer)))
+
+(cl-defmethod phpinspect-buffer-get-token-metadata ((buffer phpinspect-buffer) token)
+  (gethash token (phpinspect-buffer-metadata-map buffer)))
+
 (cl-defmethod phpinspect-buffer-token-location ((buffer phpinspect-buffer) token)
-  (gethash token (phpinspect-buffer-location-map buffer)))
+  (phpinspect-token-metadata-location (phpinspect-buffer-get-token-metadata buffer token)))
 
 (cl-defmethod phpinspect-buffer-tokens-enclosing-point ((buffer phpinspect-buffer) point)
   (let ((tokens))
     (maphash
-     (lambda (token region)
-       (when (and (<= (phpinspect-region-start region) point)
-                  (>= (phpinspect-region-end region) point))
-         (push token tokens)))
-     (phpinspect-buffer-location-map buffer))
+     (lambda (token meta)
+       (let ((region (phpinspect-token-metdata-location meta)))
+         (when (and (<= (phpinspect-region-start region) point)
+                    (>= (phpinspect-region-end region) point))
+           (push token tokens))))
+     (phpinspect-buffer-metadata-map buffer))
     (sort tokens (lambda (tok1 tok2)
                    (phpinspect-region< (phpinspect-buffer-token-location tok1)
                                        (phpinspect-buffer-token-location tok2))))))
 
-
+(cl-defmethod phpinspect-buffer-tokens-overlapping-region
+  ((buffer phpinspect-buffer) (start integer) (end integer))
+  (let ((tokens)
+        (query-region (phpinspect-make-region start end)))
+    (maphash (lambda (token metadata)
+               (when (phpinspect-region-overlaps
+                      query-region (phpinspect-token-metadata-location metadata))
+                 (push token tokens)))
+             (phpinspect-buffer-metadata-map buffer))
+    tokens))
 
 (provide 'phpinspect-buffer)

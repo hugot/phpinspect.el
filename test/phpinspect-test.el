@@ -644,6 +644,7 @@ class Thing
 (load-file (concat phpinspect-test-directory "/test-class.el"))
 (load-file (concat phpinspect-test-directory "/test-type.el"))
 (load-file (concat phpinspect-test-directory "/test-util.el"))
+(load-file (concat phpinspect-test-directory "/test-tree.el"))
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here
