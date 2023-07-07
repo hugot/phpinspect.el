@@ -83,7 +83,7 @@
     (funcall (phpinspect-queue-item-subscription item))))
 
 (cl-defmethod phpinspect-queue-dequeue ((item phpinspect-queue-item))
-  "Remove the thing at the front of the queue that ITEM is part of an return it."
+  "Remove the thing at the front of the queue that ITEM is part of and return it."
   (let* ((first (phpinspect-queue-first item))
          (thing (phpinspect-queue-item-thing first))
          (next (phpinspect-queue-item-next first)))
