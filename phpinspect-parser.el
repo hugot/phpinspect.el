@@ -393,6 +393,7 @@ token is \";\", which marks the end of a statement in PHP."
     `(lambda (buffer max-point &optional continue-condition)
        (with-current-buffer buffer
          (let ((tokens)
+               (root-start (point))
                (delimiter-predicate (when (functionp ,delimiter-predicate) ,delimiter-predicate)))
            (while (and (< (point) max-point)
                        (if continue-condition (funcall continue-condition) t)
@@ -412,21 +413,26 @@ token is \";\", which marks the end of a statement in PHP."
                                 (progn
                                   (nconc tokens (list token))))
 
-                              ;; When parsing within a buffer that has
-                              ;; `phpinspect-current-buffer` set, update the
-                              ;; token metadata maps. Usually, this variable
-                              ;; is set when `phpinspect-mode` is active.
-                              (when phpinspect-current-buffer
-                                (phpinspect-buffer-set-token-metadata
-                                 phpinspect-current-buffer
-                                 token
-                                 (phpinspect-make-token-metadata
-                                  :location (phpinspect-make-region
-                                             start-position (point))
-                                  :handler ,handler)))))))
+                              (phpinspect-set-token-metadata-when-current-buffer
+                               token start-position (point) ,handler)))))
                       handlers)
                    (t (forward-char))))
-           (push ,tree-type tokens))))))
+           (push ,tree-type tokens)
+           (phpinspect-set-token-metadata-when-current-buffer tokens root-start (point) nil)
+
+           ;; Return
+           tokens)))))
+
+(defsubst phpinspect-set-token-metadata-when-current-buffer (token start end handler)
+  "When parsing within a buffer that has`phpinspect-current-buffer` set,update
+the token metadata maps. Usually, this variable is set when `phpinspect-mode` is
+active."
+  (when phpinspect-current-buffer
+    (phpinspect-buffer-set-token-metadata
+     phpinspect-current-buffer token (phpinspect-make-token-metadata
+                                      :region (phpinspect-make-region start end)
+                                      :handler handler))))
+
 
 (cl-defstruct (phpinspect-parser (:constructor phpinspect-make-parser))
   (tree-keyword "root"

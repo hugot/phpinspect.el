@@ -121,6 +121,14 @@ belongs to. Return resulting linked list."
 
       start)))
 
+(cl-defmethod phpinspect-llnode-detach ((list phpinspect-llnode))
+  (let ((left (phpinspect-llnode-left list))
+        (right (phpinspect-llnode-right list)))
+    (when left (setf (phpinspect-llnode-right left) right))
+    (when right (setf (phpinspect-llnode-left right) left))
+    (phpinspect-ll-unregister-link list)
+
+    list))
 
 (cl-defmethod phpinspect-ll-register-link ((list phpinspect-llnode))
   (puthash (phpinspect-llnode-value list) list (phpinspect-llnode-link-map list)))
@@ -214,6 +222,20 @@ belongs to. Return resulting linked list."
   (when list
     (phpinspect-llnode-value list))))
 
+(cl-defmethod seq-do (fn (list phpinspect-llnode))
+  (when (phpinspect-llnode-value list)
+    (while list
+      (funcall fn (phpinspect-llnode-value list))
+      (setq list (phpinspect-llnode-right list)))))
+
+(cl-defmethod seq-do (fn (slice phpinspect-slice))
+  (let ((list (phpinspect-slice-start slice))
+        (slice-end (phpinspect-llnode-right (phpinspect-slice-end slice))))
+    (when (phpinspect-llnode-value list)
+      (while (and list (not (eq slice-end list)))
+        (funcall fn (phpinspect-llnode-value list))
+        (setq list (phpinspect-llnode-right list))))))
+
 (cl-defmethod seq-map (fn (list phpinspect-llnode))
   (when (phpinspect-llnode-value list)
     (let ((values))
@@ -249,7 +271,7 @@ belongs to. Return resulting linked list."
       (let ((start list)
             (end list))
         (while (and list (not (eq slice-end list))
-                    (funcall pred (phpnspect-llnode-value list)))
+                    (funcall pred (phpinspect-llnode-value list)))
           (setq end list)
           (setq list (phpinspect-llnode-right list)))
 
@@ -339,7 +361,7 @@ belongs to. Return resulting linked list."
    (or (phpinspect-tree-overlaps tree1 (phpinspect-tree-start tree2))
        (phpinspect-tree-overlaps tree1 (- (phpinspect-tree-end tree2) 1))
        (phpinspect-tree-overlaps tree2 (phpinspect-tree-start tree1))
-       (phpinspect-tree-overlaps tree2 (- (phpinspect-tree-end tree1))))))
+       (phpinspect-tree-overlaps tree2 (- (phpinspect-tree-end tree1) 1)))))
 
 (cl-defmethod phpinspect-tree-overlaps ((tree phpinspect-tree) region)
   (and
@@ -347,6 +369,9 @@ belongs to. Return resulting linked list."
        (phpinspect-tree-overlaps tree (- (phpinspect-region-end region) 1))
        (phpinspect-region-overlaps-point region (phpinspect-tree-start tree))
        (phpinspect-region-overlaps-point region (- (phpinspect-tree-end tree) 1)))))
+
+(cl-defmethod phpinspect-tree-starts-after ((tree phpinspect-tree) (point integer))
+  (> (phpinspect-tree-start tree) point))
 
 (cl-defmethod phpinspect-tree-encloses ((tree1 phpinspect-tree) (tree2 phpinspect-tree))
   (and (<= (phpinspect-tree-start tree1) (phpinspect-tree-start tree2))
@@ -390,33 +415,19 @@ belongs to. Return resulting linked list."
       (seq-take-while (lambda (child) (phpinspect-tree-overlaps child region))
                       (phpinspect-ll-link children first-overlapper)))))
 
+(defsubst phpinspect-tree-is-empty (tree)
+  (and (= 0 (phpinspect-tree-start tree))
+       (= 0 (phpinspect-tree-end tree))))
+
 (cl-defmethod phpinspect-tree-insert-node ((tree phpinspect-tree) (node phpinspect-tree))
   "Insert a new NODE into TREE.
 
 Returns the newly inserted node."
-  (cond ((phpinspect-tree-encloses node tree)
-         ;; New node encloses entire tree, so it has to become the new root.
-         (let* ((parent (phpinspect-tree-parent tree)))
-           (if parent
-               (progn
-                 (phpinspect-ll-relink
-                  (phpinspect-ll-link (phpinspect-tree-children parent) tree) node)
-                 (phpinspect-tree-insert-node node tree)
+  (cond ((phpinspect-tree-is-empty tree)
+         (phpinspect-tree-switch-attributes node tree)
 
-                 ;; Return
-                 node)
-
-             ;; No parent, which means that this is the absolute root node of
-             ;; the tree. To keep things consistent, swap all the attributes of
-             ;; both trees to keep the reference to the root node intact for the
-             ;; caller.
-             (progn
-               (phpinspect-tree-switch-attributes node tree)
-               (phpinspect-tree-insert-node tree node)
-
-               ;; Return tree, as this is the node that value of node has been
-               ;; stored in.
-               tree))))
+         ;; Return
+         tree)
         ((phpinspect-tree-encloses tree node)
          ;; New node is entirely enclosed by tree, check tree's children for
          ;; overlappings.
@@ -443,7 +454,11 @@ Returns the newly inserted node."
                    (setq insert-after-link (phpinspect-llnode-left
                                             (phpinspect-slice-start enclosed)))
                    (setq enclosed (phpinspect-slice-detach enclosed))
-                   (phpinspect-ll-insert-right insert-after-link node)
+                   (if insert-after-link
+                       (phpinspect-ll-insert-right insert-after-link node)
+                     ;; If there is nothing to the left of the enclosed regions,
+                     ;; we can safely push to the tree's children
+                     (phpinspect-ll-push node (phpinspect-tree-children tree)))
                    (setf (phpinspect-tree-parent node) tree)
                    (setf (phpinspect-tree-children node) enclosed))))
 
@@ -465,6 +480,29 @@ Returns the newly inserted node."
 
          ;; Return
          node)
+        ((phpinspect-tree-encloses node tree)
+         ;; New node encloses entire tree, so it has to become the new root.
+         (let* ((parent (phpinspect-tree-parent tree)))
+           (if parent
+               (progn
+                 (phpinspect-ll-relink
+                  (phpinspect-ll-link (phpinspect-tree-children parent) tree) node)
+                 (phpinspect-tree-insert-node node tree)
+
+                 ;; Return
+                 node)
+
+             ;; No parent, which means that this is the absolute root node of
+             ;; the tree. To keep things consistent, swap all the attributes of
+             ;; both trees to keep the reference to the root node intact for the
+             ;; caller.
+             (progn
+               (phpinspect-tree-switch-attributes node tree)
+               (phpinspect-tree-insert-node tree node)
+
+               ;; Return tree, as this is the node that value of node has been
+               ;; stored in.
+               tree))))
         (t (throw 'phpinspect-tree-conflict
                   (format "Tree does not enclose or get enclosed. \nTree: %s \n\nPerspective parent: %s" node tree)))))
 
@@ -480,6 +518,41 @@ width with the smallest interval as car."
       (if overlapper
           `(,@(phpinspect-tree-traverse-overlappig overlapper point) ,(phpinspect-tree-value tree))
         `(,(phpinspect-tree-value tree))))))
+
+(cl-defmethod phpinspect-tree-widen-after-point
+  ((tree phpinspect-tree) (point integer) (delta integer) &optional fn)
+  "Widens all nodes of TREE that start or end after POINT by DELTA.
+
+When FN is set, it is called once for each widened tree node,
+with its value as argument."
+  (let ((tree-children (phpinspect-tree-children tree))
+        (children))
+    (cond
+     ((phpinspect-tree-overlaps tree point)
+      (setf (phpinspect-tree-end tree) (+ (phpispect-tree-end tree) delta))
+      (let* ((first-match
+              (seq-find (lambda (child) (or (phpinspect-tree-overlaps child point)
+                                            (phpinspect-tree-starts-after child point)))
+                        tree-children)))
+        (setq children
+              (seq-take-while (lambda (child) (or (phpinspect-tree-overlaps child point)
+                                                  (phpinspect-tree-starts-after child point)))
+                              (phpinspect-ll-link
+                               tree-children first-match))))
+
+      (when fn (funcall fn (phpinspect-tree-value tree))))
+     ((phpinspect-tree-starts-after tree point)
+      (setf (phpinspect-tree-start tree) (+ (phpinspect-tree-start tree) delta))
+      (setf (phpinspect-tree-end tree) (+ (phpinspect-tree-end tree) delta))
+      (setq children tree-children)
+
+      (when fn (funcall fn (phpinspect-tree-value tree)))))
+
+
+    (when children
+      (seq-doseq (child children)
+        (phpinspect-tree-widen-after-point child point)))))
+
 
 (cl-defmethod phpinspect-tree-find-smallest-overlapping-set ((tree phpinspect-tree) region)
   "Traverse TREE for smallest set of intervals overlapping REGION,
@@ -527,6 +600,15 @@ Returns the newly created and inserted node."
   (let ((node (phpinspect-make-tree :start start :end end :value value)))
     (phpinspect-tree-insert-node tree node)))
 
+(cl-defmethod phpinspect-tree-detach ((tree phpinspect-tree))
+  "Detach tree from parent."
+  (let ((parent (phpinspect-tree-parent tree)))
+    (when parent
+      (let ((parent-link (phpinspect-ll-link (phpinspect-tree-children parent)
+                                             tree)))
+        (phpinspect-llnode-detach parent-link)
+        (setf (phpinspect-tree-parent tree) nil)))))
+
 (defsubst phpinspect-make-region (start end)
   (list start end))
 
@@ -551,5 +633,9 @@ Returns the newly created and inserted node."
       (phpinspect-region-reg2s-point reg1 (- (phpinspect-region-end reg2) 1))
       (phpinspect-region-reg2s-point reg2 (phpinspect-region-start reg1))
       (phpinspect-region-reg2s-point reg2 (- (phpinspect-region-end reg1) 1))))
+
+(defsubst phpinspect-region-encloses (reg1 reg2)
+  (and (<= (phpinspect-region-start reg1) (phpinspect-region-start reg2))
+       (>= (phpinspect-region-end reg1) (phpinspect-region-end reg2))))
 
 (provide 'phpinspect-tree)

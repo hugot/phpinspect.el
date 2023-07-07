@@ -379,3 +379,9 @@ the node iteself if it has been stored intact)."
   (let ((tree (phpinspect-make-tree :start  5 :end 10)))
     (should (phpinspect-tree-encloses tree (phpinspect-make-tree :start 5 :end 10)))
     (should (phpinspect-tree-encloses tree (phpinspect-make-tree :start 5 :end 9)))))
+
+(ert-deftest phpinspect-tree-insert-same-size ()
+  (let* ((tree (phpinspect-make-tree :start  5 :end 10))
+         (node (phpinspect-tree-insert-node tree (phpinspect-make-tree :start 5 :end 10))))
+
+    (should (eq node (seq-elt (phpinspect-tree-children tree) 0)))))
