@@ -138,9 +138,8 @@
          (buffer (phpinspect-make-buffer
                   :buffer (phpinspect-document-buffer document)))
          (parsed))
+    ;; TODO: write tests for more complicated cases (multiple edits, etc.)
     (phpinspect-document-set-contents document "<?php function Hello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }")
-
-
 
     (setq parsed (phpinspect-buffer-parse buffer))
     (should parsed)

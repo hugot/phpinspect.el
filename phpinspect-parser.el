@@ -54,9 +54,9 @@
     (pop-to-buffer (current-buffer))))
 
 (defsubst phpinspect--strip-word-end-space (string)
-  (when phpinspect-current-buffer
-    (phpinspect-buffer-register-whitespace
-     phpinspect-current-buffer
+  (when phpinspect-parse-context
+    (phpinspect-pctx-register-whitespace
+     phpinspect-parse-context
      (substring string (- (length string) 1) (length string))))
   (substring string 0 (- (length string) 1)))
 
@@ -605,16 +605,6 @@ parsing. Usually used in combination with
            ;; Return
            tokens)))))
 
-
-;; (defsubst phpinspect-register-token-when-current-buffer (token start end handler)
-;;   "When parsing within a buffer that has`phpinspect-current-buffer` set,update
-;; the token metadata maps. Usually, this variable is set when `phpinspect-mode` is
-;; active."
-;;   (when phpinspect-current-buffer
-;;     (phpinspect-buffer--register-token
-;;      phpinspect-current-buffer token start end handler)))
-
-
 (cl-defstruct (phpinspect-parser (:constructor phpinspect-make-parser))
   (tree-keyword "root"
                 :type string
@@ -792,8 +782,8 @@ executing.")
 (phpinspect-defhandler whitespace (whitespace &rest _ignored)
   "Handler that discards whitespace"
   (regexp "[[:blank:]\n]+")
-  (when phpinspect-current-buffer
-    (phpinspect-buffer-register-whitespace phpinspect-current-buffer whitespace))
+  (when phpinspect-parse-context
+    (phpinspect-pctx-register-whitespace phpinspect-parse-context whitespace))
   (forward-char (length whitespace)))
 
 (phpinspect-defhandler equals (equals &rest _ignored)

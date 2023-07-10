@@ -49,10 +49,6 @@ emacs buffer."
               :documentation
               "Whitespace parsed before the next token to be parsed"))
 
-(cl-defmethod phpinspect-buffer-register-whitespace
-  ((buffer phpinspect-buffer) (whitespace string))
-  (setf (phpinspect-buffer-whitespace buffer) whitespace))
-
 (cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer))
   "Parse the PHP code in the the emacs buffer that this object is
 linked with."
