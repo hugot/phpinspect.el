@@ -275,15 +275,20 @@ the start of the list."
 
 (ert-deftest phpinspect-tree-insert-nested ()
   (let ((tree (phpinspect-make-tree :start 0 :end 500))
-        (node1 (phpinspect-make-tree :start 9 :end 200))
         (node2 (phpinspect-make-tree :start 20 :end 200))
         (node3 (phpinspect-make-tree :start 9 :end 20))
-        (node4 (phpinspect-make-tree :start 21 :end 44)))
+        (node4 (phpinspect-make-tree :start 21 :end 44))
+        (node1 (phpinspect-make-tree :start 9 :end 200)))
 
     (should (phpinspect-tree-parent (phpinspect-tree-insert-node tree node1)))
     (should (phpinspect-tree-parent(phpinspect-tree-insert-node tree node2)))
     (should (phpinspect-tree-parent (phpinspect-tree-insert-node tree node3)))
     (should (phpinspect-tree-parent (phpinspect-tree-insert-node tree node4)))
+
+    (should (phpinspect-ll-link (phpinspect-tree-children (phpinspect-tree-parent node1)) node1))
+    (should (phpinspect-ll-link (phpinspect-tree-children (phpinspect-tree-parent node2)) node2))
+    (should (phpinspect-ll-link (phpinspect-tree-children (phpinspect-tree-parent node3)) node3))
+    (should (phpinspect-ll-link (phpinspect-tree-children (phpinspect-tree-parent node4)) node4))
 
     (should (= 0 (phpinspect-tree-start tree)))
     (should (= 500 (phpinspect-tree-end tree)))
@@ -336,8 +341,24 @@ the node iteself if it has been stored intact)."
     (phpinspect-tree-insert-node tree node3)
     (phpinspect-tree-insert-node tree node4)
 
-    (setq result (phpinspect-tree-traverse-overlappig tree 22))
+    (setq result (phpinspect-tree-traverse-overlapping tree 22))
     (should (equal '("node4" "node2" "node1" "tree") result))))
+
+(ert-deftest phpinspect-tree-traverse-overlapping-region ()
+  (let ((tree (phpinspect-make-tree :start 0 :end 500 :value "tree"))
+        (node1 (phpinspect-make-tree :start 9 :end 200 :value "node1"))
+        (node2 (phpinspect-make-tree :start 20 :end 200 :value "node2"))
+        (node3 (phpinspect-make-tree :start 9 :end 20 :value "node3"))
+        (node4 (phpinspect-make-tree :start 21 :end 44 :value "node4"))
+        (result))
+
+    (phpinspect-tree-insert-node tree node1)
+    (phpinspect-tree-insert-node tree node2)
+    (phpinspect-tree-insert-node tree node3)
+    (phpinspect-tree-insert-node tree node4)
+
+    (setq result (phpinspect-tree-traverse-overlapping tree (phpinspect-make-region 18 22)))
+    (should (equal '("node3" "node4" "node2" "node1" "tree") result))))
 
 (ert-deftest phpinspect-tree-find-smallest-overlapping-set ()
   (let ((tree (phpinspect-make-tree :start 0 :end 500 :value "tree"))
@@ -356,6 +377,22 @@ the node iteself if it has been stored intact)."
     (setq result (phpinspect-tree-find-smallest-overlapping-set
                   tree (phpinspect-make-region 24 55)))
     (should (equal '("node4" "node3") result))))
+
+(ert-deftest phpinspect-tree-find-node-starting-at ()
+  (let ((tree (phpinspect-make-tree :start 0 :end 500 :value "tree"))
+        (node1 (phpinspect-make-tree :start 9 :end 200 :value "node1"))
+        (node2 (phpinspect-make-tree :start 20 :end 200 :value "node2"))
+        (node3 (phpinspect-make-tree :start 44 :end 60 :value "node3"))
+        (node4 (phpinspect-make-tree :start 21 :end 44 :value "node4"))
+        (result))
+    (phpinspect-tree-insert-node tree node1)
+    (phpinspect-tree-insert-node tree node2)
+    (phpinspect-tree-insert-node tree node3)
+    (phpinspect-tree-insert-node tree node4)
+
+    (setq result (phpinspect-tree-find-node-starting-at tree 44))
+    (should (eq node3 result))
+    (should-not (phpinspect-tree-find-node-starting-at tree 45))))
 
 (ert-deftest phpinspect-tree-overlaps-point ()
   (let ((tree (phpinspect-make-tree :start  5 :end 10)))

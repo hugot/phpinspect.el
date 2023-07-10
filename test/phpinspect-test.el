@@ -634,6 +634,13 @@ class Thing
     (should (equal '((:variable "wat") (:object-attrib "call"))
                    (phpinspect--assignment-from (car result))))))
 
+(ert-deftest phpinspect-parse-function-missing-open-block ()
+  (let ((parsed (phpinspect-parse-string "function bla() echo 'Hello'}")))
+    (should (equal '(:root (:function
+                            (:declaration (:word "function") (:word "bla") (:list)
+                                          (:word "echo") (:word "Hello"))))
+                   parsed))))
+
 
 (load-file (concat phpinspect-test-directory "/test-worker.el"))
 (load-file (concat phpinspect-test-directory "/test-autoload.el"))

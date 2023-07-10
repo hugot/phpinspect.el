@@ -27,38 +27,6 @@
 (require 'phpinspect-parser)
 (require 'phpinspect-buffer)
 
-(ert-deftest phpinspect-buffer-parse-token-metadata ()
-  "Confirm that the metadata map of `phpinspect-current-buffer' is
-populated when the variable is set and the data in it is accurate."
-  (let* ((parsed)
-         (class))
-    (with-temp-buffer
-      (insert-file-contents (concat phpinspect-test-php-file-directory "/NamespacedClass.php"))
-      (setq phpinspect-current-buffer
-            (phpinspect-make-buffer :buffer (current-buffer)))
-      (setq parsed (phpinspect-buffer-parse phpinspect-current-buffer))
-
-      (let* ((class (seq-find #'phpinspect-class-p
-                              (seq-find #'phpinspect-namespace-p parsed)))
-             (class-meta (phpinspect-buffer-get-token-metadata
-                          phpinspect-current-buffer class))
-             (class-region (phpinspect-token-metadata-region class-meta))
-             (classname-meta (phpinspect-buffer-get-token-metadata
-                              phpinspect-current-buffer (car (cddadr class))))
-             (classname-region (phpinspect-token-metadata-region classname-meta)))
-        (should class)
-        (should class-region)
-        (should classname-region)
-
-        (should (eq class (phpinspect-token-metadata-token class-meta)))
-
-        ;; Character position of the start of the class token.
-        (should (= 611 (phpinspect-region-start class-region)))
-        (should (= 2367 (phpinspect-region-end class-region)))
-
-        (should (= 617 (phpinspect-region-start classname-region)))
-        (should (= 634 (phpinspect-region-end classname-region)))))))
-
 (ert-deftest phpinspect-buffer-region-lookups ()
   (let* ((parsed)
          (class))
@@ -70,25 +38,20 @@ populated when the variable is set and the data in it is accurate."
 
       (let* ((class (seq-find #'phpinspect-class-p
                               (seq-find #'phpinspect-namespace-p parsed)))
-             (class-meta (phpinspect-buffer-get-token-metadata
-                          phpinspect-current-buffer class))
-             (class-region (phpinspect-token-metadata-region class-meta))
-             (classname-meta (phpinspect-buffer-get-token-metadata
-                              phpinspect-current-buffer (car (cddadr class))))
-             (classname-region (phpinspect-token-metadata-region classname-meta)))
+             (classname (car (cddadr class))))
 
         ;; Root node should be the root parsed token
-        (should (eq parsed (phpinspect-token-metadata-token
+        (should (eq parsed (phpinspect-meta-token
                             (phpinspect-tree-value (phpinspect-buffer-tree
                                                     phpinspect-current-buffer)))))
 
         (let ((tokens (phpinspect-buffer-tokens-enclosing-point
                        phpinspect-current-buffer 617)))
-          (should (eq (phpinspect-token-metadata-token classname-meta)
-                      (car tokens)))
-          (should (phpinspect-declaration-p (cadr tokens)))
-          (should (eq (phpinspect-token-metadata-token class-meta)
-                      (caddr tokens))))))))
+          (should (eq classname
+                      (phpinspect-meta-token (car tokens))))
+          (should (phpinspect-declaration-p (phpinspect-meta-token (cadr tokens))))
+          (should (eq class (phpinspect-meta-token (caddr tokens)))))))))
+
 
 (ert-deftest phpinspect-parse-buffer-no-current ()
   "Confirm that the parser is still functional with
@@ -101,3 +64,108 @@ populated when the variable is set and the data in it is accurate."
       (setq parsed (phpinspect-parse-current-buffer)))
 
     (should (cdr parsed))))
+
+(ert-deftest phpinspect-edit-merge ()
+  (let ((edit (phpinspect-make-edit :original-start 10
+                                    :local-delta 2
+                                    :length 5)))
+    (phpinspect-edit-merge edit (phpinspect-make-edit
+                                 :original-start 12
+                                 :local-delta -3
+                                 :length 5))
+
+    (should (= -1 (phpinspect-edit-local-delta edit)))
+    (should (= 7 (phpinspect-edit-length edit)))
+    (should (= 10 (phpinspect-edit-original-start edit)))))
+
+(ert-deftest phpinspect-edtrack-register-edit ()
+  (let ((edtrack (phpinspect-make-edtrack)))
+    (phpinspect-edtrack-register-edit edtrack 5 10 10)
+    (phpinspect-edtrack-register-edit edtrack 15 22 7)
+    (phpinspect-edtrack-register-edit edtrack 100 200 150)
+
+    (should (= 30 (phpinspect-edtrack-original-position-at-point edtrack 25)))
+    (should (= 4 (phpinspect-edtrack-original-position-at-point edtrack 4)))
+    (should (= 260 (phpinspect-edtrack-original-position-at-point edtrack 205)))))
+
+(ert-deftest phpinspect-buffer-register-edit ()
+  (let ((buffer (phpinspect-make-buffer)))
+    (with-temp-buffer
+      (insert-file-contents (concat phpinspect-test-php-file-directory "/NamespacedClass.php"))
+      (setq phpinspect-current-buffer buffer)
+      (setf (phpinspect-buffer-buffer buffer) (current-buffer))
+      (phpinspect-buffer-parse buffer))
+
+    ;; "Deletes" first curly brace of __construct function block
+    (phpinspect-buffer-register-edit buffer 1036 1036 1)
+
+    (let* ((region (phpinspect-make-region 1036 1037))
+           (tainted
+            (phpinspect-tree-find-smallest-overlapping-set
+             (phpinspect-buffer-tree buffer) region)))
+      (dolist (meta tainted)
+        (should (phpinspect-meta-tainted meta))
+        (phpinspect-tree-traverse (node (phpinspect-meta-tree meta))
+          (when (phpinspect-tree-overlaps node region)
+            (should (phpinspect-meta-tainted (phpinspect-tree-value node)))))))))
+
+(cl-defstruct (phpinspect-document (:constructor phpinspect-make-document))
+  (buffer (get-buffer-create
+                  (generate-new-buffer-name " **phpinspect-document** shadow buffer") t)
+                 :type buffer
+                 :documentation
+                 "A hidden buffer with a reference version of the document."))
+
+(cl-defmethod phpinspect-document-apply-edit
+  ((document phpinspect-document) start end delta contents)
+  (with-current-buffer (phpinspect-document-buffer document)
+      (goto-char start)
+      (delete-region (point) (- end delta))
+      (insert contents)))
+
+(cl-defmethod phpinspect-document-set-contents
+  ((document phpinspect-document) (contents string))
+  (with-current-buffer (phpinspect-document-buffer document)
+    (erase-buffer)
+    (insert contents)))
+
+(cl-defmethod phpinspect-document-contents ((document phpinspect-document))
+  (with-current-buffer (phpinspect-document-buffer document)
+    (buffer-string)))
+
+(ert-deftest phpinspect-buffer-parse-incrementally ()
+  (let* ((document (phpinspect-make-document))
+         (buffer (phpinspect-make-buffer
+                  :buffer (phpinspect-document-buffer document)))
+         (parsed))
+    (phpinspect-document-set-contents document "<?php function Hello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }")
+
+
+
+    (setq parsed (phpinspect-buffer-parse buffer))
+    (should parsed)
+
+    (let ((hello (car (phpinspect-buffer-tokens-enclosing-point buffer 18)))
+          (hello1)
+          (hello2))
+      (should (equal '(:word "Hello") (phpinspect-meta-token hello)))
+      (should parsed)
+
+      ;; Delete function block opening brace
+      (phpinspect-document-apply-edit document 24 24 -1 "")
+      (should (string= "<?php function Hello()  echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }"
+                       (phpinspect-document-contents document)))
+      (phpinspect-buffer-register-edit buffer 24 24 1)
+      (setq parsed (phpinspect-buffer-parse buffer))
+      (should parsed)
+      (setq hello1 (car (phpinspect-buffer-tokens-enclosing-point buffer 18)))
+      (should (eq hello hello1))
+
+      (phpinspect-document-apply-edit document 24 25 1 "{")
+      (should (string= "<?php function Hello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }"
+                       (phpinspect-document-contents document)))
+      (phpinspect-buffer-register-edit buffer 24 25 0)
+      (setq parsed (phpinspect-buffer-parse buffer))
+      (should parsed)
+      (setq hello2 (car (phpinspect-buffer-tokens-enclosing-point buffer 18)))
+      (should (eq hello hello2)))))
