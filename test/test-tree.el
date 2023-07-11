@@ -231,12 +231,14 @@ the start of the list."
 (ert-deftest phpinspect-slice-detach ()
   (let ((list (phpinspect-make-ll))
         (val1 "c")
+        (val2 "a")
+        (d "d")
         (slice)
         (detached-list))
-    (phpinspect-ll-push "d" list)
+    (phpinspect-ll-push d list)
     (phpinspect-ll-push val1 list)
     (phpinspect-ll-push "b" list)
-    (phpinspect-ll-push "a" list)
+    (phpinspect-ll-push val2 list)
 
     (setq slice (phpinspect-make-slice :start list
                                        :end (phpinspect-ll-link list val1)))
@@ -245,7 +247,26 @@ the start of the list."
 
     (should-not (eq detached-list list))
     (should (string= "d" (apply #'concat (seq-into list 'list))))
-    (should (string= "abc" (apply #'concat (seq-into detached-list 'list))))))
+    (should (string= "abc" (apply #'concat (seq-into detached-list 'list))))
+
+    (should-not (phpinspect-ll-link list val1))
+    (should (phpinspect-ll-link list d))))
+
+(ert-deftest phpinspect-slice-detach-single-member ()
+  (let ((list (phpinspect-make-ll))
+        (val1 "a")
+        (slice)
+        (detached-list))
+    (phpinspect-ll-push val1 list)
+
+    (setq slice (phpinspect-make-slice :start list :end list))
+    (should (string= "a" (apply #'concat (seq-into slice 'list))))
+    (should (string= "a" (apply #'concat (seq-into list 'list))))
+
+    (setq detached-list (phpinspect-slice-detach slice))
+    (should (string= "a" (apply #'concat (seq-into slice 'list))))
+    (should (string= "a" (apply #'concat (seq-into detached-list 'list))))
+    (should (seq-empty-p list))))
 
 
 (ert-deftest phpinspect-tree-insert-enclosing-node ()

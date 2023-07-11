@@ -81,29 +81,38 @@ list it was called on."
 belongs to. Return resulting linked list."
   (let* ((start (phpinspect-slice-start slice))
          (end (phpinspect-slice-end slice))
-         (left-of (phpinspect-llnode-right end))
-         (right-of (phpinspect-llnode-left start)))
+         (right-neighbour (phpinspect-llnode-right end))
+         (left-neighbour (phpinspect-llnode-left start)))
     ;; No left-linked node means that `start' is the root reference to the
     ;; list. This cannot be detached, so we need to create a new link that will
     ;; serve as root for the detached list.
-    (unless right-of
+    (unless left-neighbour
       (let ((new-start (phpinspect-make-ll :right (phpinspect-llnode-right start)
-                                           :value (phpinspect-llnode-value start))))
-        (setf (phpinspect-llnode-left (phpinspect-llnode-right start)) new-start)
+                                           :value (phpinspect-llnode-value start)
+                                           :link-map (phpinspect-llnode-link-map start))))
+        (when (phpinspect-llnode-right start)
+          (setf (phpinspect-llnode-left (phpinspect-llnode-right start)) new-start))
 
-        (when left-of
-          (phpinspect-ll-relink start (phpinspect-llnode-value left-of))
-          (setq left-of (phpinspect-llnode-right left-of)))
+        ;; Make right neighbour the new root node of the list
+        (if right-neighbour
+            (progn
+              (phpinspect-ll-relink start (phpinspect-llnode-value right-neighbour))
+              (setq right-neighbour (phpinspect-llnode-right right-neighbour)))
+          (phpinspect-ll-relink start nil))
 
-        (setq right-of start)
+        (setq left-neighbour start)
         (when (eq start end) (setq end new-start))
-        (setq start new-start)))
+        (setq start new-start)
+
+        ;; Update slice itself
+        (setf (phpinspect-slice-start slice) start)
+        (setf (phpinspect-slice-end slice) end)))
 
     (if (eq start end)
         start
-      (when left-of
-        (setf (phpinspect-llnode-left left-of) right-of))
-      (setf (phpinspect-llnode-right right-of) left-of)
+      (when right-neighbour
+        (setf (phpinspect-llnode-left right-neighbour) left-neighbour))
+      (setf (phpinspect-llnode-right left-neighbour) right-neighbour)
 
       (setf (phpinspect-llnode-left start) nil)
       (setf (phpinspect-llnode-right end) nil)
@@ -449,14 +458,14 @@ Returns the newly inserted node."
                          overlappers))
                        (insert-after-link))
                    (unless (= (seq-length enclosed) overlap-count)
-                     ;; (seq-doseq (lap overlappers)
-                     ;;   (message "overlaps: %s (%d,%d) with %s (%d,%d)"
-                     ;;            (phpinspect-meta-token (phpinspect-tree-value lap))
-                     ;;            (phpinspect-tree-start lap)
-                     ;;            (phpinspect-tree-end lap)
-                     ;;            (phpinspect-meta-token (phpinspect-tree-value node))
-                     ;;            (phpinspect-tree-start node)
-                     ;;            (phpinspect-tree-end node)))
+                     (seq-doseq (lap overlappers)
+                       (message "overlaps: %s (%d,%d) with %s (%d,%d)"
+                                (phpinspect-meta-token (phpinspect-tree-value lap))
+                                (phpinspect-tree-start lap)
+                                (phpinspect-tree-end lap)
+                                (phpinspect-meta-token (phpinspect-tree-value node))
+                                (phpinspect-tree-start node)
+                                (phpinspect-tree-end node)))
                      (throw 'phpinspect-tree-conflict
                             "Node overlaps multiple children, but does not enclose them all"))
 
@@ -516,8 +525,14 @@ Returns the newly inserted node."
                ;; Return tree, as this is the node that value of node has been
                ;; stored in.
                tree))))
-        (t (throw 'phpinspect-tree-conflict
-                  (format "Tree does not enclose or get enclosed. \nTree: (%d,%d,%s) \n\nPerspective parent: (%d,%d,%s)"
+        (t (message "parent: %s" (when (phpinspect-tree-value tree)
+                                   (phpinspect-meta-token (phpinspect-tree-value tree))))
+           (message "perspective child: %s"
+                    (when (phpinspect-tree-value node)
+                      (phpinspect-meta-token (phpinspect-tree-value node))))
+
+           (throw 'phpinspect-tree-conflict
+                  (format "Tree does not enclose or get enclosed. \nTree: (%d,%d,%s) \n\nPerspective child: (%d,%d,%s)"
                           (phpinspect-tree-start tree)
                           (phpinspect-tree-end tree)
                           (if (phpinspect-tree-parent tree) "non-root" "root")
@@ -556,6 +571,10 @@ width with the smallest interval as car."
             `(,@all-overlappers ,(phpinspect-tree-value tree)))
         `(,(phpinspect-tree-value tree))))))
 
+(cl-defmethod phpinspect-tree-shift ((tree phpinspect-tree) (delta integer))
+  (phpinspect-tree-traverse (node tree)
+    (setf (phpinspect-tree-start node) (+ (phpinspect-tree-start node) delta))
+    (setf (phpinspect-tree-end node) (+ (phpinspect-tree-end node) delta))))
 
 (cl-defmethod phpinspect-tree-widen-after-point
   ((tree phpinspect-tree) (point integer) (delta integer) &optional fn)
@@ -666,7 +685,8 @@ Returns the newly created and inserted node."
   (let ((stack (gensym))
         (child (gensym))
         (children (gensym)))
-    `(let ((,stack (list ,(cadr place-and-tree))))
+    `(let ((,stack (list ,(cadr place-and-tree)))
+           (,(car place-and-tree)))
        (while (setq ,(car place-and-tree) (pop ,stack))
          ,@body
          (let ((,children (phpinspect-tree-children ,(car place-and-tree))))
