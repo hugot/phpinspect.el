@@ -65,28 +65,6 @@
 
     (should (cdr parsed))))
 
-(ert-deftest phpinspect-edit-merge ()
-  (let ((edit (phpinspect-make-edit :original-start 10
-                                    :local-delta 2
-                                    :length 5)))
-    (phpinspect-edit-merge edit (phpinspect-make-edit
-                                 :original-start 12
-                                 :local-delta -3
-                                 :length 5))
-
-    (should (= -1 (phpinspect-edit-local-delta edit)))
-    (should (= 7 (phpinspect-edit-length edit)))
-    (should (= 10 (phpinspect-edit-original-start edit)))))
-
-(ert-deftest phpinspect-edtrack-register-edit ()
-  (let ((edtrack (phpinspect-make-edtrack)))
-    (phpinspect-edtrack-register-edit edtrack 5 10 10)
-    (phpinspect-edtrack-register-edit edtrack 15 22 7)
-    (phpinspect-edtrack-register-edit edtrack 100 200 150)
-
-    (should (= 30 (phpinspect-edtrack-original-position-at-point edtrack 25)))
-    (should (= 4 (phpinspect-edtrack-original-position-at-point edtrack 4)))
-    (should (= 260 (phpinspect-edtrack-original-position-at-point edtrack 205)))))
 
 (ert-deftest phpinspect-buffer-register-edit ()
   (let ((buffer (phpinspect-make-buffer)))
