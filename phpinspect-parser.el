@@ -387,13 +387,6 @@ have any effect."
              ,@body)
          (setf (phpinspect-pctx-whitespace-before ,pctx) ,save-sym)))))
 
-;; (defmacro phpinspect-pctx-save-whitespace-when-active (&rest body)
-;;   `(if phpinspect-current-pctx
-;;        (phpinspect-pctx-save-whitespace phpinspect-current-pctx
-;;          ,@body)
-;;      (progn
-;;        ,@body)))
-
 (defun phpinspect-make-parser-function (tree-type handler-list &optional delimiter-predicate)
   "Create a parser function using the handlers by names defined in HANDLER-LIST.
 
@@ -451,12 +444,6 @@ token is \";\", which marks the end of a statement in PHP."
            ;; Return
            tokens)))))
 
-;; (defsubst phpinspect-tree-incremental-insert (tree node)
-;;   (let* ((meta (phpinspect-tree-value tree))
-;;          (token (when (phpinspect-meta-p meta) (phpinspect-meta-token meta)))
-;;          (node-meta (phpinspect-tree-value node)))
-;;     (if token
-
 (cl-defstruct (phpinspect-meta (:constructor phpinspect-make-meta))
   "An object that represents the metadata associated with a parsed token."
   (token nil
@@ -478,11 +465,30 @@ token is \";\", which marks the end of a statement in PHP."
            :documentation
            "The handler that was used to parse token. (see `phpinspect-defhandler')"))
 
+(defsubst phpinspect-meta-token-filter (predicate)
+  (lambda (meta) (funcall predicate (phpinspect-meta-token meta))))
+
+(defsubst phpinspect-tree-meta-token-filter (predicate)
+  (lambda (tree)
+    (funcall predicate (phpinspect-meta-token (phpinspect-tree-value tree)))))
+
+(defsubst phpinspect-tree-meta-token (tree)
+  (phpinspect-meta-token (phpinspect-tree-value tree)))
+
 (defsubst phpinspect-meta-start (meta)
   (phpinspect-tree-start (phpinspect-meta-tree meta)))
 
 (defsubst phpinspect-meta-end (meta)
   (phpinspect-tree-end (phpinspect-meta-tree meta)))
+
+(defsubst phpinspect-tree-find-parent-meta-matching-token (tree predicate)
+  (if (funcall (phpinspect-tree-meta-token-filter predicate) tree)
+      tree
+    (catch 'found
+      (while (phpinspect-tree-parent tree)
+        (setq tree (phpinspect-tree-parent tree))
+        (when (funcall (phpinspect-tree-meta-token-filter predicate) tree)
+          (throw 'found tree))))))
 
 (defvar phpinspect-parse-context nil
   "An instance of `phpinspect-pctx' that is used when
@@ -560,32 +566,31 @@ parsing. Usually used in combination with
                            (let* ((match (match-string 0))
                                   (start-position (point))
                                   (original-position
-                                   (when previous-tree
-                                     (catch 'phpinspect-point-inside-edit
-                                       (phpinspect-edtrack-original-position-at-point edtrack start-position))))
+                                   (when (and previous-tree edtrack)
+                                     (phpinspect-edtrack-original-position-at-point edtrack start-position)))
                                   (existing-node)
                                   (existing-meta)
                                   (current-end-position)
                                   (token))
-                             (unless (or (not previous-tree) (phpinspect-point-inside-edit-err-p original-position))
+                             (unless (not previous-tree)
                                (setq existing-node (phpinspect-tree-find-node-starting-at previous-tree original-position))
                                (when existing-node
                                  (setq existing-meta (phpinspect-tree-value existing-node)
-                                       current-end-position
-                                       (catch 'phpinspect-point-inside-edit
-                                         (phpinspect-edtrack-current-position-at-point
-                                          edtrack (phpinspect-tree-end  existing-node))))))
+                                       current-end-position (phpinspect-edtrack-current-position-at-point
+                                                             edtrack (phpinspect-tree-end  existing-node)))))
 
                              (if (and existing-node
                                       (not (or (phpinspect-root-p (phpinspect-meta-token existing-meta))
-                                               (phpinspect-meta-tainted existing-meta)
-                                               (phpinspect-point-inside-edit-err-p current-end-position))))
+                                               (phpinspect-meta-tainted existing-meta))))
                                  (progn
                                    (setq existing-node (phpinspect-tree-detach existing-node))
                                    (setq token (phpinspect-meta-token existing-meta))
-                                   (setf (phpinspect-tree-start existing-node) start-position)
-                                   (setf (phpinspect-tree-end existing-node) current-end-position)
+                                   ;; Alter regions to current token position in buffer
+                                   (let ((delta (- start-position original-position)))
+                                     (phpinspect-tree-shift existing-node delta))
+
                                    (goto-char current-end-position)
+                                   ;; Insert existing token into new tree
                                    (phpinspect-tree-insert-node current-tree existing-node))
                                (progn
                                  (setq token (funcall ,(symbol-function handler) match max-point))
@@ -866,7 +871,7 @@ executing.")
 
 (phpinspect-defhandler string (start-token &rest _ignored)
   "Handler for strings"
-  (regexp "\"\\|'")
+  (regexp "\\(\"\\|'\\)")
   (list :string (phpinspect--munch-string start-token)))
 
 (phpinspect-defparser block-without-scopes

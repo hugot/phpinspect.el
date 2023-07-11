@@ -47,7 +47,7 @@
              (,(phpinspect--make-type :name"\\Potato" :fully-qualified t)
               phpinspect--indexed-class
               (class-name . ,(phpinspect--make-type :name "\\Potato" :fully-qualified t))
-              (location . (0 0))
+              (token-metadata . nil)
               (imports)
               (methods)
               (static-methods . (,(phpinspect--make-function
@@ -145,3 +145,38 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\void" :fully-qualified t)
                       (phpinspect--function-return-type method))))))))
+
+(ert-deftest phpinspect-index-tokens-class ()
+  (let* ((index1
+          (phpinspect--index-tokens
+           (phpinspect-test-read-fixture-data "IndexClass1")))
+         (index2
+          (phpinspect-test-read-fixture-serialization "IndexClass1-indexed"))
+         (index1-class (car (alist-get 'classes index1)))
+         (index2-class (car (alist-get 'classes index2))))
+
+    (dolist (key '(class-name imports methods static-methods static-variables variables constants extends implements))
+      (should (equal (alist-get key index1-class)
+                     (alist-get key index2-class))))))
+
+(ert-deftest phpinspect-index-tree-class ()
+  (let* ((pctx (phpinspect-make-pctx :incremental t)))
+    (with-temp-buffer
+      (insert-file-contents (concat phpinspect-test-php-file-directory "/IndexClass1.php"))
+      (setf (phpinspect-pctx-tree pctx) (phpinspect-make-tree :start (point-min)
+                                                              :end (point-max)
+                                                              :value 'parse-root))
+      (phpinspect-with-parse-context pctx (phpinspect-parse-current-buffer)))
+    (let* ((index1 (phpinspect--index-tokens
+                    (seq-elt (phpinspect-tree-children (phpinspect-pctx-tree pctx)) 0)))
+           (index2
+            (phpinspect-test-read-fixture-serialization "IndexClass1-indexed"))
+           (index1-class (car (alist-get 'classes index1)))
+           (index2-class (car (alist-get 'classes index2))))
+
+      (dolist (key '(imports methods static-methods static-variables variables constants extends implements))
+        (should (equal (alist-get key index1-class)
+                       (alist-get key index2-class))))
+
+      (should (alist-get 'token-metadata index1-class))
+      (should (phpinspect-meta-p (alist-get 'token-metadata index1-class))))))

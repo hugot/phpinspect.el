@@ -286,18 +286,6 @@
                           (phpinspect-test-read-fixture-data "IndexClass1"))))
     (should (equal index expected-result))))
 
-(ert-deftest phpinspect-index-tokens-class ()
-  (let* ((index1
-          (phpinspect--index-tokens
-           (phpinspect-test-read-fixture-data "IndexClass1")))
-         (index2
-          (phpinspect-test-read-fixture-serialization "IndexClass1-indexed"))
-         (index1-class (cdr (alist-get 'classes index1)))
-         (index2-class (cdr (alist-get 'classes index2))))
-    (dolist (key '(class-name imports methods static-methods static-variables variables constants extends implements))
-      (should (equal (alist-get key index1-class)
-                     (alist-get key index2-class))))))
-
 (ert-deftest phpinspect-get-resolvecontext ()
   (let ((resolvecontext (phpinspect--get-resolvecontext
                          (phpinspect-test-read-fixture-data "IncompleteClass"))))
@@ -641,6 +629,10 @@ class Thing
                                           (:word "echo") (:word "Hello"))))
                    parsed))))
 
+(ert-deftest phpinspect-parse-string-token ()
+  (let ((parsed (phpinspect-parse-string "<?php 'string'")))
+    (should (equal '(:root (:string "string")) parsed))))
+
 
 (load-file (concat phpinspect-test-directory "/test-worker.el"))
 (load-file (concat phpinspect-test-directory "/test-autoload.el"))
@@ -652,6 +644,7 @@ class Thing
 (load-file (concat phpinspect-test-directory "/test-type.el"))
 (load-file (concat phpinspect-test-directory "/test-util.el"))
 (load-file (concat phpinspect-test-directory "/test-tree.el"))
+(load-file (concat phpinspect-test-directory "/test-edtrack.el"))
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here
