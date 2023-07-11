@@ -73,8 +73,41 @@ list it was called on."
 
 (cl-defstruct (phpinspect-slice (:constructor phpinspect-make-slice))
   "A window to a subsection of a (`phpinspect-llnode') linked list. "
+  (reversed nil
+            :type bool
+            :documentation
+            "Whether the slice should be iterated in reverse")
   (start nil)
   (end nil))
+
+(defmacro phpinspect-doslice (place-and-slice &rest body)
+  (declare (indent defun))
+  (let ((list (gensym))
+        (slice-end (gensym))
+        (normal-next-function #'phpinspect-llnode-right)
+        (reverse-next-function #'phpinspect-llnode-left))
+
+    `(if (phpinspect-slice-reversed ,(cadr place-and-slice))
+         (let ((,list (phpinspect-slice-end ,(cadr place-and-slice)))
+               (,slice-end (phpinspect-llnode-left
+                            (phpinspect-slice-start ,(cadr place-and-slice)))))
+           (when (phpinspect-llnode-value ,list)
+             (while (and ,list (not (eq ,slice-end ,list)))
+               (let ((,(car place-and-slice) (phpinspect-llnode-value ,list)))
+                 ,@body)
+               (setq ,list (,reverse-next-function ,list)))))
+
+       (let ((,list (phpinspect-slice-start ,(cadr place-and-slice)))
+             (,slice-end (phpinspect-llnode-right
+                          (phpinspect-slice-end ,(cadr place-and-slice)))))
+         (while (and ,list (not (eq ,slice-end ,list)))
+           (let ((,(car place-and-slice) (phpinspect-llnode-value ,list)))
+             ,@body)
+           (setq ,list (,normal-next-function ,list)))))))
+
+(cl-defmethod seq-reverse ((slice phpinspect-slice))
+  (setf (phpinspect-slice-reversed slice) (not (phpinspect-slice-reversed slice)))
+  slice)
 
 (cl-defmethod phpinspect-slice-detach ((slice phpinspect-slice))
   "Detach underlying link range from the linked list that it
@@ -237,30 +270,8 @@ belongs to. Return resulting linked list."
       (setq list (phpinspect-llnode-right list)))))
 
 (cl-defmethod seq-do (fn (slice phpinspect-slice))
-  (let ((list (phpinspect-slice-start slice))
-        (slice-end (phpinspect-llnode-right (phpinspect-slice-end slice))))
-    (when (phpinspect-llnode-value list)
-      (while (and list (not (eq slice-end list)))
-        (funcall fn (phpinspect-llnode-value list))
-        (setq list (phpinspect-llnode-right list))))))
-
-(cl-defmethod seq-map (fn (list phpinspect-llnode))
-  (when (phpinspect-llnode-value list)
-    (let ((values))
-      (while list
-        (push (funcall fn (phpinspect-llnode-value list)) values)
-        (setq list (phpinspect-llnode-right list)))
-      (nreverse values))))
-
-(cl-defmethod seq-map (fn (slice phpinspect-slice))
-  (let ((list (phpinspect-slice-start slice))
-        (end (phpinspect-llnode-right (phpinspect-slice-end slice))))
-    (when (phpinspect-llnode-value list)
-      (let ((values))
-        (while (and list (not (eq end list)))
-          (push (funcall fn (phpinspect-llnode-value list)) values)
-          (setq list (phpinspect-llnode-right list)))
-        (nreverse values)))))
+  (phpinspect-doslice (val slice)
+    (funcall fn val)))
 
 (cl-defmethod seq-take-while (pred (list phpinspect-llnode))
   (when (phpinspect-llnode-value list)
@@ -273,17 +284,15 @@ belongs to. Return resulting linked list."
       (phpinspect-make-slice :start start :end end))))
 
 (cl-defmethod seq-take-while (pred (slice phpinspect-slice))
-  (let ((list (phpinspect-slice-start slice))
-        (slice-end (phpinspect-llnode-right (phpinspect-slice-end slice))))
-    (when (phpinspect-llnode-value list)
-      (let ((start list)
-            (end list))
-        (while (and list (not (eq slice-end list))
-                    (funcall pred (phpinspect-llnode-value list)))
-          (setq end list)
-          (setq list (phpinspect-llnode-right list)))
+  (let ((start (phpinspect-slice-start slice))
+        (end (phpinspect-slice-start slice)))
+  (catch 'break
+    (phpinspect-doslice (val slice)
+      (if (funcall pred val)
+          (setq end (phpinspect-ll-link start val))
+        (throw 'break nil))))
 
-        (phpinspect-make-slice :start start :end end)))))
+  (phpinspect-make-slice :start start :end end)))
 
 (cl-defmethod seq-length ((list phpinspect-llnode))
   (let ((count 0))
@@ -306,24 +315,27 @@ belongs to. Return resulting linked list."
     count))
 
 (cl-defmethod seq-into ((list phpinspect-llnode) type)
-  (let ((destination)
-        (list (phpinspect-ll-last list)))
-    (while list
-      (push (phpinspect-llnode-value list) destination)
-      (setq list (phpinspect-llnode-left list)))
-
-    (cond ((eq 'vector type) (vconcat destination))
-          ((eq 'list type) destination)
-          ((eq 'string type) (concat destination))
-          (t (error "Not a sequence type name: %S" type)))))
-
-(cl-defmethod seq-into ((slice phpinspect-slice) type)
+  (if (eq 'slice type)
+      (phpinspect-make-slice :start list :end (phpinspect-ll-last list))
     (let ((destination)
-          (list (phpinspect-slice-end slice))
-          (slice-start (phpinspect-llnode-left (phpinspect-slice-start slice))))
-      (while (and list (not (eq slice-start list)))
+          (list (phpinspect-ll-last list)))
+      (while list
         (push (phpinspect-llnode-value list) destination)
         (setq list (phpinspect-llnode-left list)))
+
+      (cond ((eq 'vector type) (vconcat destination))
+            ((eq 'list type) destination)
+            ((eq 'string type) (concat destination))
+            (t (error "Not a sequence type name: %S" type))))))
+
+(cl-defmethod seq-into ((slice phpinspect-slice) type)
+    (let ((destination))
+      (unwind-protect
+          (progn
+            (seq-reverse slice)
+            (phpinspect-doslice (val slice)
+              (push val destination)))
+        (seq-reverse slice))
 
       (cond ((eq 'vector type) (vconcat destination))
             ((eq 'list type) destination)
@@ -341,17 +353,12 @@ belongs to. Return resulting linked list."
     default))
 
 (cl-defmethod seq-find (pred (slice phpinspect-slice) &optional default)
-  (let ((list (phpinspect-slice-start slice))
-        (end (phpinspect-llnode-right (phpinspect-slice-end slice))))
-    (if (phpinspect-llnode-value list)
-      (while (and list (not (eq end list))
-                  (not (funcall pred (phpinspect-llnode-value list))))
-        (setq list (phpinspect-llnode-right list)))
-      (setq list nil))
-
-      (if list
-          (phpinspect-llnode-value list)
-        default)))
+  (or
+   (catch 'found
+     (phpinspect-doslice (val slice)
+       (when (funcall pred val)
+         (throw 'found val))))
+   default))
 
 (cl-defmethod phpinspect-ll-pp ((list phpinspect-llnode))
   (message "(phpinspect-ll %s)"
@@ -673,10 +680,17 @@ Returns the newly created and inserted node."
     (when parent
       (let ((parent-link (phpinspect-ll-link (phpinspect-tree-children parent)
                                              tree)))
-        ;; (unless parent-link
-        ;;   (message "No parent link for node %s, parent: %s"
-        ;;            (phpinspect-meta-token (phpinspect-tree-value tree)) (phpinspect-tree-value parent)))
-        (phpinspect-llnode-detach parent-link)
+        (unless parent-link
+          (phpinspect--log  "No parent link for node, trying to find it manually")
+          (setq parent-link
+                (seq-find (lambda (child) (eq child tree))
+                          (phpinspect-tree-children parent))))
+
+        (if parent-link
+            (phpinspect-llnode-detach parent-link)
+          (phpinspect--log "[WARNING] No parent link for node."))
+
+
         (setf (phpinspect-tree-parent tree) nil)))
     tree))
 

@@ -478,6 +478,8 @@ class Thing
     (should (string= "getThis: ($moment DateTime, $thing Thing, $other): Thing"
                    (with-temp-buffer
                      (insert php-code)
+                     (setq-local phpinspect-current-buffer
+                                 (phpinspect-make-buffer :buffer (current-buffer)))
                      (phpinspect-eldoc-function))))))
 
 (ert-deftest phpinspect-eldoc-function-for-static-method ()
@@ -504,6 +506,8 @@ class Thing
     (should (string= "doThing: ($moment DateTime, $thing Thing, $other): Thing"
                    (with-temp-buffer
                      (insert php-code)
+                     (setq-local phpinspect-current-buffer
+                                 (phpinspect-make-buffer :buffer (current-buffer)))
                      (phpinspect-eldoc-function))))))
 
 

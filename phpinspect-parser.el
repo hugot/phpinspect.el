@@ -768,13 +768,13 @@ executing.")
                 (doc-block (save-restriction
                              (goto-char region-start)
                              (narrow-to-region region-start region-end)
-                             (funcall parser (current-buffer) (point-max)))))
+                             (funcall parser (current-buffer) (point-max) nil 'root))))
            (forward-char 2)
            doc-block))
         (t
          (let ((parser (phpinspect-get-parser-func 'comment))
                (end-position (line-end-position)))
-           (funcall parser (current-buffer) end-position)))))
+           (funcall parser (current-buffer) end-position nil 'root)))))
 
 (phpinspect-defhandler variable (start-token &rest _ignored)
   "Handler for tokens indicating reference to a variable"
@@ -818,7 +818,7 @@ executing.")
   (forward-char (length start-token))
 
   (let ((parser (phpinspect-get-parser-func 'use)))
-    (funcall parser (current-buffer) max-point)))
+    (funcall parser (current-buffer) max-point nil 'root)))
 
 (phpinspect-defhandler attribute-reference (start-token &rest _ignored)
   "Handler for references to object attributes, or static class attributes."
@@ -864,7 +864,7 @@ executing.")
   (setq start-token (phpinspect--strip-word-end-space start-token))
   (forward-char (length start-token))
   (let* ((parser (phpinspect-get-parser-func 'const))
-         (token (funcall parser (current-buffer) max-point)))
+         (token (funcall parser (current-buffer) max-point nil 'root)))
     (when (phpinspect-incomplete-token-p (car (last token)))
       (setcar token :incomplete-const))
     token))
@@ -890,7 +890,7 @@ static keywords with the same meaning as in a class block."
          (continue-condition (lambda ()
                                (not (and (char-equal (char-after) ?})
                                          (setq complete-block t)))))
-         (parsed (funcall parser (current-buffer) max-point continue-condition)))
+         (parsed (funcall parser (current-buffer) max-point continue-condition 'root)))
     (if complete-block
         (forward-char)
       (setcar parsed :incomplete-block))
@@ -912,7 +912,7 @@ static keywords with the same meaning as in a class block."
          (continue-condition (lambda ()
                                (not (and (char-equal (char-after) ?})
                                          (setq complete-block t)))))
-         (parsed (funcall parser (current-buffer) max-point continue-condition)))
+         (parsed (funcall parser (current-buffer) max-point continue-condition 'root)))
     (if complete-block
         (forward-char)
       (setcar parsed :incomplete-block))

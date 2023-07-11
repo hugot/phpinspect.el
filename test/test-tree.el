@@ -250,7 +250,9 @@ the start of the list."
     (should (string= "abc" (apply #'concat (seq-into detached-list 'list))))
 
     (should-not (phpinspect-ll-link list val1))
-    (should (phpinspect-ll-link list d))))
+    (should (phpinspect-ll-link list d))
+    (should (phpinspect-ll-link detached-list val1))
+    (should (phpinspect-ll-link detached-list val2))))
 
 (ert-deftest phpinspect-slice-detach-single-member ()
   (let ((list (phpinspect-make-ll))

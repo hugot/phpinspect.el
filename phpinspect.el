@@ -128,7 +128,54 @@ candidate. Candidates can be indexed functions and variables.")
   (push enclosing-token (phpinspect--resolvecontext-enclosing-tokens
                          resolvecontext)))
 
-(defun phpinspect--get-resolvecontext (token &optional resolvecontext)
+(cl-defmethod phpinspect-find-statement-before-point
+  ((tree phpinspect-tree) (point integer))
+  (let ((children (seq-reverse (seq-into (phpinspect-tree-children tree) 'slice))))
+    (let ((previous-siblings))
+      (catch 'break
+        (seq-doseq (child children)
+          (when (phpinspect-end-of-statement-p (phpinspect-tree-meta-token child))
+            (throw 'break nil))
+
+          (when (< (phpinspect-tree-start child) point)
+            (push child previous-siblings))))
+
+      previous-siblings)))
+
+(cl-defmethod phpinspect-get-resolvecontext
+  ((tree phpinspect-tree) (point integer))
+  (let* ((enclosing (phpinspect-tree-traverse-overlapping
+                     tree (phpinspect-make-region (- point 1) point)))
+         (subject (car enclosing))
+         (siblings))
+    (when enclosing
+      (phpinspect--log "Initial resolvecontext subject: %s" (phpinspect-meta-token subject))
+      (let ((parent (phpinspect-tree-meta-token (phpinspect-tree-parent (phpinspect-meta-tree subject)))))
+        (phpinspect--log "Parent: %s" parent))
+
+      (if (phpinspect-block-or-list-p (phpinspect-meta-token subject))
+          (setq subject (mapcar #'phpinspect-tree-meta-token
+                                (phpinspect-find-statement-before-point
+                                 (phpinspect-meta-tree subject) point)))
+        (setq subject (mapcar #'phpinspect-tree-meta-token
+                              (phpinspect-find-statement-before-point
+                               (phpinspect-tree-parent
+                                (phpinspect-meta-tree subject))
+                               point)))))
+
+      (phpinspect--make-resolvecontext :subject subject
+                                       :enclosing-tokens (mapcar #'phpinspect-meta-token enclosing)
+                                       :project-root (phpinspect-current-project-root))))
+
+
+(defun phpinspect-subject-at-point ()
+  (interactive)
+  (unless phpinspect-current-buffer
+    (setq phpinspect-current-buffer (phpinspect-make-buffer :buffer (current-buffer))))
+  (phpinspect-get-resolvecontext (phpinspect-buffer-parse-tree phpinspect-current-buffer) (point)))
+
+
+(cl-defmethod phpinspect--get-resolvecontext (token &optional resolvecontext)
   "Find the deepest nested incomplete token in TOKEN.
 If RESOLVECONTEXT is nil, it is created.  Returns RESOLVECONTEXT
 of type `phpinspect--resolvecontext' containing the last
@@ -324,9 +371,8 @@ TODO:
  - Respect `eldoc-echo-area-use-multiline-p`
  - This function is too big and has repetitive code. Split up and simplify.
 "
-  (phpinspect--log "Starting eldoc function execution")
-  (let* ((token-tree (phpinspect-parse-buffer-until-point (current-buffer) (point)))
-         (resolvecontext (phpinspect--get-resolvecontext token-tree))
+  (let* ((token-tree (phpinspect-buffer-parse-tree phpinspect-current-buffer))
+         (resolvecontext (phpinspect-get-resolvecontext token-tree (point)))
          (incomplete-token (car (phpinspect--resolvecontext-enclosing-tokens
                                  resolvecontext)))
          (enclosing-token (cadr (phpinspect--resolvecontext-enclosing-tokens
@@ -794,10 +840,14 @@ more recent"
         (phpinspect--log "Failed to find methods for class %s :(" class))
       methods))
 
+(defun phpinspect-after-change-function (start end pre-change-length)
+  (when phpinspect-current-buffer
+    (phpinspect-buffer-register-edit phpinspect-current-buffer start end pre-change-length)))
 
 (defun phpinspect--init-mode ()
   "Initialize the phpinspect minor mode for the current buffer."
   (setq phpinspect-current-buffer (phpinspect-make-buffer :buffer (current-buffer)))
+  (add-hook 'after-change-functions #'phpinspect-after-change-function)
   (make-local-variable 'company-backends)
   (add-to-list 'company-backends #'phpinspect-company-backend)
 
@@ -1098,8 +1148,8 @@ static variables and static methods."
 
 (defun phpinspect--suggest-at-point ()
       (phpinspect--log "Entering suggest at point." )
-  (let* ((token-tree (phpinspect-parse-buffer-until-point (current-buffer) (point)))
-         (resolvecontext (phpinspect--get-resolvecontext token-tree))
+  (let* ((token-tree (phpinspect-buffer-parse-tree phpinspect-current-buffer))
+         (resolvecontext (phpinspect-get-resolvecontext token-tree (point)))
          (last-tokens (last (phpinspect--resolvecontext-subject resolvecontext) 2)))
     (phpinspect--log "Subject: %s" (phpinspect--resolvecontext-subject
                                     resolvecontext))
