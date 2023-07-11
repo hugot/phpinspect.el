@@ -73,6 +73,10 @@ linked with."
           ;; return
           parsed)))))
 
+(defsubst phpinspect-buffer-parse-tree (buffer)
+  (phpinspect-buffer-parse buffer)
+  (phpinspect-buffer-tree buffer))
+
 (cl-defmethod phpinspect-buffer-register-edit
   ((buffer phpinspect-buffer) (start integer) (end integer) (pre-change-length integer))
   (let* ((edit
@@ -88,25 +92,7 @@ linked with."
         (when (phpinspect-tree-overlaps node region)
           (setf (phpinspect-meta-tainted (phpinspect-tree-value node)) t))))))
 
-(cl-defmethod phpinspect-buffer--register-token
-  ((buffer phpinspect-buffer) token start end handler)
-  (let* ((meta (phpinspect-make-meta
-                :token token
-                :handler handler
-                :whitespace-before (phpinspect-buffer-whitespace buffer)))
-        (node (phpinspect-tree-insert
-               (phpinspect-buffer-tree buffer) start end meta)))
-    (setf (phpinspect-meta-tree meta) node)
-    (setf (phpinspect-buffer-whitespace buffer) "")))
-
-(cl-defmethod phpinspect-buffer-get-token-metadata ((buffer phpinspect-buffer) token)
-  nil)
-
-(cl-defmethod phpinspect-buffer-token-location ((buffer phpinspect-buffer) token)
-  (phpinspect-token-metadata-region (phpinspect-buffer-get-token-metadata buffer token)))
-
 (cl-defmethod phpinspect-buffer-tokens-enclosing-point ((buffer phpinspect-buffer) point)
   (phpinspect-tree-traverse-overlapping (phpinspect-buffer-tree buffer) point))
-
 
 (provide 'phpinspect-buffer)
