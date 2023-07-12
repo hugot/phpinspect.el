@@ -593,7 +593,6 @@ parsing. Usually used in combination with
                                   (current-end-position)
                                   (token))
                              (unless (not previous-tree)
-                               (message "Searching for existing node at point %d" (point))
                                (setq existing-node (phpinspect-pctx-find-existing-node-at-point
                                                     context original-position))
                                (when existing-node
@@ -610,8 +609,8 @@ parsing. Usually used in combination with
                                    ;; Alter regions to current token position in buffer
                                    (let ((delta (- start-position original-position)))
                                      (unless (= 0 delta)
-                                       (message "Shifting tree with delta %d" delta)
-                                       (message "point: %d, start position: %d" (point) start-position)
+                                       ;; (message "Shifting tree with delta %d" delta)
+                                       ;; (message "point: %d, start position: %d" (point) start-position)
                                        (phpinspect-tree-shift existing-node delta)))
 
                                    (goto-char current-end-position)
