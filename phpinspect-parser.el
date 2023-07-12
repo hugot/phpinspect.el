@@ -233,6 +233,18 @@ Type can be any of the token types returned by
       (phpinspect-const-p token)
       (phpinspect-static-p token)))
 
+(defsubst phpinspect-enclosing-token-p (token)
+  "Returns t when a token can enclose other tokens"
+  (or
+   (phpinspect-list-p token)
+   (phpinspect-block-p token)
+   (phpinspect-class-p token)
+   (phpinspect-function-p token)
+   (phpinspect-array-p token)
+   (phpinspect-scope-p token)
+   (phpinspect-static-p token)
+   (phpinspect-const-p token)))
+
 (defun phpinspect-namespace-keyword-p (token)
   (and (phpinspect-word-p token) (string= (car (last token)) "namespace")))
 

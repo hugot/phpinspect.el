@@ -62,8 +62,11 @@
    (concat phpinspect-test-php-file-directory "/" name ".php")))
 
 (ert-deftest phpinspect-get-variable-type-in-block ()
-  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $bar = $foo;"))
+  (let* ((code "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $bar = $foo; Whatever comes after don't matter.")
+         (tree (phpinspect-parse-string-to-tree code))
+         (tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $bar = $foo;"))
          (context (phpinspect--get-resolvecontext tokens))
+         (tree-context (phpinspect-get-resolvecontext tree (- (length code) 36)))
          (project-root "could never be a real project root")
          (phpinspect-project-root-function
           (lambda (&rest _ignored) project-root))
@@ -78,9 +81,17 @@
                    context "foo"
                    (phpinspect-function-block
                     (car (phpinspect--resolvecontext-enclosing-tokens context)))
-                   (phpinspect--make-type-resolver-for-resolvecontext context))))
+                   (phpinspect--make-type-resolver-for-resolvecontext context)))
+          (tree-result (phpinspect-get-variable-type-in-block
+                        tree-context "foo"
+                        (phpinspect-function-block
+                         (car (phpinspect--resolvecontext-enclosing-tokens context)))
+                        (phpinspect--make-type-resolver-for-resolvecontext context))))
       (should (phpinspect--type= (phpinspect--make-type :name "\\DateTime")
-                                 result)))))
+                                 result))
+
+      (should (phpinspect--type= (phpinspect--make-type :name "\\DateTime")
+                                 tree-result)))))
 
 (ert-deftest phpinspect-get-pattern-type-in-block ()
   (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $this->potato = $foo;"))
@@ -104,9 +115,25 @@
       (should (phpinspect--type= (phpinspect--make-type :name "\\DateTime")
                                  result)))))
 
+(ert-deftest phpinspect-get-resolvecontext-multi-strategy ()
+  (let* ((code1 "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0]; $borknest = [$bork]; $barknest = $borknest[0][0]; }}")
+         (code2  "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0]; $borknest = [$bork]; $barknest = $borknest[0][0]")
+         (tree (phpinspect-parse-string-to-tree code1))
+         (tokens (phpinspect-parse-string code2))
+         (context1 (phpinspect-get-resolvecontext tree (- (length code1) 4)))
+         (context2 (phpinspect--get-resolvecontext tokens)))
+
+    (should (equal (phpinspect--resolvecontext-subject context1)
+                   (phpinspect--resolvecontext-subject context2)))
+    (should (= (length (phpinspect--resolvecontext-enclosing-tokens context1))
+               (length (phpinspect--resolvecontext-enclosing-tokens context2))))))
+
+
+
 (ert-deftest phpinspect-get-variable-type-in-block-array-access ()
-  (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0]; $borknest = [$bork]; $barknest = $borknest[0][0]"))
-         (context (phpinspect--get-resolvecontext tokens))
+  (let* ((code "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0]; $borknest = [$bork]; $barknest = $borknest[0][0]; }}")
+         (tokens (phpinspect-parse-string-to-tree code))
+         (context (phpinspect-get-resolvecontext tokens (- (length code) 4)))
          (project-root "could never be a real project root")
          (phpinspect-project-root-function
           (lambda (&rest _ignored) project-root))
@@ -465,7 +492,7 @@ class Thing
 
     function doStuff()
     {
-        $this->getThis(")
+        $this->getThis(new \DateTime(), bla)")
          (tokens (phpinspect-parse-string php-code))
          (index (phpinspect--index-tokens tokens))
          (phpinspect-project-root-function (lambda () "phpinspect-test"))
@@ -478,6 +505,7 @@ class Thing
     (should (string= "getThis: ($moment DateTime, $thing Thing, $other): Thing"
                    (with-temp-buffer
                      (insert php-code)
+                     (backward-char)
                      (setq-local phpinspect-current-buffer
                                  (phpinspect-make-buffer :buffer (current-buffer)))
                      (phpinspect-eldoc-function))))))

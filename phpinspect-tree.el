@@ -100,10 +100,11 @@ list it was called on."
        (let ((,list (phpinspect-slice-start ,(cadr place-and-slice)))
              (,slice-end (phpinspect-llnode-right
                           (phpinspect-slice-end ,(cadr place-and-slice)))))
-         (while (and ,list (not (eq ,slice-end ,list)))
-           (let ((,(car place-and-slice) (phpinspect-llnode-value ,list)))
-             ,@body)
-           (setq ,list (,normal-next-function ,list)))))))
+         (when (phpinspect-llnode-value ,list)
+           (while (and ,list (not (eq ,slice-end ,list)))
+             (let ((,(car place-and-slice) (phpinspect-llnode-value ,list)))
+               ,@body)
+             (setq ,list (,normal-next-function ,list))))))))
 
 (cl-defmethod seq-reverse ((slice phpinspect-slice))
   (setf (phpinspect-slice-reversed slice) (not (phpinspect-slice-reversed slice)))
@@ -188,7 +189,13 @@ belongs to. Return resulting linked list."
   (or (phpinspect-llnode-right list) list))
 
 (cl-defmethod phpinspect-ll-link ((list phpinspect-llnode) value)
-  (gethash value (phpinspect-llnode-link-map list)))
+  (or (gethash value (phpinspect-llnode-link-map list))
+      (catch 'found
+        (while list
+          (when (eq value (phpinspect-llnode-value list))
+            (phpinspect-ll-register-link list)
+            (throw 'found list))
+          (setq list (phpinspect-llnode-right list))))))
 
 (cl-defmethod phpinspect-ll-relink ((list phpinspect-llnode) value)
   (phpinspect-ll-unregister-link list)
@@ -436,6 +443,12 @@ belongs to. Return resulting linked list."
   (and (= 0 (phpinspect-tree-start tree))
        (= 0 (phpinspect-tree-end tree))))
 
+(cl-defmethod phpinspect-tree-find-last-child-before-point ((tree phpinspect-tree) (point integer))
+  (catch 'found
+    (seq-doseq (child (seq-reverse (seq-into (phpinspect-tree-children tree) 'slice)))
+      (when (<= (phpinspect-tree-end child) point)
+        (throw 'found child)))))
+
 (cl-defmethod phpinspect-tree-insert-node ((tree phpinspect-tree) (node phpinspect-tree))
   "Insert a new NODE into TREE.
 
@@ -553,9 +566,18 @@ Returns the newly inserted node."
 Returns list of values from overlapping trees, sorted by interval
 width with the smallest interval as car."
   (when (phpinspect-tree-overlaps tree point)
-    (let* ((overlapper
-            (seq-find (lambda (child) (phpinspect-tree-overlaps child point))
-                      (phpinspect-tree-children tree))))
+    (let* ((from-end (- (phpinspect-tree-end tree) point))
+           (from-start (- point (phpinspect-tree-start tree)))
+           (overlapper
+            (catch 'found
+              (let ((children (seq-into (phpinspect-tree-children tree) 'slice)))
+                (when (> from-start from-end)
+                  (setq children (seq-reverse children)))
+
+                (phpinspect-doslice (child children)
+                  (when (phpinspect-tree-overlaps child point)
+                    (throw 'found child)))))))
+
       (if overlapper
           `(,@(phpinspect-tree-traverse-overlapping overlapper point) ,(phpinspect-tree-value tree))
         `(,(phpinspect-tree-value tree))))))
@@ -626,6 +648,9 @@ with its value as argument."
           (let ((found? (phpinspect-tree-find-node-starting-at child point)))
             (when found? (throw 'found found?))))))))
 
+(cl-defmethod phpinspect-tree-width ((tree phpinspect-tree))
+  (- (phpinspect-tree-start tree) (phpinspect-tree-end tree)))
+
 (cl-defmethod phpinspect-tree-find-smallest-overlapping-set ((tree phpinspect-tree) region)
   "Traverse TREE for smallest set of intervals overlapping REGION,
 
@@ -681,7 +706,9 @@ Returns the newly created and inserted node."
       (let ((parent-link (phpinspect-ll-link (phpinspect-tree-children parent)
                                              tree)))
         (unless parent-link
-          (phpinspect--log  "No parent link for node, trying to find it manually")
+          (phpinspect--log "No parent link for node, trying to find it manually")
+          (message "No parent link for tree of %s" (phpinspect-tree-meta-token tree))
+          (message "Parent: %s" (phpinspect-tree-meta-token parent))
           (setq parent-link
                 (seq-find (lambda (child) (eq child tree))
                           (phpinspect-tree-children parent))))

@@ -134,38 +134,60 @@ candidate. Candidates can be indexed functions and variables.")
     (let ((previous-siblings))
       (catch 'break
         (seq-doseq (child children)
-          (when (phpinspect-end-of-statement-p (phpinspect-tree-meta-token child))
-            (throw 'break nil))
-
           (when (< (phpinspect-tree-start child) point)
+            (when (phpinspect-end-of-statement-p (phpinspect-tree-meta-token child))
+              (throw 'break nil))
             (push child previous-siblings))))
 
       previous-siblings)))
 
 (cl-defmethod phpinspect-get-resolvecontext
   ((tree phpinspect-tree) (point integer))
-  (let* ((enclosing (phpinspect-tree-traverse-overlapping
-                     tree (phpinspect-make-region (- point 1) point)))
-         (subject (car enclosing))
+  (let* ((enclosing (phpinspect-tree-traverse-overlapping tree  point))
+         (enclosing-tokens)
+         ;; When there are no enclosing tokens, point is probably at the absolute
+         ;; end of the buffer, so we find the last child before point.
+         (subject (or (car enclosing) (phpinspect-tree-find-last-child-before-point tree point)))
+         (subject-token)
          (siblings))
-    (when enclosing
-      (phpinspect--log "Initial resolvecontext subject: %s" (phpinspect-meta-token subject))
-      (let ((parent (phpinspect-tree-meta-token (phpinspect-tree-parent (phpinspect-meta-tree subject)))))
-        (phpinspect--log "Parent: %s" parent))
+    (when subject
+      (when (phpinspect-tree-p subject) (setq subject (phpinspect-tree-value subject)))
 
-      (if (phpinspect-block-or-list-p (phpinspect-meta-token subject))
-          (setq subject (mapcar #'phpinspect-tree-meta-token
-                                (phpinspect-find-statement-before-point
-                                 (phpinspect-meta-tree subject) point)))
-        (setq subject (mapcar #'phpinspect-tree-meta-token
-                              (phpinspect-find-statement-before-point
-                               (phpinspect-tree-parent
-                                (phpinspect-meta-tree subject))
-                               point)))))
+      ;; Dig down through tokens that can contain statements
+      (catch 'break
+        (while (phpinspect-enclosing-token-p (phpinspect-meta-token subject))
+          (let ((new-subject (phpinspect-tree-find-last-child-before-point
+                              (phpinspect-meta-tree subject) point)))
 
-      (phpinspect--make-resolvecontext :subject subject
-                                       :enclosing-tokens (mapcar #'phpinspect-meta-token enclosing)
-                                       :project-root (phpinspect-current-project-root))))
+            (if new-subject
+                (setq subject (phpinspect-tree-value new-subject))
+              (throw 'break nil)))))
+
+      (phpinspect--log "Initial resolvecontext subject token: %s" (phpinspect-meta-token subject))
+
+      (setq subject-token (mapcar #'phpinspect-tree-meta-token
+                                  (phpinspect-find-statement-before-point
+                                   (phpinspect-tree-parent
+                                    (phpinspect-meta-tree subject))
+                                   point)))
+
+      (phpinspect--log "Ultimate resolvecontext subject token: %s" subject-token))
+
+    ;; Iterate through subject parents to build stack of enclosing tokens
+    (let ((parent (phpinspect-tree-parent (phpinspect-meta-tree subject))))
+      (while (and parent (phpinspect-tree-value parent))
+        (let ((granny (phpinspect-tree-parent parent)))
+          (unless (and (phpinspect-block-p (phpinspect-tree-meta-token parent))
+                       (or (not granny) (not (phpinspect-tree-value granny))
+                           (phpinspect-function-p (phpinspect-tree-meta-token granny))
+                           (phpinspect-class-p (phpinspect-tree-meta-token granny))))
+            (push (phpinspect-tree-meta-token parent) enclosing-tokens))
+          (setq parent (phpinspect-tree-parent parent)))))
+
+    (phpinspect--make-resolvecontext
+     :subject (phpinspect--get-last-statement-in-token subject-token)
+     :enclosing-tokens (nreverse enclosing-tokens)
+     :project-root (phpinspect-current-project-root))))
 
 
 (defun phpinspect-subject-at-point ()
@@ -175,7 +197,7 @@ candidate. Candidates can be indexed functions and variables.")
   (phpinspect-get-resolvecontext (phpinspect-buffer-parse-tree phpinspect-current-buffer) (point)))
 
 
-(cl-defmethod phpinspect--get-resolvecontext (token &optional resolvecontext)
+(defun phpinspect--get-resolvecontext (token &optional resolvecontext)
   "Find the deepest nested incomplete token in TOKEN.
 If RESOLVECONTEXT is nil, it is created.  Returns RESOLVECONTEXT
 of type `phpinspect--resolvecontext' containing the last
@@ -320,6 +342,19 @@ accompanied by all of its enclosing tokens."
    (current-buffer)
    (point-max)))
 
+(defun phpinspect-parse-string-to-tree (string)
+    (with-temp-buffer
+      (insert string)
+      (let ((context (phpinspect-make-pctx :incremental t
+                                           :tree (phpinspect-make-tree :start (point-min)
+                                                                       :end (point-max)
+                                                                       :grow-root t))))
+        (phpinspect-with-parse-context context
+          (phpinspect-parse-current-buffer))
+
+        (seq-elt (phpinspect-tree-children (phpinspect-pctx-tree context)) 0))))
+
+
 (defun phpinspect-parse-string (string)
   (with-temp-buffer
     (insert string)
@@ -373,19 +408,20 @@ TODO:
 "
   (let* ((token-tree (phpinspect-buffer-parse-tree phpinspect-current-buffer))
          (resolvecontext (phpinspect-get-resolvecontext token-tree (point)))
-         (incomplete-token (car (phpinspect--resolvecontext-enclosing-tokens
-                                 resolvecontext)))
          (enclosing-token (cadr (phpinspect--resolvecontext-enclosing-tokens
                                  resolvecontext)))
-         (statement (phpinspect--get-last-statement-in-token
-                     enclosing-token))
+         (statement (if (phpinspect-list-p (car (phpinspect--resolvecontext-enclosing-tokens
+                                                resolvecontext)))
+                        (phpinspect--get-last-statement-in-token enclosing-token)
+                      (phpinspect--resolvecontext-subject resolvecontext)))
+         (arg-list (seq-find #'phpinspect-list-p (reverse statement)))
          (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
                                resolvecontext))
          (static))
     (phpinspect--log "Enclosing token: %s" enclosing-token)
-    (phpinspect--log "reference token: %s" (car (last statement 2)))
+    (phpinspect--log  "Eldoc statement: %s" statement)
 
-    (when (and (phpinspect-incomplete-list-p incomplete-token)
+    (when (and (phpinspect-list-p arg-list)
                enclosing-token
                (or (phpinspect-object-attrib-p (car (last statement 2)))
                    (setq static (phpinspect-static-attrib-p (car (last statement 2))))))
@@ -416,7 +452,7 @@ TODO:
         (when method
           (let ((arg-count -1)
                 (comma-count
-                 (length (seq-filter #'phpinspect-comma-p incomplete-token))))
+                 (length (seq-filter #'phpinspect-comma-p arg-list))))
             (concat (truncate-string-to-width
                      (phpinspect--function-name method) phpinspect-eldoc-word-width) ": ("
                      (mapconcat
@@ -874,7 +910,9 @@ Assuming that files are only changed from within Emacs, this
 keeps the cache valid.  If changes are made outside of Emacs,
 users will have to use \\[phpinspect-purge-cache]."
   (when (and (boundp 'phpinspect-mode) phpinspect-mode)
-    (setq phpinspect--buffer-index (phpinspect-index-current-buffer))
+    (setq phpinspect--buffer-index
+          (phpinspect--index-tokens
+           (phpinspect-buffer-reparse phpinspect-current-buffer)))
     (let ((imports (alist-get 'imports phpinspect--buffer-index))
           (project (phpinspect--cache-get-project-create
                     (phpinspect--get-or-create-global-cache)

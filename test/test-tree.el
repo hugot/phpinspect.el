@@ -112,6 +112,18 @@
 
     (should (equal '("a" "b" "c" "d") (seq-into list 'list)))))
 
+(ert-deftest phpinspect-slice-reverse ()
+  (let ((list (phpinspect-make-ll)))
+    (phpinspect-ll-push "d" list)
+    (phpinspect-ll-push "c" list)
+    (phpinspect-ll-push "b" list)
+    (phpinspect-ll-push "a" list)
+
+    (let ((slice (seq-into list 'slice)))
+      (should (equal '("a" "b" "c" "d") (seq-into slice 'list)))
+      (should (equal '("d" "c" "b" "a") (seq-into (seq-reverse slice) 'list))))))
+
+
 (ert-deftest phpinspect-ll-seq-take-while ()
   (let ((list (phpinspect-make-ll))
         (result))
@@ -268,7 +280,9 @@ the start of the list."
     (setq detached-list (phpinspect-slice-detach slice))
     (should (string= "a" (apply #'concat (seq-into slice 'list))))
     (should (string= "a" (apply #'concat (seq-into detached-list 'list))))
-    (should (seq-empty-p list))))
+    (should (seq-empty-p list))
+    (should-not (phpinspect-ll-link list val1))
+    (should (phpinspect-ll-link detached-list val1))))
 
 
 (ert-deftest phpinspect-tree-insert-enclosing-node ()
@@ -444,4 +458,18 @@ the node iteself if it has been stored intact)."
   (let* ((tree (phpinspect-make-tree :start  5 :end 10))
          (node (phpinspect-tree-insert-node tree (phpinspect-make-tree :start 5 :end 10))))
 
-    (should (eq node (seq-elt (phpinspect-tree-children tree) 0)))))
+    (should (eq node (seq-elt (phpinspect-tree-children tree) 0)))
+    (should-not (phpinspect-tree-parent tree))
+    (should (eq tree (phpinspect-tree-parent node)))))
+
+(ert-deftest phpinspect-tree-insert-sorted ()
+  (let ((tree (phpinspect-make-tree :start 0 :end 1000 :value 'root)))
+    (phpinspect-tree-insert tree 1 33 'one)
+    (phpinspect-tree-insert tree 50 60 'three)
+    (phpinspect-tree-insert tree 40 50 'two)
+    (phpinspect-tree-insert tree 71 90 'five)
+    (phpinspect-tree-insert tree 60 70 'four)
+
+    (should (equal '(one two three four five)
+                   (mapcar #'phpinspect-tree-value
+                           (seq-into (phpinspect-tree-children tree) 'list))))))
