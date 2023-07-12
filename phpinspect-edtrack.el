@@ -2,7 +2,9 @@
 
 (cl-defstruct (phpinspect-edtrack (:constructor phpinspect-make-edtrack))
   (edits (phpinspect-make-ll)
-         :documentation "Sorted list of edits in buffer"))
+         :documentation "Sorted list of edits in buffer")
+  (taint-pool (phpinspect-make-tree :grow-root t)
+              :documentation "Non overlapping pool of tainted buffer regions"))
 
 
 (cl-defstruct (phpinspect-edit (:constructor phpinspect-make-edit))
@@ -68,10 +70,34 @@
         (phpinspect-region-overlaps-point region (phpinspect-edit-original-start edit))
         (phpinspect-region-overlaps-point region (- (phpinspect-edit-original-end edit) 1)))))
 
+(defsubst phpinspect-edtrack-clear-taints (tracker)
+  (setf (phpinspect-edtrack-taint-pool tracker) (phpinspect-make-tree :grow-root t)))
+
+(defsubst phpinspect-edtrack-clear (tracker)
+  (phpinspect-edtrack-clear-taints tracker)
+  (setf (phpinspect-edtrack-edits tracker) (phpinspect-make-ll)))
+
+(defsubst phpinspect-edtrack-has-taints-p (tracker)
+  (not (phpinspect-tree-empty-p (phpinspect-edtrack-taint-pool tracker))))
+
+(defsubst phpinspect-edtrack-register-taint (tracker start end)
+  (let* ((pool (phpinspect-edtrack-taint-pool tracker))
+         (overlappers (phpinspect-tree-find-overlapping-children pool start end)))
+
+    (when overlappers
+      (seq-doseq (overlapper overlappers)
+        (when (> (phpinspect-tree-end overlapper) end)
+          (setq end (phpinspect-tree-end overlapper)))
+
+        (when (< (phpinspect-tree-start overlapper) start)
+          (setq start (phpinspect-tree-start overlapper))))
+      (phpinspect-slice-detach overlappers))
+
+    (phpinspect-tree-insert pool start end 'edited)))
+
 (cl-defmethod phpinspect-edtrack-register-edit
   ((tracker phpinspect-edtrack) (start integer) (end integer) (pre-change-length integer))
-  (let* ((overlap-test (lambda (edit) (phpinspect-edit-overlaps edit start end)))
-         (edits (phpinspect-edtrack-edits tracker))
+  (let* ((edits (phpinspect-edtrack-edits tracker))
          (first-overlap)
          (last-overlap)
          (edit-before)
@@ -100,6 +126,9 @@
     (if edit-before
         (phpinspect-ll-insert-right (phpinspect-edit-link edit-before) new-edit)
       (phpinspect-ll-push new-edit edits))
+
+    (phpinspect-edtrack-register-taint
+     tracker (phpinspect-edit-original-start new-edit) (phpinspect-edit-original-end new-edit))
 
     ;; Return
     new-edit))

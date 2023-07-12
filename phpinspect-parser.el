@@ -525,8 +525,16 @@ parsing. Usually used in combination with
         :type phpinspect-tree)
   (previous-tree nil
                  :type phpinspect-tree)
+  (query-tree nil)
   (whitespace-before ""
                      :type string))
+
+(defsubst phpinspect-pctx-find-existing-node-at-point (ctx point)
+  (let ((query-tree (or (phpinspect-pctx-query-tree ctx)
+                        (phpinspect-pctx-previous-tree ctx))))
+    (when query-tree
+      (setf (phpinspect-pctx-query-tree ctx)
+            (phpinspect-tree-find-next-relative-starting-at query-tree point)))))
 
 (cl-defmethod phpinspect-pctx-register-token
   ((pctx phpinspect-pctx) token start end handler)
@@ -585,7 +593,9 @@ parsing. Usually used in combination with
                                   (current-end-position)
                                   (token))
                              (unless (not previous-tree)
-                               (setq existing-node (phpinspect-tree-find-node-starting-at previous-tree original-position))
+                               (message "Searching for existing node at point %d" (point))
+                               (setq existing-node (phpinspect-pctx-find-existing-node-at-point
+                                                    context original-position))
                                (when existing-node
                                  (setq existing-meta (phpinspect-tree-value existing-node)
                                        current-end-position (phpinspect-edtrack-current-position-at-point
@@ -599,7 +609,10 @@ parsing. Usually used in combination with
                                    (setq token (phpinspect-meta-token existing-meta))
                                    ;; Alter regions to current token position in buffer
                                    (let ((delta (- start-position original-position)))
-                                     (phpinspect-tree-shift existing-node delta))
+                                     (unless (= 0 delta)
+                                       (message "Shifting tree with delta %d" delta)
+                                       (message "point: %d, start position: %d" (point) start-position)
+                                       (phpinspect-tree-shift existing-node delta)))
 
                                    (goto-char current-end-position)
                                    ;; Insert existing token into new tree

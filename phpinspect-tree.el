@@ -40,6 +40,8 @@ being said, not doing so will not limit the trees
 functionalities."
   (parent nil
           :type phpinspect-tree)
+  (grow-root nil
+             :type boolean)
   (children (phpinspect-make-ll)
             :type phpinspect-llnode)
   (start 0
@@ -142,24 +144,24 @@ belongs to. Return resulting linked list."
         (setf (phpinspect-slice-start slice) start)
         (setf (phpinspect-slice-end slice) end)))
 
-    (if (eq start end)
-        start
+
+    (unless (eq start end)
       (when right-neighbour
         (setf (phpinspect-llnode-left right-neighbour) left-neighbour))
       (setf (phpinspect-llnode-right left-neighbour) right-neighbour)
 
       (setf (phpinspect-llnode-left start) nil)
-      (setf (phpinspect-llnode-right end) nil)
+      (setf (phpinspect-llnode-right end) nil))
 
-      ;; Fix broken references in old link-map and create separate link-map for
-      ;; the new detached list.
-      (let ((list start)
-            (link-map (make-hash-table :test #'eq :size 100 :rehash-size 400)))
-        (while list
-          (phpinspect-ll-unregister-link list)
-          (setf (phpinspect-llnode-link-map list) link-map)
-          (phpinspect-ll-register-link list)
-          (setq list (phpinspect-llnode-right list))))
+    ;; Fix broken references in old link-map and create separate link-map for
+    ;; the new detached list.
+    (let ((list start)
+          (link-map (make-hash-table :test #'eq :size 100 :rehash-size 400)))
+      (while list
+        (phpinspect-ll-unregister-link list)
+        (setf (phpinspect-llnode-link-map list) link-map)
+        (phpinspect-ll-register-link list)
+        (setq list (phpinspect-llnode-right list)))
 
       start)))
 
@@ -443,6 +445,38 @@ belongs to. Return resulting linked list."
   (and (= 0 (phpinspect-tree-start tree))
        (= 0 (phpinspect-tree-end tree))))
 
+(cl-defmethod phpinspect-tree-find-next-relative-starting-at ((tree phpinspect-tree) (point integer))
+  (when (< point (phpinspect-tree-start tree))
+    (error "Can't find next relative when point is before tree start"))
+
+  (let ((parent (phpinspect-tree-parent tree))
+        (found?))
+    (catch 'found
+      ;; First check own children
+      (when (and (> (phpinspect-tree-end tree) point)
+                 (setq found? (phpinspect-tree-find-node-starting-at tree point)))
+        (throw 'found found?))
+
+      (while parent
+        (when (> (phpinspect-tree-end parent) point)
+          ;; Check siblings after
+          (let ((parent-link (phpinspect-ll-link (phpinspect-tree-children parent) tree)))
+            (seq-doseq (sibling parent-link)
+              (when (setq found? (phpinspect-tree-find-node-starting-at sibling point))
+                (throw 'found found?)))))
+
+        (setq tree parent)
+        (setq parent (phpinspect-tree-parent parent))))))
+
+(cl-defmethod phpinspect-tree-envelop ((tree phpinspect-tree) (node phpinspect-tree))
+
+    (when (< (phpinspect-tree-start node) (phpinspect-tree-start tree))
+      (setf (phpinspect-tree-start tree) (phpinspect-tree-start node)))
+
+    (when (> (phpinspect-tree-end node) (phpinspect-tree-end tree))
+      (setf (phpinspect-tree-end tree) (phpinspect-tree-end node))))
+
+
 (cl-defmethod phpinspect-tree-find-last-child-before-point ((tree phpinspect-tree) (point integer))
   (catch 'found
     (seq-doseq (child (seq-reverse (seq-into (phpinspect-tree-children tree) 'slice)))
@@ -453,6 +487,9 @@ belongs to. Return resulting linked list."
   "Insert a new NODE into TREE.
 
 Returns the newly inserted node."
+  (when (phpinspect-tree-grow-root tree)
+    (phpinspect-tree-envelop tree node))
+
   (cond ((phpinspect-tree-empty-p tree)
          (phpinspect-tree-switch-attributes node tree)
 
@@ -466,10 +503,9 @@ Returns the newly inserted node."
                 (overlap-count (seq-length overlappers)))
            (if overlappers
                (cond
-                ((= 1 overlap-count)
-                 (phpinspect-tree-insert-node (seq-elt overlappers 0)
-                                              node))
-                ((< 1 overlap-count)
+                ((or (< 1 overlap-count)
+                     (and (= 1 overlap-count)
+                          (phpinspect-tree-encloses node (seq-elt overlappers 0))))
                  ;; There are multiple overlapping children. They need to all
                  ;; fit within node, or the hierarchy is broken.
                  (let ((enclosed
@@ -477,47 +513,46 @@ Returns the newly inserted node."
                          (lambda (child) (phpinspect-tree-encloses node child))
                          overlappers))
                        (insert-after-link))
+
                    (unless (= (seq-length enclosed) overlap-count)
-                     (seq-doseq (lap overlappers)
-                       (message "overlaps: %s (%d,%d) with %s (%d,%d)"
-                                (phpinspect-meta-token (phpinspect-tree-value lap))
-                                (phpinspect-tree-start lap)
-                                (phpinspect-tree-end lap)
-                                (phpinspect-meta-token (phpinspect-tree-value node))
-                                (phpinspect-tree-start node)
-                                (phpinspect-tree-end node)))
                      (throw 'phpinspect-tree-conflict
                             "Node overlaps multiple children, but does not enclose them all"))
 
+                   ;; Find the list link that the first enclosed node is attached to.
                    (setq insert-after-link (phpinspect-llnode-left
                                             (phpinspect-slice-start enclosed)))
+
+                   ;; Remove enclosed nodes from parent
                    (setq enclosed (phpinspect-slice-detach enclosed))
+
                    (if insert-after-link
+                       ;; Insert new node into old enclosed node position
                        (phpinspect-ll-insert-right insert-after-link node)
                      ;; If there is nothing to the left of the enclosed regions,
                      ;; we can safely push to the tree's children
                      (phpinspect-ll-push node (phpinspect-tree-children tree)))
+
                    (setf (phpinspect-tree-parent node) tree)
 
                    (seq-doseq (child enclosed)
                      (setf (phpinspect-tree-parent child) node))
-                   (setf (phpinspect-tree-children node) enclosed))))
+                   (setf (phpinspect-tree-children node) enclosed)))
+                ((= 1 overlap-count)
+                 (phpinspect-tree-insert-node (seq-elt overlappers 0)
+                                              node))
+)
 
              ;; ELSE: No overlap, node can safely be added as child
              (setf (phpinspect-tree-parent node) tree)
-             (let* ((right-neighbour (phpinspect-tree-children tree))
-                    (right-neighbour-value
-                     (seq-find (lambda (child) (< (phpinspect-tree-end child)
-                                                  (phpinspect-tree-start node)))
-                               right-neighbour)))
-               (when right-neighbour-value
-                 (setq right-neighbour (phpinspect-ll-link
-                                        right-neighbour
-                                        right-neighbour-value)))
+             (let* ((left-neighbour (phpinspect-tree-children tree))
+                    (left-neighbour-value
+                     (phpinspect-tree-find-last-child-before-point tree (phpinspect-tree-start node))))
 
-               (if (phpinspect-llnode-left right-neighbour)
-                   (phpinspect-ll-insert-left right-neighbour node)
-                 (phpinspect-ll-push node right-neighbour)))))
+               (if left-neighbour-value
+                   (progn
+                     (setq left-neighbour (phpinspect-ll-link left-neighbour left-neighbour-value))
+                     (phpinspect-ll-insert-right left-neighbour node))
+                 (phpinspect-ll-push node left-neighbour)))))
 
          ;; Return
          node)
@@ -545,13 +580,7 @@ Returns the newly inserted node."
                ;; Return tree, as this is the node that value of node has been
                ;; stored in.
                tree))))
-        (t (message "parent: %s" (when (phpinspect-tree-value tree)
-                                   (phpinspect-meta-token (phpinspect-tree-value tree))))
-           (message "perspective child: %s"
-                    (when (phpinspect-tree-value node)
-                      (phpinspect-meta-token (phpinspect-tree-value node))))
-
-           (throw 'phpinspect-tree-conflict
+        (t (throw 'phpinspect-tree-conflict
                   (format "Tree does not enclose or get enclosed. \nTree: (%d,%d,%s) \n\nPerspective child: (%d,%d,%s)"
                           (phpinspect-tree-start tree)
                           (phpinspect-tree-end tree)
@@ -637,16 +666,22 @@ with its value as argument."
 
     (when children
       (seq-doseq (child children)
-        (phpinspect-tree-widen-after-point child point)))))
+        (phpinspect-tree-widen-after-point child point delta)))))
 
 (cl-defmethod phpinspect-tree-find-node-starting-at ((tree phpinspect-tree) (point integer))
   (if (= (phpinspect-tree-start tree) point)
       tree
     (catch 'found
-      (seq-doseq (child (phpinspect-tree-children tree))
-        (when (phpinspect-tree-overlaps tree point)
-          (let ((found? (phpinspect-tree-find-node-starting-at child point)))
-            (when found? (throw 'found found?))))))))
+      (let ((overlapped))
+        (seq-doseq (child (phpinspect-tree-children tree))
+          (if (phpinspect-tree-overlaps tree point)
+              (progn
+                (setq overlapped t)
+                (let ((found? (phpinspect-tree-find-node-starting-at child point)))
+                  (when found? (throw 'found found?))))
+
+            ;; Stop iterating when overlap stops
+            (when overlapped (throw 'found nil))))))))
 
 (cl-defmethod phpinspect-tree-width ((tree phpinspect-tree))
   (- (phpinspect-tree-start tree) (phpinspect-tree-end tree)))

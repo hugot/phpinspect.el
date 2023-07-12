@@ -25,7 +25,7 @@
 
     (should (= 42 (phpinspect-edtrack-current-position-at-point track 25)))))
 
-(ert-deftest phpinsepct-edtrack-register-multi-edits-deletions ()
+(ert-deftest phpinspect-edtrack-register-multi-edits-deletions ()
   (let* ((track (phpinspect-make-edtrack))
          (edit (phpinspect-edtrack-register-edit track 10 20 5))
          (edit1 (phpinspect-edtrack-register-edit track 25 30 20))
@@ -35,3 +35,9 @@
     (should (eq edit1 (seq-elt (phpinspect-edtrack-edits track) 2)))
 
     (should (= 42 (phpinspect-edtrack-current-position-at-point track 45)))))
+
+(ert-deftest phpinspect-edtrack-register-taint ()
+  (let* ((track (phpinspect-make-edtrack)))
+    (phpinspect-edtrack-register-taint track 0 5)
+
+    (should-not (phpinspect-tree-empty-p (phpinspect-edtrack-taint-pool track)))))

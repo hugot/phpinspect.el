@@ -52,6 +52,7 @@ emacs buffer."
 (cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer))
   "Parse the PHP code in the the emacs buffer that this object is
 linked with."
+  (phpinspect-buffer-propagate-taints buffer)
   (with-current-buffer (phpinspect-buffer-buffer buffer)
     (let* ((tree (phpinspect-make-tree :start (point-min)
                                        :end (+ 1 (point-max))))
@@ -67,11 +68,14 @@ linked with."
           (setq tree (seq-elt (phpinspect-tree-children tree) 0))
           (setf (phpinspect-tree-parent tree) nil)
           (setf (phpinspect-buffer-tree buffer) tree)
-          (setf (phpinspect-edtrack-edits (phpinspect-buffer-edit-tracker buffer))
-                (phpinspect-make-ll))
+          (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
 
           ;; return
           parsed)))))
+
+(cl-defmethod phpinspect-buffer-reparse ((buffer phpinspect-buffer))
+  (setf (phpinspect-buffer-tree buffer) (phpinspect-make-tree))
+  (phpinspect-buffer-parse buffer))
 
 (defsubst phpinspect-buffer-parse-tree (buffer)
   (phpinspect-buffer-parse buffer)
@@ -79,18 +83,22 @@ linked with."
 
 (cl-defmethod phpinspect-buffer-register-edit
   ((buffer phpinspect-buffer) (start integer) (end integer) (pre-change-length integer))
-  (let* ((edit
-          (phpinspect-edtrack-register-edit
-           (phpinspect-buffer-edit-tracker buffer) start end pre-change-length))
-         (region (phpinspect-make-region (phpinspect-edit-original-start edit)
-                                         (phpinspect-edit-original-end edit)))
-         (tainted (phpinspect-tree-traverse-overlapping
-                   (phpinspect-buffer-tree buffer) region)))
+  (phpinspect-edtrack-register-edit
+   (phpinspect-buffer-edit-tracker buffer) start end pre-change-length))
 
-    (dolist (meta tainted)
-      (phpinspect-tree-traverse (node (phpinspect-meta-tree meta))
-        (when (phpinspect-tree-overlaps node region)
-          (setf (phpinspect-meta-tainted (phpinspect-tree-value node)) t))))))
+(cl-defmethod phpinspect-buffer-propagate-taints ((buffer phpinspect-buffer))
+  (let ((tracker (phpinspect-buffer-edit-tracker buffer)))
+    (when (phpinspect-edtrack-has-taints-p tracker)
+      (seq-doseq (taint (phpinspect-tree-children (phpinspect-edtrack-taint-pool tracker)))
+        (let* ((region (phpinspect-make-region (phpinspect-tree-start taint)
+                                               (phpinspect-tree-end taint)))
+               (tainted (phpinspect-tree-traverse-overlapping
+                         (phpinspect-buffer-tree buffer) region)))
+
+          (dolist (meta tainted)
+            (setf (phpinspect-meta-tainted meta) t))))
+
+      (phpinspect-edtrack-clear-taints tracker))))
 
 (cl-defmethod phpinspect-buffer-tokens-enclosing-point ((buffer phpinspect-buffer) point)
   (phpinspect-tree-traverse-overlapping (phpinspect-buffer-tree buffer) point))

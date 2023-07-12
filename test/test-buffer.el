@@ -76,6 +76,7 @@
 
     ;; "Deletes" first curly brace of __construct function block
     (phpinspect-buffer-register-edit buffer 1036 1036 1)
+    (phpinspect-buffer-propagate-taints buffer)
 
     (let* ((region (phpinspect-make-region 1036 1037))
            (tainted
@@ -145,4 +146,6 @@
       (setq parsed (phpinspect-buffer-parse buffer))
       (should parsed)
       (setq hello2 (car (phpinspect-buffer-tokens-enclosing-point buffer 18)))
-      (should (eq hello hello2)))))
+      (should (eq hello hello2))
+
+      (setq parsed (phpinspect-buffer-parse-tree buffer)))))
