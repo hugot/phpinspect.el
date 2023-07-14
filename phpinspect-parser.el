@@ -25,6 +25,7 @@
 
 (require 'phpinspect-tree)
 (require 'phpinspect-edtrack)
+(require 'phpinspect-bmap)
 
 (defvar phpinspect-parser-obarray (obarray-make)
   "An obarray containing symbols for all phpinspect (sub)parsers.")
@@ -523,6 +524,10 @@ parsing. Usually used in combination with
            :type phpinspect-edtrack)
   (tree nil
         :type phpinspect-tree)
+  (bmap (phpinspect-make-bmap)
+        :type phpinspect-bmap)
+  (previous-bmap nil
+                 :type phpinspect-bmap)
   (previous-tree nil
                  :type phpinspect-tree)
   (query-tree nil)
@@ -538,16 +543,17 @@ parsing. Usually used in combination with
 
 (cl-defmethod phpinspect-pctx-register-token
   ((pctx phpinspect-pctx) token start end handler)
-  (let* ((meta (phpinspect-make-meta
-                :token token
-                :handler handler
-                :whitespace-before (phpinspect-pctx-whitespace-before pctx)))
-        (node (phpinspect-tree-insert
-               (phpinspect-pctx-tree pctx) start end meta)))
-    (setf (phpinspect-meta-tree meta) node)
-    (setf (phpinspect-pctx-whitespace-before pctx) "")
+  (phpinspect-bmap-register (phpinspect-pctx-bmap pctx) start end token))
+  ;; (let* ((meta (phpinspect-make-meta
+  ;;               :token token
+  ;;               :handler handler
+  ;;               :whitespace-before (phpinspect-pctx-whitespace-before pctx)))
+  ;;       (node (phpinspect-tree-insert
+  ;;              (phpinspect-pctx-tree pctx) start end meta)))
+  ;;   (setf (phpinspect-meta-tree meta) node)
+  ;;   (setf (phpinspect-pctx-whitespace-before pctx) "")
 
-    meta))
+  ;;   meta))
 
 (cl-defmethod phpinspect-pctx-register-whitespace
   ((pctx phpinspect-pctx) (whitespace string))
@@ -634,6 +640,82 @@ parsing. Usually used in combination with
            ;; Return
            tokens)))))
 
+(defun phpinspect-make-bmap-parser-function (tree-type handler-list &optional delimiter-predicate)
+  "Like `phpinspect-make-parser-function', but returned function is able to reuse an already parsed tree."
+  (let ((handlers (mapcar
+                   (lambda (handler-name)
+                     (let* ((handler-name (symbol-name handler-name))
+                            (handler (intern-soft handler-name phpinspect-handler-obarray)))
+                       (if handler
+                           handler
+                         (error "No handler found by name \"%s\"" handler-name))))
+                   handler-list))
+        (delimiter-predicate (if (symbolp delimiter-predicate)
+                                 `(quote ,delimiter-predicate)
+                               delimiter-predicate)))
+    `(lambda (context buffer max-point &optional continue-condition root)
+       (with-current-buffer buffer
+         (let* ((tokens)
+                (root-start (point))
+                (bmap (phpinspect-pctx-bmap context))
+                (previous-bmap (phpinspect-pctx-previous-bmap context))
+                (edtrack (phpinspect-pctx-edtrack context))
+                (taint-iterator (when edtrack (phpinspect-edtrack-make-taint-iterator edtrack)))
+                (delimiter-predicate (when (functionp ,delimiter-predicate) ,delimiter-predicate)))
+           (phpinspect-pctx-save-whitespace context
+            (while (and (< (point) max-point)
+                        (if continue-condition (funcall continue-condition) t)
+                        (not (if delimiter-predicate
+                                 (funcall delimiter-predicate (car (last tokens)))
+                               nil)))
+              (cond ,@(mapcar
+                       (lambda (handler)
+                         `((looking-at ,(plist-get (symbol-value handler) 'regexp))
+                           (let* ((match (match-string 0))
+                                  (start-position (point))
+                                  (original-position
+                                   (when (and previous-bmap edtrack)
+                                     (phpinspect-edtrack-original-position-at-point edtrack start-position)))
+                                  (existing-meta)
+                                  (current-end-position)
+                                  (token))
+                             (when (and previous-bmap edtrack)
+                               (setq existing-meta (phpinspect-bmap-token-starting-at previous-bmap original-position))
+
+                               (when existing-meta
+                                 (setq current-end-position (phpinspect-edtrack-current-position-at-point
+                                                             edtrack (phpinspect--meta-end existing-meta)))))
+
+                             (if (and existing-meta
+                                      (not (or (phpinspect-root-p (phpinspect--meta-token existing-meta))
+                                               (phpinspect-taint-iterator-token-is-tainted-p taint-iterator existing-meta))))
+                                 (progn
+                                   (setq token (phpinspect--meta-token existing-meta))
+
+                                   ;; Re-register existing token
+                                   (let ((delta (- start-position original-position)))
+                                     (phpinspect-bmap-overlay bmap previous-bmap existing-meta delta))
+
+                                   (goto-char current-end-position))
+                               (progn
+                                 (setq token (funcall ,(symbol-function handler) match max-point))
+                                 (when token
+                                   (phpinspect-pctx-register-token context token start-position (point) ,handler))))
+                             (when token
+                               (if (null tokens)
+                                   (setq tokens (list token))
+                                 (progn
+                                   (nconc tokens (list token))))))))
+                       handlers)
+                    (t (forward-char)))))
+           (push ,tree-type tokens)
+           (when root
+             (phpinspect-pctx-register-token context tokens root-start (point) nil))
+
+           ;; Return
+           tokens)))))
+
+
 (cl-defstruct (phpinspect-parser (:constructor phpinspect-make-parser))
   (tree-keyword "root"
                 :type string
@@ -678,7 +760,7 @@ executing.")
   (or (phpinspect-parser-incremental-func parser)
       (setf (phpinspect-parser-incremental-func parser)
             (byte-compile
-             (phpinspect-make-incremental-parser-function
+             (phpinspect-make-bmap-parser-function
               (intern (concat ":" (phpinspect-parser-tree-keyword parser)))
               (phpinspect-parser-handlers parser)
               (phpinspect-parser-delimiter-predicate parser))))))

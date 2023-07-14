@@ -1,181 +1,162 @@
+;;; phpinspect-edtrack.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2021  Free Software Foundation, Inc
+
+;; Author: Hugo Thunnissen <devel@hugot.nl>
+;; Keywords: php, languages, tools, convenience
+;; Version: 0
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;;; Code:
 
 (cl-defstruct (phpinspect-edtrack (:constructor phpinspect-make-edtrack))
-  (edits (phpinspect-make-ll)
-         :documentation "Sorted list of edits in buffer")
-  (taint-pool (phpinspect-make-tree :grow-root t)
-              :documentation "Non overlapping pool of tainted buffer regions"))
+  (edits nil
+         :type list)
+  (taint-pool nil
+              :type list))
 
+(defsubst phpinspect-edtrack-make-taint-iterator (track)
+  (cons (car (phpinspect-edtrack-taint-pool track))
+        (cl-copy-list (cdr (phpinspect-edtrack-taint-pool track)))))
 
-(cl-defstruct (phpinspect-edit (:constructor phpinspect-make-edit))
-  (list nil
-        :type phpinspect-llnode)
-  (original-start 0
-                  :type integer)
-  (local-delta 0
-               :type integer)
-  (length 0))
+(defsubst phpinspect-taint-iterator-token-is-tainted-p (iter meta)
+  (let ((current (car iter)))
+    (when current
+      (while (and current (> (phpinspect--meta-start meta) (phpinspect-taint-end current)))
+        (setq current (pop (cdr iter))))
 
-(defsubst phpinspect-edit-link (edit)
-  (when (phpinspect-edit-list edit)
-    (phpinspect-ll-link (phpinspect-edit-list edit) edit)))
-
-(defsubst phpinspect-edit--left-delta (edit)
-  (let* ((link (phpinspect-edit-link edit))
-         (left (when link (phpinspect-llnode-left (phpinspect-edit-link edit)))))
-    (if left (phpinspect-edit-delta (phpinspect-llnode-value left)) 0)))
-
-(cl-defmethod phpinspect-edit-start ((edit phpinspect-edit))
-  (+ (phpinspect-edit-original-start edit) (phpinspect-edit--left-delta edit)))
-
-(cl-defmethod phpinspect-edit-delta ((edit phpinspect-edit))
-  (+ (phpinspect-edit--left-delta edit) (phpinspect-edit-local-delta edit)))
-
-(cl-defmethod phpinspect-edit-end ((edit phpinspect-edit))
-  (let ((end (+ (phpinspect-edit-start edit)
-                (+ (phpinspect-edit-length edit) (phpinspect-edit-local-delta edit)))))
-    (if (> (phpinspect-edit-start edit) end)
-        (phpinspect-edit-start edit)
-      end)))
-
-(cl-defmethod phpinspect-edit-overlaps-point ((edit phpinspect-edit) (point integer))
-  (and (> (phpinspect-edit-end edit) point)
-       (<= (phpinspect-edit-start edit) point)))
-
-(cl-defmethod phpinspect-edit-before-point ((edit phpinspect-edit) (point integer))
-  (<= (phpinspect-edit-end edit) point))
-
-(cl-defmethod phpinspect-edit-before-original-point ((edit phpinspect-edit) (point integer))
-  (< (phpinspect-edit-original-end edit) point))
-
-(defsubst phpinspect-edit-overlaps (edit start end)
-  (let ((region (phpinspect-make-region start end)))
-    (or (phpinspect-edit-overlaps-point edit start)
-        (phpinspect-edit-overlaps-point edit (- end 1))
-        (phpinspect-region-overlaps-point region (phpinspect-edit-start edit))
-        (phpinspect-region-overlaps-point region (- (phpinspect-edit-end edit) 1)))))
+      (and current (phpinspect-taint-overlaps-meta current meta)))))
 
 (defsubst phpinspect-edit-original-end (edit)
-  (+ (phpinspect-edit-original-start edit)
-     (+ (phpinspect-edit-length edit))))
+  (or (caar edit) 0))
 
-(cl-defmethod phpinspect-edit-overlaps-original-point (edit point)
-  (and (> (phpinspect-edit-original-end edit) point)
-       (<= (phpinspect-edit-original-start edit) point)))
+(defsubst phpinspect-edit-end (edit)
+  (if edit
+      (let ((end (or (caar edit) 0))
+            (delta 0)
+            (previous-edit (cdr edit)))
+        (+ end (phpinspect-edit-delta previous-edit)))))
 
-(defsubst phpinspect-edit-overlaps-original (edit start end)
-  (let ((region (phpinspect-make-region start end)))
-    (or (phpinspect-edit-overlaps-original-point edit start)
-        (phpinspect-edit-overlaps-original-point edit (- end 1))
-        (phpinspect-region-overlaps-point region (phpinspect-edit-original-start edit))
-        (phpinspect-region-overlaps-point region (- (phpinspect-edit-original-end edit) 1)))))
+(defsubst phpinspect-edit-delta (edit)
+  (let ((delta (or (cdar edit) 0))
+        (previous-edit edit))
+    (while (setq previous-edit (cdr previous-edit))
+      (setq delta (+ delta (cdar previous-edit))))
+    delta))
 
-(defsubst phpinspect-edtrack-clear-taints (tracker)
-  (setf (phpinspect-edtrack-taint-pool tracker) (phpinspect-make-tree :grow-root t)))
+(defsubst phpinspect-edtrack-original-position-at-point (track point)
+  (let ((edit (phpinspect-edtrack-edits track)))
+    (while (and edit (< point (phpinspect-edit-end edit)))
+      (setq edit (cdr edit)))
 
-(defsubst phpinspect-edtrack-clear (tracker)
-  (phpinspect-edtrack-clear-taints tracker)
-  (setf (phpinspect-edtrack-edits tracker) (phpinspect-make-ll)))
+    (- point (phpinspect-edit-delta edit))))
 
-(defsubst phpinspect-edtrack-has-taints-p (tracker)
-  (not (phpinspect-tree-empty-p (phpinspect-edtrack-taint-pool tracker))))
+(defsubst phpinspect-edtrack-current-position-at-point (track point)
+  (let ((edit (phpinspect-edtrack-edits track)))
+    (while (and edit (< point (phpinspect-edit-original-end edit)))
+      (setq edit (cdr edit)))
 
-(defsubst phpinspect-edtrack-register-taint (tracker start end)
-  (let* ((pool (phpinspect-edtrack-taint-pool tracker))
-         (overlappers (phpinspect-tree-find-overlapping-children pool start end)))
+    (+ point (phpinspect-edit-delta edit))))
 
-    (when overlappers
-      (seq-doseq (overlapper overlappers)
-        (when (> (phpinspect-tree-end overlapper) end)
-          (setq end (phpinspect-tree-end overlapper)))
+(defsubst phpinspect-edtrack-register-edit (track start end pre-change-length)
+  (let ((edit (phpinspect-edtrack-edits track)))
+    (while (and edit (< end (phpinspect-edit-end edit)))
+      (setq edit (cdr edit)))
 
-        (when (< (phpinspect-tree-start overlapper) start)
-          (setq start (phpinspect-tree-start overlapper))))
-      (phpinspect-slice-detach overlappers))
+    (let* ((new-edit (cons (- (+ start pre-change-length) (phpinspect-edit-delta edit)) (- (- end start) pre-change-length))))
+      (if edit
+          (progn
+            (setcdr edit (cons (car edit) (cdr edit)))
+            (setcar edit new-edit))
+        (if (phpinspect-edtrack-edits track)
+            (push new-edit (cdr (last (phpinspect-edtrack-edits track))))
+          (push new-edit (phpinspect-edtrack-edits track)))))))
 
-    (phpinspect-tree-insert pool start end 'edited)))
+(defsubst phpinspect-taint-start (taint)
+  (car taint))
 
-(cl-defmethod phpinspect-edtrack-register-edit
-  ((tracker phpinspect-edtrack) (start integer) (end integer) (pre-change-length integer))
-  (let* ((edits (phpinspect-edtrack-edits tracker))
-         (first-overlap)
-         (last-overlap)
-         (edit-before)
-         (new-edit))
+(defsubst phpinspect-taint-end (taint)
+  (cdr taint))
 
+(defsubst phpinspect-make-taint (start end)
+  (cons start end))
+
+(defsubst phpinspect-taint-overlaps-point (taint point)
+  (and (> (phpinspect-taint-end taint) point)
+       (<= (phpinspect-taint-start taint) point)))
+
+(defsubst phpinspect-taint-overlaps (taint1 taint2)
+  (or (phpinspect-taint-overlaps-point taint1 (phpinspect-taint-start taint2))
+      (phpinspect-taint-overlaps-point taint1 (phpinspect-taint-end taint2))
+      (phpinspect-taint-overlaps-point taint2 (phpinspect-taint-start taint1))
+      (phpinspect-taint-overlaps-point taint2 (phpinspect-taint-end taint1))))
+
+(defsubst phpinspect-taint-overlaps-meta (taint meta)
+  (or (phpinspect-taint-overlaps-point taint (phpinspect--meta-start meta))
+      (phpinspect-taint-overlaps-point taint (phpinspect--meta-end meta))
+      (phpinspect--meta-overlaps-point meta (phpinspect-taint-start taint))
+      (phpinspect--meta-overlaps-point meta (phpinspect-taint-end taint))))
+
+(defsubst phpinspect-edtrack-clear-taint-pool (track)
+  (setf (phpinspect-edtrack-taint-pool track) nil))
+
+(defsubst phpinspect-edtrack-clear (track)
+  (setf (phpinspect-edtrack-edits track) nil)
+  (phpinspect-edtrack-clear-taint-pool track))
+
+(defsubst phpinspect-edtrack-register-taint (track start end)
+  (let ((pool (phpinspect-edtrack-taint-pool track))
+        (idx 0)
+        (overlap-start)
+        (overlap-end)
+        (left-neighbour)
+        (taint (phpinspect-make-taint start end)))
     (catch 'break
-      (seq-doseq (edit edits)
-        (cond
-         ((phpinspect-edit-before-point edit start)
-          (setq edit-before edit))
-         (edit-before
-          (throw 'break nil)))))
+      (while pool
+        (if (phpinspect-taint-overlaps taint (car pool))
+            (progn
+              (when (< (phpinspect-taint-start (car pool)) start)
+                (setcar taint (phpinspect-taint-start (car pool))))
+              (when (> (phpinspect-taint-end (car pool)) end)
+                (setcdr taint (phpinspect-taint-end (car pool))))
 
-    (if edit-before
-        (setq new-edit (phpinspect-make-edit
-                        :original-start (- start (phpinspect-edit-delta edit-before))
-                        :local-delta (- (- end start) pre-change-length)
-                        :list edits
-                        :length pre-change-length))
-      (setq new-edit (phpinspect-make-edit
-                      :original-start start
-                      :local-delta (- (- end start) pre-change-length)
-                      :list edits
-                      :length pre-change-length)))
+              (when (not overlap-start)
+                (setq overlap-start idx))
+              (setq overlap-end idx))
 
-    (if edit-before
-        (phpinspect-ll-insert-right (phpinspect-edit-link edit-before) new-edit)
-      (phpinspect-ll-push new-edit edits))
+          ;; Else
+          (when overlap-start
+            (throw 'break nil))
 
-    (phpinspect-edtrack-register-taint
-     tracker (phpinspect-edit-original-start new-edit) (phpinspect-edit-original-end new-edit))
+          (when (> start (phpinspect-taint-end (car pool)))
+            (setq left-neighbour pool)
+            (throw 'break nil)))
 
-    ;; Return
-    new-edit))
+        (setq pool (cdr pool)
+              idx (+ idx 1))))
 
-(defsubst phpinspect-edtrack--last-edit-before-point (edtrack point)
-  (let ((found))
-    (catch 'break
-        (seq-doseq (edit (phpinspect-edtrack-edits edtrack))
-          (if (phpinspect-edit-before-point edit point)
-              (setq found edit)
-            (when found
-              (throw 'break nil)))))
-
-    found))
-
-(defsubst phpinspect-edtrack--last-edit-before-original-point (edtrack point)
-  (let ((found))
-    (catch 'break
-        (seq-doseq (edit (phpinspect-edtrack-edits edtrack))
-          (if (phpinspect-edit-before-original-point edit point)
-              (setq found edit)
-            (when found
-              (throw 'break nil)))))
-    found))
-
-(cl-defmethod phpinspect-edtrack-original-position-at-point
-  ((tracker phpinspect-edtrack) (point integer))
-  (let ((edit-before (phpinspect-edtrack--last-edit-before-point tracker point)))
-    (when edit-before
-      (setq point (- point (phpinspect-edit-delta edit-before)))))
-    point)
-
-(cl-defmethod phpinspect-edtrack-current-position-at-point
-  ((tracker phpinspect-edtrack) (point integer))
-  (let ((edit-before (phpinspect-edtrack--last-edit-before-original-point tracker point)))
-    (when edit-before
-      (setq point (+ point (phpinspect-edit-delta edit-before)))))
-
-  ;; Return
-  point)
-
-
-(defsubst phpinspect-edit-to-string (edit)
-  (format "[original-start: %d, length: %d, local-delta: %d]"
-          (phpinspect-edit-original-start edit)
-          (phpinspect-edit-length edit)
-          (phpinspect-edit-local-delta edit)))
-
+    (cond (overlap-start
+           (setq pool (phpinspect-edtrack-taint-pool track))
+           (setcar (nthcdr overlap-start pool) taint)
+           (setcdr (nthcdr overlap-start pool) (nthcdr (+ 1 overlap-end) pool)))
+          (left-neighbour
+           (setcdr left-neighbour (cons taint (cdr left-neighbour))))
+          (t
+           (push taint (phpinspect-edtrack-taint-pool track))))))
 
 (provide 'phpinspect-edtrack)
+;;; phpinspect-edtrack.el ends here
