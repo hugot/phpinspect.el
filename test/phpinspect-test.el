@@ -63,10 +63,10 @@
 
 (ert-deftest phpinspect-get-variable-type-in-block ()
   (let* ((code "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $bar = $foo; Whatever comes after don't matter.")
-         (tree (phpinspect-parse-string-to-tree code))
+         (bmap (phpinspect-parse-string-to-bmap code))
          (tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $bar = $foo;"))
          (context (phpinspect--get-resolvecontext tokens))
-         (tree-context (phpinspect-get-resolvecontext tree (- (length code) 36)))
+         (bmap-context (phpinspect-get-resolvecontext bmap (- (length code) 36)))
          (project-root "could never be a real project root")
          (phpinspect-project-root-function
           (lambda (&rest _ignored) project-root))
@@ -82,8 +82,8 @@
                    (phpinspect-function-block
                     (car (phpinspect--resolvecontext-enclosing-tokens context)))
                    (phpinspect--make-type-resolver-for-resolvecontext context)))
-          (tree-result (phpinspect-get-variable-type-in-block
-                        tree-context "foo"
+          (bmap-result (phpinspect-get-variable-type-in-block
+                        bmap-context "foo"
                         (phpinspect-function-block
                          (car (phpinspect--resolvecontext-enclosing-tokens context)))
                         (phpinspect--make-type-resolver-for-resolvecontext context))))
@@ -91,7 +91,7 @@
                                  result))
 
       (should (phpinspect--type= (phpinspect--make-type :name "\\DateTime")
-                                 tree-result)))))
+                                 bmap-result)))))
 
 (ert-deftest phpinspect-get-pattern-type-in-block ()
   (let* ((tokens (phpinspect-parse-string "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $this->potato = $foo;"))
@@ -99,7 +99,7 @@
          (project-root "could never be a real project root")
          (phpinspect-project-root-function
           (lambda (&rest _ignored) project-root))
-         (project (phpinspect--make-project
+         (project (phpinspect--make-projectb
                               :fs (phpinspect-make-virtual-fs)
                               :root project-root
                               :worker (phpinspect-make-worker))))
@@ -118,9 +118,9 @@
 (ert-deftest phpinspect-get-resolvecontext-multi-strategy ()
   (let* ((code1 "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0]; $borknest = [$bork]; $barknest = $borknest[0][0]; }}")
          (code2  "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0]; $borknest = [$bork]; $barknest = $borknest[0][0]")
-         (tree (phpinspect-parse-string-to-tree code1))
+         (bmap (phpinspect-parse-string-to-bmap code1))
          (tokens (phpinspect-parse-string code2))
-         (context1 (phpinspect-get-resolvecontext tree (- (length code1) 4)))
+         (context1 (phpinspect-get-resolvecontext bmap (- (length code1) 4)))
          (context2 (phpinspect--get-resolvecontext tokens)))
 
     (should (equal (phpinspect--resolvecontext-subject context1)
@@ -132,7 +132,7 @@
 
 (ert-deftest phpinspect-get-variable-type-in-block-array-access ()
   (let* ((code "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0]; $borknest = [$bork]; $barknest = $borknest[0][0]; }}")
-         (tokens (phpinspect-parse-string-to-tree code))
+         (tokens (phpinspect-parse-string-to-bmap code))
          (context (phpinspect-get-resolvecontext tokens (- (length code) 4)))
          (project-root "could never be a real project root")
          (phpinspect-project-root-function
@@ -508,6 +508,7 @@ class Thing
                      (backward-char)
                      (setq-local phpinspect-current-buffer
                                  (phpinspect-make-buffer :buffer (current-buffer)))
+                     (phpinspect-buffer-parse phpinspect-current-buffer)
                      (phpinspect-eldoc-function))))))
 
 (ert-deftest phpinspect-eldoc-function-for-static-method ()
@@ -665,7 +666,6 @@ class Thing
   (let ((parsed (phpinspect-parse-string "<?php 'string'")))
     (should (equal '(:root (:string "string")) parsed))))
 
-
 (load-file (concat phpinspect-test-directory "/test-worker.el"))
 (load-file (concat phpinspect-test-directory "/test-autoload.el"))
 (load-file (concat phpinspect-test-directory "/test-fs.el"))
@@ -675,7 +675,7 @@ class Thing
 (load-file (concat phpinspect-test-directory "/test-class.el"))
 (load-file (concat phpinspect-test-directory "/test-type.el"))
 (load-file (concat phpinspect-test-directory "/test-util.el"))
-(load-file (concat phpinspect-test-directory "/test-tree.el"))
+(load-file (concat phpinspect-test-directory "/test-bmap.el"))
 (load-file (concat phpinspect-test-directory "/test-edtrack.el"))
 
 (provide 'phpinspect-test)

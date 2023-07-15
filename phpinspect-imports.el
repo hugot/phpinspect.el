@@ -35,50 +35,55 @@
     (goto-char point)
     (insert data)))
 
-(cl-defmethod phpinspect-namespace-body-start ((tree phpinspect-tree))
-  (if (not (seq-emtpy-p (phpinspect-tree-children tree)))
-    (let ((block (seq-elt (phpinspect-tree-children tree) 2)))
-      (if (phpinspect-block-p (phpinspect-tree-meta-token block))
-          (phpinspect-tree-start block)
-        (phpinspect-tree-end (seq-elt (phpinspect-tree-children tree) 1))))
-    0))
-
-(defun phpinspect-add-use (fqn buffer &optional namespace-tree)
+(defun phpinspect-add-use (fqn buffer &optional namespace-token)
   "Add use statement for FQN to BUFFER.
 
-If NAMESPACE-TREE is non-nil, it is assumed to be an instance of
-`phpinspect-tree' containing metadata of a namespace token that
-was parsed from BUFFER. Its location will be used to find a
+If NAMESPACE-TOKEN is non-nil, it is assumed to be a token that
+was parsed from BUFFER and its location will be used to find a
 buffer position to insert the use statement at."
   (when (string-match "^\\\\" fqn)
     (setq fqn (string-trim-left fqn "\\\\")))
 
-  (if namespace-tree
-      (let* ((existing-use (seq-find (phpinspect-tree-meta-token-filter #'phpinspect-use-p)
-                                     (phpinspect-namespace-body namespace-tree)))
+  (if namespace-token
+      (let* ((meta (phpinspect-bmap-token-meta
+                    (phpinspect-buffer-map buffer) namespace-token))
+             (existing-use (seq-find #'phpinspect-use-p
+                                     (phpinspect-namespace-body namespace-token)))
              (namespace-block (phpinspect-namespace-block namespace-token)))
         (if existing-use
             (phpinspect-insert-at-point
-             (phpinspect-tree-start existing-use) (format "use %s;%c" fqn ?\n))
-          (phpinspect-insert-at-point
-           (+ 1 (phpinspect-namespace-body-start namespace-tree))
-           (format "%c%cuse %s;%c" ?\n ?\n fqn ?\n))))
+             (phpinspect-meta-start
+              (phpinspect-buffer-token-meta buffer existing-use))
+             (format "use %s;%c" fqn ?\n))
+          (if namespace-block
+              (phpinspect-insert-at-point
+               (+ 1 (phpinspect-meta-start
+                     (phpinspect-buffer-token-meta buffer namespace-block)))
+               (format "%c%cuse %s;%c" ?\n ?\n fqn ?\n))
+            (phpinspect-insert-at-point
+             (phpinspect-meta-end
+                   (phpinspect-buffer-token-meta
+                    buffer (seq-find #'phpinspect-terminator-p namespace-token)))
+             (format "%c%cuse %s;%c" ?\n ?\n fqn ?\n)))))
     ;; else
-    (let ((existing-use (seq-find (phpinspect-tree-meta-token-filter #'phpinspect-use-p)
+    (let ((existing-use (seq-find #'phpinspect-use-p
                                   (phpinspect-buffer-tree buffer))))
       (if existing-use
           (phpinspect-insert-at-point
-           (phpinspect-tree-start existing-use)
+           (phpinspect-meta-start
+            (phpinspect-buffer-token-meta buffer existing-use))
            (format "use %s;%c" fqn ?\n))
-        (let ((first-token (seq-elt (phpinspect-tree-children (phpinspect-buffer-tree buffer)) 0)))
-          (if (and (phpinspect-word-p (phpinspect-tree-meta-token first-token))
-                   (string= "declare" (cadr (phpinspect-tree-meta-token first-token))))
+        (let ((first-token (cadr (phpinspect-buffer-tree buffer))))
+          (if (and (phpinspect-word-p first-token)
+                   (string= "declare" (cadr first-token)))
               (phpinspect-insert-at-point
-               (phpinspect-tree-end (seq-find (phpinspect-tree-meta-token-filter #'phpinspect-terminator-p)
-                                              (phpinspect-tree-children (phpinspect-buffer-tree buffer))))
-               (format "%c%cuse %s;%c" ?\n ?\n fqn ?\n))
+               (phpinspect-meta-end
+                (phpinspect-buffer-token-meta
+                 buffer (seq-find #'phpinspect-terminator-p (phpinspect-buffer-tree buffer))))
+                (format "%c%cuse %s;%c" ?\n ?\n fqn ?\n))
             (phpinspect-insert-at-point
-             (phpinspect-tree-start first-token)
+             (phpinspect-meta-start
+              (phpinspect-buffer-token-meta buffer first-token))
              (format "%c%cuse %s;%c%c" ?\n ?\n fqn ?\n ?\n))))))))
 
 (defun phpinspect-add-use-interactive (typename buffer project &optional namespace-token)
@@ -104,9 +109,10 @@ buffer position to insert the use statement at."
 that there are import (\"use\") statements for them."
   (interactive)
   (if phpinspect-current-buffer
-      (phpinspect-buffer-parse phpinspect-current-buffer)
-      (let* ((tree (phpinspect-buffer-tree phpinspect-current-buffer))
-             (index (phpinspect--index-tokens tree))
+      (let* ((tree (phpinspect-buffer-parse phpinspect-current-buffer))
+             (index (phpinspect--index-tokens
+                     tree nil (phpinspect-buffer-location-resolver
+                               phpinspect-current-buffer)))
              (classes (alist-get 'classes index))
              (imports (alist-get 'imports index))
              (project (phpinspect--cache-get-project-create
@@ -115,10 +121,22 @@ that there are import (\"use\") statements for them."
         (dolist (class classes)
           (let* ((class-imports (alist-get 'imports class))
                  (used-types (alist-get 'used-types class))
-                 (meta (alist-get 'token-metadata class)))
+                 (class-name (alist-get 'class-name class))
+                 (region))
             (dolist (type used-types)
+              ;; Retrieve latest version of class location data changes with
+              ;; each added use statement + reindex.
+              (setq region
+                    (alist-get 'location
+                               (phpinspect-index-get-class
+                                index class-name)))
+
+
+
               (let ((namespace
-                     (phpinspect-tree-find-parent-meta-matching tree #'phpinspect-namespace-p)))
+                     (seq-find #'phpinspect-namespace-p
+                               (phpinspect-buffer-tokens-enclosing-point
+                                phpinspect-current-buffer (phpinspect-meta-start meta)))))
                 ;; Add use statements for types that aren't imported.
 
                 (unless (or (or (alist-get type class-imports)
@@ -132,7 +150,6 @@ that there are import (\"use\") statements for them."
                                       (phpinspect-project-autoload project))))
                   (phpinspect-add-use-interactive
                    type phpinspect-current-buffer project namespace)
-                  ;;;; FIXED?
                   ;; Buffer has been modified by adding type, update tree +
                   ;; location map. This is not optimal but will have to do until
                   ;; partial parsing is implemented.
@@ -143,6 +160,11 @@ that there are import (\"use\") statements for them."
                   ;; blocks this could cause problems as a namespace may grow by
                   ;; added import statements and start envelopping the classes
                   ;; below it.
-                  (phpinspect-buffer-parse phpinspect-current-buffer)))))))))
+                  (setq index
+                        (phpinspect--index-tokens
+                         (phpinspect-buffer-parse phpinspect-current-buffer)
+                         nil
+                         (phpinspect-buffer-location-resolver
+                              phpinspect-current-buffer)))))))))))
 
 (provide 'phpinspect-imports)

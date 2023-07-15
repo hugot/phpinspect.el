@@ -176,7 +176,7 @@ function (think \"new\" statements, return types etc.)."
     methods))
 
 
-(defun phpinspect--index-class (imports type-resolver class &optional doc-block token-metadata)
+(defun phpinspect--index-class (imports type-resolver location-resolver class &optional doc-block)
   "Create an alist with relevant attributes of a parsed class."
   (phpinspect--log "INDEXING CLASS")
   (let ((methods)
@@ -324,7 +324,7 @@ function (think \"new\" statements, return types etc.)."
       `(,class-name .
                     (phpinspect--indexed-class
                      (class-name . ,class-name)
-                     (token-metadata . ,token-metadata)
+                     (location . ,(funcall location-resolver class))
                      (imports . ,imports)
                      (methods . ,methods)
                      (static-methods . ,static-methods)
@@ -336,36 +336,15 @@ function (think \"new\" statements, return types etc.)."
                      (used-types . ,(mapcar #'phpinspect-intern-name
                                             (seq-uniq used-types #'string=))))))))
 
-(cl-defmethod phpinspect-namespace-body (namespace)
+(defsubst phpinspect-namespace-body (namespace)
   "Return the nested tokens in NAMESPACE tokens' body.
 Accounts for namespaces that are defined with '{}' blocks."
   (if (phpinspect-block-p (caddr namespace))
       (cdaddr namespace)
     (cdr namespace)))
 
-(cl-defmethod phpinspect-namespace-body ((namespace phpinspect-tree))
-  (if (= 3 (seq-length (phpinspect-tree-children namespace)))
-      (phpinspect-tree-children (seq-elt (phpinspect-tree-children namespace) 2))
-    (phpinspect-tree-children namespace)))
-
-(cl-defmethod phpinspect--index-classes-in-tokens
-  (imports (tree phpinspect-tree) type-resolver-factory &optional namespace)
-  (let ((comment-before)
-        (indexed))
-    (seq-doseq (child (phpinspect-tree-children tree))
-      (let ((token (phpinspect-tree-meta-token child)))
-        (cond ((phpinspect-doc-block-p token)
-               (setq comment-before token))
-              ((phpinspect-class-p token)
-               (push (phpinspect--index-class
-                      imports (funcall type-resolver-factory imports token namespace)
-                      token comment-before (phpinspect-tree-value child))
-                     indexed)
-               (setq comment-before nil)))))
-    indexed))
-
-(cl-defmethod phpinspect--index-classes-in-tokens
-  (imports tokens type-resolver-factory &optional namespace)
+(defun phpinspect--index-classes-in-tokens
+    (imports tokens type-resolver-factory location-resolver &optional namespace indexed)
   "Index the class tokens among TOKENS.
 
 NAMESPACE will be assumed the root namespace if not provided"
@@ -377,7 +356,7 @@ NAMESPACE will be assumed the root namespace if not provided"
             ((phpinspect-class-p token)
              (push (phpinspect--index-class
                     imports (funcall type-resolver-factory imports token namespace)
-                    token comment-before)
+                    location-resolver token comment-before)
                    indexed)
              (setq comment-before nil))))
     indexed))
@@ -398,34 +377,23 @@ NAMESPACE will be assumed the root namespace if not provided"
 (defun phpinspect--uses-to-types (uses)
   (mapcar #'phpinspect--use-to-type uses))
 
-(cl-defmethod phpinspect--index-namespace
-  ((namespace phpinspect-tree) type-resolver-factory)
-  (let* ((tokens (phpinspect-meta-token (phpinspect-tree-value namespace)))
-         (imports (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p tokens))))
-    (phpinspect--index-classes-in-tokens
-     imports namespace type-resolver-factory (cadadr tokens))))
-
-(cl-defmethod phpinspect--index-namespace (namespace type-resolver-factory)
+(defun phpinspect--index-namespace (namespace type-resolver-factory location-resolver)
   (phpinspect--index-classes-in-tokens
    (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p namespace))
    namespace
-   type-resolver-factory (cadadr namespace)))
+   type-resolver-factory location-resolver (cadadr namespace) nil))
 
-(cl-defmethod phpinspect--index-namespaces
-    (namespaces type-resolver-factory &optional indexed)
+(defun phpinspect--index-namespaces
+    (namespaces type-resolver-factory location-resolver &optional indexed)
   (if namespaces
       (progn
-        (push (phpinspect--index-namespace (pop namespaces) type-resolver-factory)
+        (push (phpinspect--index-namespace (pop namespaces)
+                                           type-resolver-factory
+                                           location-resolver)
               indexed)
-        (phpinspect--index-namespaces namespaces type-resolver-factory indexed))
+        (phpinspect--index-namespaces namespaces type-resolver-factory
+                                      location-resolver indexed))
     (apply #'append (nreverse indexed))))
-
-(cl-defmethod phpinspect--index-namespaces
-  ((namespaces phpinspect-slice) type-resolver-factory &optional indexed)
-  (seq-doseq (namespace namespaces)
-    (push (phpinspect--index-namespace namespace type-resolver-factory) indexed))
-
-  (nreverse indexed))
 
 (defun phpinspect--index-functions (&rest _args)
   "TODO: implement function indexation. This is a stub function.")
@@ -462,38 +430,29 @@ Return value is a list of the types that are \"newed\"."
         (push token previous-tokens)))
     used-types))
 
-(cl-defmethod phpinspect--index-tokens (tokens &optional type-resolver-factory)
+(defun phpinspect--index-tokens (tokens &optional type-resolver-factory location-resolver)
   "Index TOKENS as returned by `phpinspect--parse-current-buffer`."
   (unless type-resolver-factory
     (setq type-resolver-factory #'phpinspect--make-type-resolver))
 
+  (unless location-resolver
+    (setq location-resolver (lambda (_) (list 0 0))))
+
   (let ((imports (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p tokens))))
     `(phpinspect--root-index
       (imports . ,imports)
-      (classes . (,@(phpinspect--index-namespaces
-                     (seq-filter #'phpinspect-namespace-p tokens)
-                     type-resolver-factory)
-                  ,@(phpinspect--index-classes-in-tokens
-                     imports tokens type-resolver-factory)))
-      (used-types . ,(phpinspect--find-used-types-in-tokens tokens))
+      ,(append
+        (append '(classes)
+                (phpinspect--index-namespaces (seq-filter #'phpinspect-namespace-p tokens)
+                                              type-resolver-factory
+                                              location-resolver)
+                (phpinspect--index-classes-in-tokens
+                 imports tokens type-resolver-factory location-resolver)))
+      ,(append '(used-types)
+               (phpinspect--find-used-types-in-tokens tokens))
       (functions))
     ;; TODO: Implement function indexation
     ))
-
-(cl-defmethod phpinspect--index-tokens ((tree phpinspect-tree) &optional type-resolver-factory)
-  (unless type-resolver-factory (setq type-resolver-factory #'phpinspect--make-type-resolver))
-
-  (let* ((tokens (phpinspect-meta-token (phpinspect-tree-value tree)))
-         (imports (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p tokens))))
-    `(phpinspect--root-index
-      (imports . ,imports)
-      (classes . (,@(phpinspect--index-namespaces
-                     (seq-filter (phpinspect-tree-meta-token-filter #'phpinspect-namespace-p)
-                                 (phpinspect-tree-children tree))
-                     type-resolver-factory)
-                  ,@(phpinspect--index-classes-in-tokens imports tree type-resolver-factory)))
-      (used-types . ,(phpinspect--find-used-types-in-tokens tokens))
-      (functions))))
 
 (defun phpinspect-get-or-create-cached-project-class (project-root class-fqn)
   (when project-root
@@ -501,6 +460,12 @@ Return value is a list of the types that are \"newed\"."
                     (phpinspect--get-or-create-global-cache)
                     project-root)))
       (phpinspect-project-get-class-create project class-fqn))))
+
+
+(cl-defmethod phpinspect-index-get-class
+  ((index (head phpinspect--root-index) (class-name phpinspect--type)))
+  (alist-get class-name (alist-get 'classes index)
+             nil nil #'phpinspect--type=))
 
 (defun phpinspect-index-current-buffer ()
   "Index a PHP file for classes and the methods they have"

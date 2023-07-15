@@ -27,6 +27,7 @@
 (require 'phpinspect-parser)
 (require 'phpinspect-buffer)
 
+
 (ert-deftest phpinspect-buffer-region-lookups ()
   (let* ((parsed)
          (class))
@@ -39,11 +40,6 @@
       (let* ((class (seq-find #'phpinspect-class-p
                               (seq-find #'phpinspect-namespace-p parsed)))
              (classname (car (cddadr class))))
-
-        ;; Root node should be the root parsed token
-        (should (eq parsed (phpinspect-meta-token
-                            (phpinspect-tree-value (phpinspect-buffer-tree
-                                                    phpinspect-current-buffer)))))
 
         (let ((tokens (phpinspect-buffer-tokens-enclosing-point
                        phpinspect-current-buffer 617)))
@@ -64,29 +60,6 @@
       (setq parsed (phpinspect-parse-current-buffer)))
 
     (should (cdr parsed))))
-
-
-(ert-deftest phpinspect-buffer-register-edit ()
-  (let ((buffer (phpinspect-make-buffer)))
-    (with-temp-buffer
-      (insert-file-contents (concat phpinspect-test-php-file-directory "/NamespacedClass.php"))
-      (setq phpinspect-current-buffer buffer)
-      (setf (phpinspect-buffer-buffer buffer) (current-buffer))
-      (phpinspect-buffer-parse buffer))
-
-    ;; "Deletes" first curly brace of __construct function block
-    (phpinspect-buffer-register-edit buffer 1036 1036 1)
-    (phpinspect-buffer-propagate-taints buffer)
-
-    (let* ((region (phpinspect-make-region 1036 1037))
-           (tainted
-            (phpinspect-tree-find-smallest-overlapping-set
-             (phpinspect-buffer-tree buffer) region)))
-      (dolist (meta tainted)
-        (should (phpinspect-meta-tainted meta))
-        (phpinspect-tree-traverse (node (phpinspect-meta-tree meta))
-          (when (phpinspect-tree-overlaps node region)
-            (should (phpinspect-meta-tainted (phpinspect-tree-value node)))))))))
 
 (cl-defstruct (phpinspect-document (:constructor phpinspect-make-document))
   (buffer (get-buffer-create
@@ -137,7 +110,7 @@
       (setq parsed (phpinspect-buffer-parse buffer))
       (should parsed)
       (setq hello1 (car (phpinspect-buffer-tokens-enclosing-point buffer 18)))
-      (should (eq hello hello1))
+      (should (eq (phpinspect-meta-token hello) (phpinspect-meta-token hello1)))
 
       (phpinspect-document-apply-edit document 24 25 1 "{")
       (should (string= "<?php function Hello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }"
@@ -146,6 +119,4 @@
       (setq parsed (phpinspect-buffer-parse buffer))
       (should parsed)
       (setq hello2 (car (phpinspect-buffer-tokens-enclosing-point buffer 18)))
-      (should (eq hello hello2))
-
-      (setq parsed (phpinspect-buffer-parse-tree buffer)))))
+      (should (eq (phpinspect-meta-token hello) (phpinspect-meta-token hello2))))))

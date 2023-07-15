@@ -47,7 +47,7 @@
              (,(phpinspect--make-type :name"\\Potato" :fully-qualified t)
               phpinspect--indexed-class
               (class-name . ,(phpinspect--make-type :name "\\Potato" :fully-qualified t))
-              (token-metadata . nil)
+              (location . (0 0))
               (imports)
               (methods)
               (static-methods . (,(phpinspect--make-function
@@ -159,16 +159,17 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
       (should (equal (alist-get key index1-class)
                      (alist-get key index2-class))))))
 
-(ert-deftest phpinspect-index-tree-class ()
-  (let* ((pctx (phpinspect-make-pctx :incremental t)))
+(ert-deftest phpinspect-index-bmap-class ()
+  (let* ((pctx (phpinspect-make-pctx :incremental t))
+         (tree))
     (with-temp-buffer
       (insert-file-contents (concat phpinspect-test-php-file-directory "/IndexClass1.php"))
-      (setf (phpinspect-pctx-tree pctx) (phpinspect-make-tree :start (point-min)
-                                                              :end (point-max)
-                                                              :value 'parse-root))
-      (phpinspect-with-parse-context pctx (phpinspect-parse-current-buffer)))
-    (let* ((index1 (phpinspect--index-tokens
-                    (seq-elt (phpinspect-tree-children (phpinspect-pctx-tree pctx)) 0)))
+      (setf (phpinspect-pctx-bmap pctx) (phpinspect-make-bmap))
+      (phpinspect-with-parse-context pctx (setq tree (phpinspect-parse-current-buffer))))
+    (let* ((index1 (phpinspect--index-tokens tree
+                                             nil
+                                             (phpinspect-bmap-make-location-resolver
+                                              (phpinspect-pctx-bmap pctx))))
            (index2
             (phpinspect-test-read-fixture-serialization "IndexClass1-indexed"))
            (index1-class (car (alist-get 'classes index1)))
@@ -178,5 +179,5 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
         (should (equal (alist-get key index1-class)
                        (alist-get key index2-class))))
 
-      (should (alist-get 'token-metadata index1-class))
-      (should (phpinspect-meta-p (alist-get 'token-metadata index1-class))))))
+      (should (alist-get 'location index1-class))
+      (should (alist-get 'location index1-class)))))

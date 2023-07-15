@@ -33,13 +33,22 @@
   (cons (car (phpinspect-edtrack-taint-pool track))
         (cl-copy-list (cdr (phpinspect-edtrack-taint-pool track)))))
 
-(defsubst phpinspect-taint-iterator-token-is-tainted-p (iter meta)
-  (let ((current (car iter)))
-    (when current
-      (while (and current (> (phpinspect--meta-start meta) (phpinspect-taint-end current)))
-        (setq current (pop (cdr iter))))
+(gv-define-setter phpinspect-taint-iterator-current (current iter) `(setcar ,iter ,current))
 
-      (and current (phpinspect-taint-overlaps-meta current meta)))))
+(defsubst phpinspect-taint-iterator-current (iter)
+  (car iter))
+
+(defsubst phpinspect-taint-iterator-token-is-tainted-p (iter meta)
+  (when (phpinspect-taint-iterator-current iter)
+    (while (and (phpinspect-taint-iterator-current iter)
+                (> (phpinspect-meta-start meta)
+                   (phpinspect-taint-end
+                    (phpinspect-taint-iterator-current iter))))
+      (setf (phpinspect-taint-iterator-current iter) (pop (cdr iter))))
+
+    (and (phpinspect-taint-iterator-current iter)
+         (phpinspect-taint-overlaps-meta
+          (phpinspect-taint-iterator-current iter) meta))))
 
 (defsubst phpinspect-edit-original-end (edit)
   (or (caar edit) 0))
@@ -106,10 +115,10 @@
       (phpinspect-taint-overlaps-point taint2 (phpinspect-taint-end taint1))))
 
 (defsubst phpinspect-taint-overlaps-meta (taint meta)
-  (or (phpinspect-taint-overlaps-point taint (phpinspect--meta-start meta))
-      (phpinspect-taint-overlaps-point taint (phpinspect--meta-end meta))
-      (phpinspect--meta-overlaps-point meta (phpinspect-taint-start taint))
-      (phpinspect--meta-overlaps-point meta (phpinspect-taint-end taint))))
+  (or (phpinspect-taint-overlaps-point taint (phpinspect-meta-start meta))
+      (phpinspect-taint-overlaps-point taint (phpinspect-meta-end meta))
+      (phpinspect-meta-overlaps-point meta (phpinspect-taint-start taint))
+      (phpinspect-meta-overlaps-point meta (phpinspect-taint-end taint))))
 
 (defsubst phpinspect-edtrack-clear-taint-pool (track)
   (setf (phpinspect-edtrack-taint-pool track) nil))

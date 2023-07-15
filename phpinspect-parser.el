@@ -23,7 +23,7 @@
 
 ;;; Code:
 
-(require 'phpinspect-tree)
+;;(require 'phpinspect-tree)
 (require 'phpinspect-edtrack)
 (require 'phpinspect-bmap)
 
@@ -180,9 +180,6 @@ Type can be any of the token types returned by
 (defun phpinspect-function-argument-list (php-func)
   "Get the argument list of a function"
   (seq-find #'phpinspect-list-p (seq-find #'phpinspect-declaration-p php-func nil) nil))
-
-(defun phpinspect-function-block (token)
-  (cadr token))
 
 (defun phpinspect-annotation-p (token)
   (phpinspect-token-type-p token :annotation))
@@ -457,52 +454,6 @@ token is \";\", which marks the end of a statement in PHP."
            ;; Return
            tokens)))))
 
-(cl-defstruct (phpinspect-meta (:constructor phpinspect-make-meta))
-  "An object that represents the metadata associated with a parsed token."
-  (token nil
-         :type phpinspect-token
-         :documentation
-         "The token that metadata is associated with.")
-  (whitespace-before ""
-                     :type string
-                     :documentation
-                     "Whitespace parsed before this token")
-  (tree nil
-        :type phpinspect-tree)
-  (tainted nil
-           :type bool
-           :documentation
-           "Whether or not the text of this token has been changed in the buffer")
-  (handler nil
-           :type phpinspect-handler
-           :documentation
-           "The handler that was used to parse token. (see `phpinspect-defhandler')"))
-
-(defsubst phpinspect-meta-token-filter (predicate)
-  (lambda (meta) (funcall predicate (phpinspect-meta-token meta))))
-
-(defsubst phpinspect-tree-meta-token-filter (predicate)
-  (lambda (tree)
-    (funcall predicate (phpinspect-meta-token (phpinspect-tree-value tree)))))
-
-(defsubst phpinspect-tree-meta-token (tree)
-  (phpinspect-meta-token (phpinspect-tree-value tree)))
-
-(defsubst phpinspect-meta-start (meta)
-  (phpinspect-tree-start (phpinspect-meta-tree meta)))
-
-(defsubst phpinspect-meta-end (meta)
-  (phpinspect-tree-end (phpinspect-meta-tree meta)))
-
-(defsubst phpinspect-tree-find-parent-meta-matching-token (tree predicate)
-  (if (funcall (phpinspect-tree-meta-token-filter predicate) tree)
-      tree
-    (catch 'found
-      (while (phpinspect-tree-parent tree)
-        (setq tree (phpinspect-tree-parent tree))
-        (when (funcall (phpinspect-tree-meta-token-filter predicate) tree)
-          (throw 'found tree))))))
-
 (defvar phpinspect-parse-context nil
   "An instance of `phpinspect-pctx' that is used when
 parsing. Usually used in combination with
@@ -522,123 +473,26 @@ parsing. Usually used in combination with
   (incremental nil)
   (edtrack nil
            :type phpinspect-edtrack)
-  (tree nil
-        :type phpinspect-tree)
   (bmap (phpinspect-make-bmap)
         :type phpinspect-bmap)
   (previous-bmap nil
                  :type phpinspect-bmap)
-  (previous-tree nil
-                 :type phpinspect-tree)
-  (query-tree nil)
   (whitespace-before ""
                      :type string))
 
-(defsubst phpinspect-pctx-find-existing-node-at-point (ctx point)
-  (let ((query-tree (or (phpinspect-pctx-query-tree ctx)
-                        (phpinspect-pctx-previous-tree ctx))))
-    (when query-tree
-      (setf (phpinspect-pctx-query-tree ctx)
-            (phpinspect-tree-find-next-relative-starting-at query-tree point)))))
-
 (cl-defmethod phpinspect-pctx-register-token
-  ((pctx phpinspect-pctx) token start end handler)
-  (phpinspect-bmap-register (phpinspect-pctx-bmap pctx) start end token))
-  ;; (let* ((meta (phpinspect-make-meta
-  ;;               :token token
-  ;;               :handler handler
-  ;;               :whitespace-before (phpinspect-pctx-whitespace-before pctx)))
-  ;;       (node (phpinspect-tree-insert
-  ;;              (phpinspect-pctx-tree pctx) start end meta)))
-  ;;   (setf (phpinspect-meta-tree meta) node)
-  ;;   (setf (phpinspect-pctx-whitespace-before pctx) "")
-
-  ;;   meta))
+  ((pctx phpinspect-pctx) token start end)
+  (phpinspect-bmap-register
+   (phpinspect-pctx-bmap pctx) start end token (phpinspect-pctx-consume-whitespace pctx)))
 
 (cl-defmethod phpinspect-pctx-register-whitespace
   ((pctx phpinspect-pctx) (whitespace string))
   (setf (phpinspect-pctx-whitespace-before pctx) whitespace))
 
-(defun phpinspect-make-incremental-parser-function (tree-type handler-list &optional delimiter-predicate)
-  "Like `phpinspect-make-parser-function', but returned function is able to reuse an already parsed tree."
-  (let ((handlers (mapcar
-                   (lambda (handler-name)
-                     (let* ((handler-name (symbol-name handler-name))
-                            (handler (intern-soft handler-name phpinspect-handler-obarray)))
-                       (if handler
-                           handler
-                         (error "No handler found by name \"%s\"" handler-name))))
-                   handler-list))
-        (delimiter-predicate (if (symbolp delimiter-predicate)
-                                 `(quote ,delimiter-predicate)
-                               delimiter-predicate)))
-    `(lambda (context buffer max-point &optional continue-condition root)
-       (with-current-buffer buffer
-         (let ((tokens)
-               (root-start (point))
-               (edtrack (phpinspect-pctx-edtrack context))
-               (current-tree (phpinspect-pctx-tree context))
-               (previous-tree (phpinspect-pctx-previous-tree context))
-               (delimiter-predicate (when (functionp ,delimiter-predicate) ,delimiter-predicate)))
-           (phpinspect-pctx-save-whitespace context
-            (while (and (< (point) max-point)
-                        (if continue-condition (funcall continue-condition) t)
-                        (not (if delimiter-predicate
-                                 (funcall delimiter-predicate (car (last tokens)))
-                               nil)))
-              (cond ,@(mapcar
-                       (lambda (handler)
-                         `((looking-at ,(plist-get (symbol-value handler) 'regexp))
-                           (let* ((match (match-string 0))
-                                  (start-position (point))
-                                  (original-position
-                                   (when (and previous-tree edtrack)
-                                     (phpinspect-edtrack-original-position-at-point edtrack start-position)))
-                                  (existing-node)
-                                  (existing-meta)
-                                  (current-end-position)
-                                  (token))
-                             (unless (not previous-tree)
-                               (setq existing-node (phpinspect-pctx-find-existing-node-at-point
-                                                    context original-position))
-                               (when existing-node
-                                 (setq existing-meta (phpinspect-tree-value existing-node)
-                                       current-end-position (phpinspect-edtrack-current-position-at-point
-                                                             edtrack (phpinspect-tree-end  existing-node)))))
-
-                             (if (and existing-node
-                                      (not (or (phpinspect-root-p (phpinspect-meta-token existing-meta))
-                                               (phpinspect-meta-tainted existing-meta))))
-                                 (progn
-                                   (setq existing-node (phpinspect-tree-detach existing-node))
-                                   (setq token (phpinspect-meta-token existing-meta))
-                                   ;; Alter regions to current token position in buffer
-                                   (let ((delta (- start-position original-position)))
-                                     (unless (= 0 delta)
-                                       ;; (message "Shifting tree with delta %d" delta)
-                                       ;; (message "point: %d, start position: %d" (point) start-position)
-                                       (phpinspect-tree-shift existing-node delta)))
-
-                                   (goto-char current-end-position)
-                                   ;; Insert existing token into new tree
-                                   (phpinspect-tree-insert-node current-tree existing-node))
-                               (progn
-                                 (setq token (funcall ,(symbol-function handler) match max-point))
-                                 (when token
-                                   (phpinspect-pctx-register-token context token start-position (point) ,handler))))
-                             (when token
-                               (if (null tokens)
-                                   (setq tokens (list token))
-                                 (progn
-                                   (nconc tokens (list token))))))))
-                       handlers)
-                    (t (forward-char)))))
-           (push ,tree-type tokens)
-           (when root
-             (phpinspect-pctx-register-token context tokens root-start (point) nil))
-
-           ;; Return
-           tokens)))))
+(cl-defmethod phpinspect-pctx-consume-whitespace ((pctx phpinspect-pctx))
+  (let ((whitespace (phpinspect-pctx-whitespace-before pctx)))
+    (setf (phpinspect-pctx-whitespace-before pctx) "")
+    whitespace))
 
 (defun phpinspect-make-bmap-parser-function (tree-type handler-list &optional delimiter-predicate)
   "Like `phpinspect-make-parser-function', but returned function is able to reuse an already parsed tree."
@@ -684,23 +538,25 @@ parsing. Usually used in combination with
 
                                (when existing-meta
                                  (setq current-end-position (phpinspect-edtrack-current-position-at-point
-                                                             edtrack (phpinspect--meta-end existing-meta)))))
+                                                             edtrack (phpinspect-meta-end existing-meta)))))
 
                              (if (and existing-meta
-                                      (not (or (phpinspect-root-p (phpinspect--meta-token existing-meta))
+                                      (not (or (phpinspect-root-p (phpinspect-meta-token existing-meta))
                                                (phpinspect-taint-iterator-token-is-tainted-p taint-iterator existing-meta))))
                                  (progn
-                                   (setq token (phpinspect--meta-token existing-meta))
+                                   (setq token (phpinspect-meta-token existing-meta))
 
                                    ;; Re-register existing token
                                    (let ((delta (- start-position original-position)))
-                                     (phpinspect-bmap-overlay bmap previous-bmap existing-meta delta))
+                                     (phpinspect-bmap-overlay
+                                      bmap previous-bmap existing-meta delta
+                                      (phpinspect-pctx-consume-whitespace context)))
 
                                    (goto-char current-end-position))
                                (progn
                                  (setq token (funcall ,(symbol-function handler) match max-point))
                                  (when token
-                                   (phpinspect-pctx-register-token context token start-position (point) ,handler))))
+                                   (phpinspect-pctx-register-token context token start-position (point)))))
                              (when token
                                (if (null tokens)
                                    (setq tokens (list token))
@@ -710,7 +566,7 @@ parsing. Usually used in combination with
                     (t (forward-char)))))
            (push ,tree-type tokens)
            (when root
-             (phpinspect-pctx-register-token context tokens root-start (point) nil))
+             (phpinspect-pctx-register-token context tokens root-start (point)))
 
            ;; Return
            tokens)))))

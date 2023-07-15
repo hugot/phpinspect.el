@@ -23,7 +23,8 @@
 
 ;;; Code:
 
-(require 'phpinspect-tree)
+;;(require 'phpinspect-tree)
+(require 'phpinspect-bmap)
 (require 'phpinspect-edtrack)
 
 (defvar-local phpinspect-current-buffer nil
@@ -31,76 +32,60 @@
 buffer. This variable is only set for buffers where
 `phpinspect-mode' is active. Also see `phpinspect-buffer'.")
 
-
 (cl-defstruct (phpinspect-buffer (:constructor phpinspect-make-buffer))
   "An object containing phpinspect related metadata linked to an
 emacs buffer."
   (buffer nil
           :type buffer
           :documentation "The associated emacs buffer")
-  (tree (phpinspect-make-tree)
-             :type phpinspect-tree
-             :documentation
-             "A tree containing metadata associated with tokens.")
+  (tree nil
+        :documentation
+        "Parsed token tree that resulted from last parse")
+  (map nil
+       :type phpinspect-bmap)
   (edit-tracker (phpinspect-make-edtrack)
-                :type phpinspect-edtrack)
-  (whitespace nil
-              :type string
-              :documentation
-              "Whitespace parsed before the next token to be parsed"))
+                :type phpinspect-edtrack))
 
 (cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer))
   "Parse the PHP code in the the emacs buffer that this object is
 linked with."
-  (phpinspect-buffer-propagate-taints buffer)
   (with-current-buffer (phpinspect-buffer-buffer buffer)
-    (let* ((tree (phpinspect-make-tree :start (point-min)
-                                       :end (+ 1 (point-max))))
-           (buffer-tree (phpinspect-buffer-tree buffer))
+    (let* ((map (phpinspect-make-bmap))
+           (buffer-map (phpinspect-buffer-map buffer))
            (ctx (phpinspect-make-pctx
-                 :tree tree
+                 :bmap map
                  :incremental t
-                 :previous-tree (unless (phpinspect-tree-empty-p buffer-tree) buffer-tree)
+                 :previous-bmap buffer-map
                  :edtrack (phpinspect-buffer-edit-tracker buffer))))
       (phpinspect-with-parse-context ctx
         (let ((parsed (phpinspect-parse-current-buffer)))
-          ;; Set tree root to the child containing the root parsed token.
-          (setq tree (seq-elt (phpinspect-tree-children tree) 0))
-          (setf (phpinspect-tree-parent tree) nil)
-          (setf (phpinspect-buffer-tree buffer) tree)
+          (setf (phpinspect-buffer-map buffer) map)
+          (setf (phpinspect-buffer-tree buffer) parsed)
           (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
 
           ;; return
           parsed)))))
 
 (cl-defmethod phpinspect-buffer-reparse ((buffer phpinspect-buffer))
-  (setf (phpinspect-buffer-tree buffer) (phpinspect-make-tree))
+  (setf (phpinspect-buffer-map buffer) (phpinspect-make-bmap))
   (phpinspect-buffer-parse buffer))
 
-(defsubst phpinspect-buffer-parse-tree (buffer)
+(defsubst phpinspect-buffer-parse-map (buffer)
   (phpinspect-buffer-parse buffer)
-  (phpinspect-buffer-tree buffer))
+  (phpinspect-buffer-map buffer))
 
 (cl-defmethod phpinspect-buffer-register-edit
   ((buffer phpinspect-buffer) (start integer) (end integer) (pre-change-length integer))
   (phpinspect-edtrack-register-edit
    (phpinspect-buffer-edit-tracker buffer) start end pre-change-length))
 
-(cl-defmethod phpinspect-buffer-propagate-taints ((buffer phpinspect-buffer))
-  (let ((tracker (phpinspect-buffer-edit-tracker buffer)))
-    (when (phpinspect-edtrack-has-taints-p tracker)
-      (seq-doseq (taint (phpinspect-tree-children (phpinspect-edtrack-taint-pool tracker)))
-        (let* ((region (phpinspect-make-region (phpinspect-tree-start taint)
-                                               (phpinspect-tree-end taint)))
-               (tainted (phpinspect-tree-traverse-overlapping
-                         (phpinspect-buffer-tree buffer) region)))
-
-          (dolist (meta tainted)
-            (setf (phpinspect-meta-tainted meta) t))))
-
-      (phpinspect-edtrack-clear-taints tracker))))
-
 (cl-defmethod phpinspect-buffer-tokens-enclosing-point ((buffer phpinspect-buffer) point)
-  (phpinspect-tree-traverse-overlapping (phpinspect-buffer-tree buffer) point))
+  (phpinspect-bmap-tokens-overlapping (phpinspect-buffer-map buffer) point))
+
+(cl-defmethod phpinspect-buffer-token-meta ((buffer phpinspect-buffer) token)
+  (phpinspect-bmap-token-meta (phpinspect-buffer-map buffer) token))
+
+(cl-defmethod phpinspect-buffer-location-resover ((buffer phpinspect-buffer))
+  (phpinspect-bmap-make-location-resolver (phpinspect-buffer-map buffer)))
 
 (provide 'phpinspect-buffer)

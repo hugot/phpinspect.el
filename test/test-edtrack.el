@@ -46,4 +46,30 @@
 
     (should (equal (list (cons 0 20)) (phpinspect-edtrack-taint-pool track)))))
 
-    ;; (should-not (phpinspect-tree-empty-p (phpinspect-edtrack-taint-pool track)))))
+(ert-deftest phpinspect-edtrack-taint-iterator ()
+  (let ((track (phpinspect-make-edtrack))
+        (iterator))
+    (phpinspect-edtrack-register-taint track 120 150)
+    (phpinspect-edtrack-register-taint track 5 30)
+    (phpinspect-edtrack-register-taint track 25 50)
+    (phpinspect-edtrack-register-taint track 70 100)
+
+    (setq iterator (phpinspect-edtrack-make-taint-iterator track))
+
+    (should-not (phpinspect-taint-iterator-token-is-tainted-p
+                 iterator (phpinspect-make-meta nil 1 4 nil nil)))
+
+    (should (phpinspect-taint-iterator-token-is-tainted-p
+             iterator (phpinspect-make-meta nil 4 7 nil nil)))
+
+    (should (phpinspect-taint-iterator-token-is-tainted-p
+             iterator (phpinspect-make-meta nil 20 30 nil nil)))
+
+    (should-not (phpinspect-taint-iterator-token-is-tainted-p
+                 iterator (phpinspect-make-meta nil 51 55 nil nil)))
+
+    (should (phpinspect-taint-iterator-token-is-tainted-p
+             iterator (phpinspect-make-meta nil 65 73 nil nil)))
+
+        (should (phpinspect-taint-iterator-token-is-tainted-p
+             iterator (phpinspect-make-meta nil 100 130 nil nil)))))

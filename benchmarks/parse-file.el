@@ -1,5 +1,11 @@
 
-(require 'phpinspect)
+(require 'phpinspect-parser)
+
+
+(defun phpinspect-parse-current-buffer ()
+  (phpinspect-parse-buffer-until-point
+   (current-buffer)
+   (point-max)))
 
 
 (let ((here (file-name-directory (or load-file-name buffer-file-name))))
