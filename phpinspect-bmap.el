@@ -284,7 +284,7 @@
 (cl-defmethod phpinspect-bmap-tokens-ending-at ((bmap phpinspect-bmap) point)
   (let ((overlay (phpinspect-bmap-overlay-at-point bmap point)))
     (if overlay
-          (phpinspect-bmap-tokens-ending-at overlay point)
+        (phpinspect-bmap-tokens-ending-at overlay point)
       (gethash point (phpinspect-bmap-ends bmap)))))
 
 (defsubst phpinspect-bmap-overlay-at-point (bmap point)
@@ -305,6 +305,9 @@
   (phpinspect-bmap-token-meta (phpinspect-overlay-bmap overlay) token))
 
 (cl-defmethod phpinspect-bmap-token-meta ((bmap phpinspect-bmap) token)
+  (unless (phpinspect-probably-token-p token)
+    (error "Unexpected argument, expected `phpinspect-token-p'. Got invalid token %s" token))
+
   (or (gethash token (phpinspect-bmap-meta bmap))
       (let ((found?))
         (catch 'found
@@ -314,13 +317,14 @@
 
 (defsubst phpinspect-probably-token-p (token)
   (and (listp token)
-       (symbolp (car token))))
+       (keywordp (car token))))
 
-(defsubst phpinspect-bmap-last-token-before-point (bmap point)
+(cl-defmethod phpinspect-bmap-last-token-before-point ((bmap phpinspect-bmap) point)
   (let* ((ends (phpinspect-bmap-ends bmap))
          (ending))
     (unless (hash-table-empty-p ends)
       (while (not (or (<= point 0) (setq ending (phpinspect-bmap-tokens-ending-at bmap point))))
+        (phpinspect--log "Checking point %d" point)
         (setq point (- point 1)))
       (car (last ending)))))
 

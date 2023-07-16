@@ -84,13 +84,15 @@
          (subject (phpinspect-bmap-last-token-before-point bmap point))
          (subject-token)
          (siblings))
+    (phpinspect--log "Last token before point: %s" subject)
     ;; Dig down through tokens that can contain statements
     (catch 'break
-      (while (and subject (phpinspect-enclosing-token-p (phpinspect-meta-token subject)))
-        (phpinspect--log "Token %s is enclosing" (phpinspect-meta-token subject))
+      (while (and subject
+                  (phpinspect-enclosing-token-p (phpinspect-meta-token subject))
+                  (cdr (phpinspect-meta-token subject)) 0)
         (let ((new-subject
                (phpinspect-bmap-token-meta
-                bmap (car (last (phpinspect-meta-token subject))))))
+                bmap (car (last (cdr (phpinspect-meta-token subject)))))))
           (if new-subject
               (setq subject new-subject)
             (throw 'break nil)))))
