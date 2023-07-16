@@ -15,32 +15,50 @@
 
     (insert-file-contents (concat here "/Response.php"))
 
-    (message "Bmap warmup parse:")
+    (message "Incremental parse (warmup):")
     (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t)
       (benchmark 1 '(phpinspect-parse-current-buffer)))
 
     (let ((bmap (phpinspect-make-bmap))
           (bmap2 (phpinspect-make-bmap)))
-      (message "Bmap parse:")
+      (message "Incremental parse:")
       (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :bmap bmap)
         (benchmark 1 '(phpinspect-parse-current-buffer)))
 
-      (message "Bmap parse incremental:")
+      (message "Incremental parse (no edits):")
       (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :bmap bmap2 :previous-bmap bmap :edtrack (phpinspect-make-edtrack))
         (benchmark 1 '(phpinspect-parse-current-buffer)))
 
-      (message "Bmap parse incremental repeat:")
+      (message "Incremental parse repeat (no edits):")
       (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :previous-bmap bmap2 :edtrack (phpinspect-make-edtrack))
-        (benchmark 1 '(phpinspect-parse-current-buffer))))
+        (benchmark 1 '(phpinspect-parse-current-buffer)))
+
+      (let ((edtrack (phpinspect-make-edtrack))
+            (bmap (phpinspect-make-bmap)))
+        ;; Fresh
+        (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :bmap bmap)
+          (phpinspect-parse-current-buffer))
+
+        (message "Incremental parse after buffer edit:")
+        ;; Removes closing curly brace of __construct
+        (goto-char 9062)
+        (delete-backward-char 1)
+
+        (phpinspect-edtrack-register-edit edtrack 9061 9061 1)
+        (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :previous-bmap bmap :edtrack edtrack)
+          (benchmark 1 '(phpinspect-parse-current-buffer)))))
+
+
+
 
     ;; (message "Metadata parse:")
     ;; (benchmark 1 '(phpinspect-buffer-parse phpinspect-current-buffer))
 
-    (message "Bare warmup parse:")
+    (message "Bare (no token reuse) parse (warmup):")
     (benchmark 1 '(phpinspect-parse-current-buffer))
 
 
-    (message "Bare parse:")
+    (message "Bare (no token reuse) parse:")
     (benchmark 1 '(phpinspect-parse-current-buffer))))
 
 

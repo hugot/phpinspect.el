@@ -91,32 +91,46 @@
                   :buffer (phpinspect-document-buffer document)))
          (parsed))
     ;; TODO: write tests for more complicated cases (multiple edits, etc.)
-    (phpinspect-document-set-contents document "<?php function Hello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }")
+    (phpinspect-document-set-contents document "<?php function Bello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }")
 
     (setq parsed (phpinspect-buffer-parse buffer))
     (should parsed)
 
-    (let ((hello (car (phpinspect-buffer-tokens-enclosing-point buffer 18)))
-          (hello1)
-          (hello2))
-      (should (equal '(:word "Hello") (phpinspect-meta-token hello)))
+    (let* ((enclosing-bello (phpinspect-buffer-tokens-enclosing-point buffer 18))
+           (bello (car enclosing-bello))
+           (enclosing-bello1)
+           (bello1)
+           (bello2))
+      (should (equal '(:word "Bello") (phpinspect-meta-token bello)))
       (should parsed)
 
       ;; Delete function block opening brace
       (phpinspect-document-apply-edit document 24 24 -1 "")
-      (should (string= "<?php function Hello()  echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }"
+      (should (string= "<?php function Bello()  echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }"
                        (phpinspect-document-contents document)))
       (phpinspect-buffer-register-edit buffer 24 24 1)
       (setq parsed (phpinspect-buffer-parse buffer))
       (should parsed)
-      (setq hello1 (car (phpinspect-buffer-tokens-enclosing-point buffer 18)))
-      (should (eq (phpinspect-meta-token hello) (phpinspect-meta-token hello1)))
+      (setq enclosing-bello1 (phpinspect-buffer-tokens-enclosing-point buffer 18))
+      (setq bello1 (car enclosing-bello1))
+      (should (eq (phpinspect-meta-token bello) (phpinspect-meta-token bello1)))
+
+      (should (phpinspect-declaration-p (phpinspect-meta-token (phpinspect-meta-parent bello))))
+      (should (phpinspect-declaration-p (phpinspect-meta-token (phpinspect-meta-parent bello1))))
+
+      (should (phpinspect-function-p (phpinspect-meta-token (phpinspect-meta-parent (phpinspect-meta-parent bello)))))
+      (should (phpinspect-function-p (phpinspect-meta-token (phpinspect-meta-parent (phpinspect-meta-parent bello1)))))
+
+      (let ((function (phpinspect-meta-token (phpinspect-meta-parent (phpinspect-meta-parent bello1)))))
+        (should (= 2 (length function)))
+        (should (phpinspect-declaration-p (cadr function)))
+        (should (member '(:word "Bello") (cadr function))))
 
       (phpinspect-document-apply-edit document 24 25 1 "{")
-      (should (string= "<?php function Hello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }"
+      (should (string= "<?php function Bello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }"
                        (phpinspect-document-contents document)))
       (phpinspect-buffer-register-edit buffer 24 25 0)
       (setq parsed (phpinspect-buffer-parse buffer))
       (should parsed)
-      (setq hello2 (car (phpinspect-buffer-tokens-enclosing-point buffer 18)))
-      (should (eq (phpinspect-meta-token hello) (phpinspect-meta-token hello2))))))
+      (setq bello2 (car (phpinspect-buffer-tokens-enclosing-point buffer 18)))
+      (should (eq (phpinspect-meta-token bello) (phpinspect-meta-token bello2))))))

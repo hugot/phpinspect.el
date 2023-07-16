@@ -33,14 +33,12 @@
   (meta (make-hash-table :test #'eq
                            :size (floor (/ (point-max) 4))
                            :rehash-size 1.5))
+  (token-stack nil
+               :type list)
   (overlays nil
             :type list)
-  (current-row nil
-               :type list)
-  (current-row-start nil
-                     :type integer)
-  (current-row-end nil
-                   :type integer))
+  (last-token-start nil
+                     :type integer))
 
 (defsubst phpinspect-make-region (start end)
   (list start end))
@@ -81,7 +79,6 @@
 (gv-define-setter phpinspect-meta-start (start meta) `(setcar (cddr ,meta) ,start))
 (gv-define-setter phpinspect-meta-overlay (overlay meta) `(setcar (nthcdr 6 ,meta) ,overlay))
 (gv-define-setter phpinspect-meta-parent (parent meta) `(setcar (cdr ,meta) ,parent))
-
 
 (defsubst phpinspect-meta-overlay (meta)
   (car (nthcdr 6 meta)))
@@ -129,6 +126,9 @@
 
 (defsubst phpinspect-overlay-end (overlay)
   (caddr overlay))
+
+(defsubst phpinspect-overlay-token-meta (overlay)
+  (car (nthcdr 5 overlay)))
 
 (defsubst phpinspect-overlay-overlaps-point (overlay point)
   (and (> (phpinspect-overlay-end overlay) point)
@@ -183,12 +183,11 @@
                         ,@body))
                     (phpinspect-bmap-meta ,bmap)))))))
 
-(defsubst phpinspect-bmap-register (bmap start end token &optional whitespace-before overlay parent)
+(defsubst phpinspect-bmap-register (bmap start end token &optional whitespace-before overlay)
   (let* ((starts (phpinspect-bmap-starts bmap))
          (ends (phpinspect-bmap-ends bmap))
          (meta (phpinspect-bmap-meta bmap))
-         (current-row (phpinspect-bmap-current-row bmap))
-         (current-row-start (phpinspect-bmap-current-row-start bmap))
+         (last-token-start (phpinspect-bmap-last-token-start bmap))
          (existing-end (gethash end ends))
          (token-meta (phpinspect-make-meta nil start end whitespace-before token overlay)))
     (unless whitespace-before
@@ -202,13 +201,25 @@
 
     (puthash token token-meta meta)
 
-    (when parent
-      (dolist (child current-row)
-        ;; Set parent
-        (setf (phpinspect-meta-parent child) token-meta))
-      (setf (phpinspect-bmap-current-row bmap) nil))
+    (when (and last-token-start
+               (<= start last-token-start))
+      (let ((child)
+            (stack (phpinspect-bmap-token-stack bmap)))
 
-    (push token-meta (phpinspect-bmap-current-row bmap))))
+        (while (and (car stack) (>= (phpinspect-meta-start (car stack))
+                                    start))
+          (setq child (pop stack))
+          (setf (phpinspect-meta-parent child) token-meta)
+          (when (phpinspect-meta-overlay child)
+            (setf (phpinspect-meta-parent
+                   (phpinspect-overlay-token-meta
+                    (phpinspect-meta-overlay child)))
+                  token-meta)))
+
+        (setf (phpinspect-bmap-token-stack bmap) stack)))
+
+    (setf (phpinspect-bmap-last-token-start bmap) start)
+    (push token-meta (phpinspect-bmap-token-stack bmap))))
 
 (defsubst phpinspect-overlay-p (overlay)
   (and (listp overlay)
@@ -249,6 +260,17 @@
           (phpinspect-bmap-token-starting-at overlay point)
       (gethash point (phpinspect-bmap-starts bmap)))))
 
+(cl-defmethod phpinspect-bmap-tokens-ending-at ((overlay (head overlay)) point)
+  (mapcar (lambda (meta) (phpinspect-overlay-wrap-meta overlay meta))
+          (phpinspect-bmap-tokens-ending-at
+           (phpinspect-overlay-bmap overlay) (- point (phpinspect-overlay-delta overlay)))))
+
+(cl-defmethod phpinspect-bmap-tokens-ending-at ((bmap phpinspect-bmap) point)
+  (let ((overlay (phpinspect-bmap-overlay-at-point bmap point)))
+    (if overlay
+          (phpinspect-bmap-tokens-ending-at overlay point)
+      (gethash point (phpinspect-bmap-ends bmap)))))
+
 (defsubst phpinspect-bmap-overlay-at-point (bmap point)
   (catch 'found
     (dolist (overlay (phpinspect-bmap-overlays bmap))
@@ -282,7 +304,7 @@
   (let* ((ends (phpinspect-bmap-ends bmap))
          (ending))
     (unless (hash-table-empty-p ends)
-      (while (not (or (<= point 0) (setq ending (gethash point ends))))
+      (while (not (or (<= point 0) (setq ending (phpinspect-bmap-tokens-ending-at bmap point))))
         (setq point (- point 1)))
       (car (last ending)))))
 
@@ -290,7 +312,7 @@
   (let* ((overlays (phpinspect-bmap-overlays bmap))
          (start (+ (phpinspect-meta-start token-meta) pos-delta))
          (end (+ (phpinspect-meta-end token-meta) pos-delta))
-         (overlay `(overlay ,start ,end ,pos-delta ,bmap-overlay))
+         (overlay `(overlay ,start ,end ,pos-delta ,bmap-overlay ,token-meta))
          (before))
     (phpinspect-bmap-register bmap start end (phpinspect-meta-token token-meta) whitespace-before overlay)
 
@@ -305,13 +327,11 @@
           (if (and before (cdr overlays))
               ;; Append after
               (progn
-                ;;(message "appending in the middle")
                 (setcdr overlays (cons overlay (cdr overlays))))
             ;; Append at end of overlay list
-            ;;(message "appending at the end")
             (nconc (phpinspect-bmap-overlays bmap) (list overlay))))
 
-      ;;(message "appending at the start")
+      ;; No exising overlays, overwrite
       (push overlay (phpinspect-bmap-overlays bmap)))))
 
 (defun phpinspect-bmap-make-location-resolver (bmap)

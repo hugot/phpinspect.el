@@ -99,7 +99,7 @@
          (project-root "could never be a real project root")
          (phpinspect-project-root-function
           (lambda (&rest _ignored) project-root))
-         (project (phpinspect--make-projectb
+         (project (phpinspect--make-project
                               :fs (phpinspect-make-virtual-fs)
                               :root project-root
                               :worker (phpinspect-make-worker))))
@@ -414,7 +414,8 @@
                                                        :name "Dupuis\\GastonLagaffe"))))))
 
 (ert-deftest phpinspect-resolve-type-from-context ()
-  (let* ((token-tree (phpinspect-parse-string "
+  (let* ((pctx (phpinspect-make-pctx :incremental t))
+         (code "
 namespace Amazing;
 
 class FluffBall
@@ -431,8 +432,18 @@ class FluffBall
         $ball = $this->fluffer;
 
         if ($ball) {
-            if(isset($ball->fluff()->poof->upFluff->"))
-        (fluffer  (phpinspect-parse-string "
+            if(isset($ball->fluff()->poof->upFluff->)) {
+                $this->beFluffy();
+            }
+        }
+
+        $ball->fluff()->poof->
+     }
+}")
+         (token-tree (phpinspect-with-parse-context pctx
+                       (phpinspect-parse-string code)))
+         (bmap (phpinspect-pctx-bmap pctx))
+         (fluffer  (phpinspect-parse-string "
 namespace Amazing;
 
 use Vendor\\FluffLib\\Fluff;
@@ -463,7 +474,7 @@ class FlufferUpper
     }
 }"))
         (phpinspect-project-root-function (lambda () "phpinspect-test"))
-        (context (phpinspect--get-resolvecontext token-tree)))
+        (context (phpinspect-get-resolvecontext bmap 310)))
 
     (setf (phpinspect--resolvecontext-project-root context)
           "phpinspect-test")
@@ -476,6 +487,14 @@ class FlufferUpper
 
     (should (phpinspect--type=
              (phpinspect--make-type :name "\\Vendor\\FluffLib\\DoubleFluffer")
+             (phpinspect-resolve-type-from-context
+              context
+              (phpinspect--make-type-resolver-for-resolvecontext
+               context))))
+
+    (setq context (phpinspect-get-resolvecontext bmap 405))
+    (should (phpinspect--type=
+             (phpinspect--make-type :name "\\Vendor\\FluffLib\\FlufferUpper")
              (phpinspect-resolve-type-from-context
               context
               (phpinspect--make-type-resolver-for-resolvecontext
@@ -567,6 +586,8 @@ class Thing
                                 context
                                 (phpinspect--make-type-resolver-for-resolvecontext
                                  context))))))
+
+
 
 (ert-deftest phpinspect-resolve-type-from-context-static-method-with-preceding-words ()
   (let* ((php-code "

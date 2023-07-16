@@ -37,8 +37,8 @@
 (ert-deftest phpinspect-bmap-nest-parent ()
   (let ((bmap (phpinspect-make-bmap)))
     (phpinspect-bmap-register bmap 10 20 'child)
-    (phpinspect-bmap-register bmap 5 25 'parent nil nil t)
-    (phpinspect-bmap-register bmap 2 30 'granny nil nil t)
+    (phpinspect-bmap-register bmap 5 25 'parent)
+    (phpinspect-bmap-register bmap 2 30 'granny)
 
     (let ((child (phpinspect-bmap-token-meta bmap 'child))
           (parent (phpinspect-bmap-token-meta bmap 'parent)))

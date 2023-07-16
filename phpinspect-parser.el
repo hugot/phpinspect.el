@@ -480,16 +480,14 @@ parsing. Usually used in combination with
   (whitespace-before ""
                      :type string))
 
-(cl-defmethod phpinspect-pctx-register-token
-  ((pctx phpinspect-pctx) token start end)
+(defsubst phpinspect-pctx-register-token (pctx token start end)
   (phpinspect-bmap-register
    (phpinspect-pctx-bmap pctx) start end token (phpinspect-pctx-consume-whitespace pctx)))
 
-(cl-defmethod phpinspect-pctx-register-whitespace
-  ((pctx phpinspect-pctx) (whitespace string))
+(defsubst phpinspect-pctx-register-whitespace (pctx whitespace)
   (setf (phpinspect-pctx-whitespace-before pctx) whitespace))
 
-(cl-defmethod phpinspect-pctx-consume-whitespace ((pctx phpinspect-pctx))
+(defsubst phpinspect-pctx-consume-whitespace (pctx)
   (let ((whitespace (phpinspect-pctx-whitespace-before pctx)))
     (setf (phpinspect-pctx-whitespace-before pctx) "")
     whitespace))
@@ -571,6 +569,93 @@ parsing. Usually used in combination with
            ;; Return
            tokens)))))
 
+(defun phpinspect-make-incremental-parser-function (tree-type handler-list &optional delimiter-predicate)
+  "Like `phpinspect-make-parser-function', but returned function is able to reuse an already parsed tree."
+  (let ((handlers (mapcar
+                   (lambda (handler-name)
+                     (let* ((handler-name (symbol-name handler-name))
+                            (handler (intern-soft handler-name phpinspect-handler-obarray)))
+                       (if handler
+                           handler
+                         (error "No handler found by name \"%s\"" handler-name))))
+                   handler-list))
+        (delimiter-predicate (if (symbolp delimiter-predicate)
+                                 `(quote ,delimiter-predicate)
+                               delimiter-predicate)))
+    `(lambda (context buffer max-point &optional continue-condition root)
+       (with-current-buffer buffer
+         (let* ((tokens)
+                (root-start (point))
+                (bmap (phpinspect-pctx-bmap context))
+                (previous-bmap (phpinspect-pctx-previous-bmap context))
+                (edtrack (phpinspect-pctx-edtrack context))
+                (taint-iterator (when edtrack (phpinspect-edtrack-make-taint-iterator edtrack)))
+
+                ;; Loop variables
+                (start-position)
+                (original-position)
+                (current-end-position)
+                (existing-meta)
+                (token)
+                (delimiter-predicate (when (functionp ,delimiter-predicate) ,delimiter-predicate)))
+           (phpinspect-pctx-save-whitespace context
+            (while (and (< (point) max-point)
+                        (if continue-condition (funcall continue-condition) t)
+                        (not (if delimiter-predicate
+                                 (funcall delimiter-predicate (car (last tokens)))
+                               nil)))
+              (setq start-position (point))
+
+              (cond ((and previous-bmap edtrack
+                          (setq existing-meta
+                                (phpinspect-bmap-token-starting-at
+                                 previous-bmap
+                                 (setq original-position
+                                       (phpinspect-edtrack-original-position-at-point edtrack start-position))))
+                          (not (or (phpinspect-root-p (phpinspect-meta-token existing-meta))
+                                   (phpinspect-taint-iterator-token-is-tainted-p taint-iterator existing-meta))))
+                     (setq current-end-position (phpinspect-edtrack-current-position-at-point
+                                                 edtrack (phpinspect-meta-end existing-meta)))
+
+                     (setq token (phpinspect-meta-token existing-meta))
+                     ;;(message "reusing token %s" token)
+
+
+                     ;; Re-register existing token
+                     (let ((delta (- start-position original-position)))
+                       (phpinspect-bmap-overlay
+                        bmap previous-bmap existing-meta delta
+                        (phpinspect-pctx-consume-whitespace context)))
+
+                     ;;(message "Current pos: %d, end pos: %d" (point) current-end-position)
+                     (goto-char current-end-position)
+
+                     ;; Skip over whitespace after so that we don't do a full
+                     ;; run down all of the handlers during the next iteration
+                     (when (looking-at (phpinspect-handler-regexp 'whitespace))
+                       (funcall (phpinspect-handler 'whitespace) (match-string 0))))
+                    ,@(mapcar
+                       (lambda (handler)
+                         `((looking-at ,(plist-get (symbol-value handler) 'regexp))
+                           (setq token (funcall ,(symbol-function handler) (match-string 0) max-point))
+                           (when token
+                             (phpinspect-pctx-register-token context token start-position (point)))))
+                       handlers)
+                    (t (forward-char)))
+              (when token
+                (if (null tokens)
+                    (setq tokens (list token))
+                  (progn
+                    (nconc tokens (list token))))
+                (setq token nil))))
+           (push ,tree-type tokens)
+           (when root
+             (phpinspect-pctx-register-token context tokens root-start (point)))
+
+         ;; Return
+         tokens)))))
+
+
 
 (cl-defstruct (phpinspect-parser (:constructor phpinspect-make-parser))
   (tree-keyword "root"
@@ -616,7 +701,7 @@ executing.")
   (or (phpinspect-parser-incremental-func parser)
       (setf (phpinspect-parser-incremental-func parser)
             (byte-compile
-             (phpinspect-make-bmap-parser-function
+             (phpinspect-make-incremental-parser-function
               (intern (concat ":" (phpinspect-parser-tree-keyword parser)))
               (phpinspect-parser-handlers parser)
               (phpinspect-parser-delimiter-predicate parser))))))

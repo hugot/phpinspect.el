@@ -49,22 +49,27 @@ emacs buffer."
 (cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer))
   "Parse the PHP code in the the emacs buffer that this object is
 linked with."
-  (with-current-buffer (phpinspect-buffer-buffer buffer)
-    (let* ((map (phpinspect-make-bmap))
-           (buffer-map (phpinspect-buffer-map buffer))
-           (ctx (phpinspect-make-pctx
-                 :bmap map
-                 :incremental t
-                 :previous-bmap buffer-map
-                 :edtrack (phpinspect-buffer-edit-tracker buffer))))
-      (phpinspect-with-parse-context ctx
-        (let ((parsed (phpinspect-parse-current-buffer)))
-          (setf (phpinspect-buffer-map buffer) map)
-          (setf (phpinspect-buffer-tree buffer) parsed)
-          (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
+  (if (or (not (phpinspect-buffer-tree buffer))
+          (phpinspect-edtrack-taint-pool (phpinspect-buffer-edit-tracker buffer)))
+      (with-current-buffer (phpinspect-buffer-buffer buffer)
+        (let* ((map (phpinspect-make-bmap))
+               (buffer-map (phpinspect-buffer-map buffer))
+               (ctx (phpinspect-make-pctx
+                     :bmap map
+                     :incremental t
+                     :previous-bmap buffer-map
+                     :edtrack (phpinspect-buffer-edit-tracker buffer))))
+          (phpinspect-with-parse-context ctx
+            (let ((parsed (phpinspect-parse-current-buffer)))
+              (setf (phpinspect-buffer-map buffer) map)
+              (setf (phpinspect-buffer-tree buffer) parsed)
+              (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
 
-          ;; return
-          parsed)))))
+              ;; return
+              parsed))))
+    ;; Else: Just return last parse result
+    (phpinspect-buffer-tree buffer)))
+
 
 (cl-defmethod phpinspect-buffer-reparse ((buffer phpinspect-buffer))
   (setf (phpinspect-buffer-map buffer) (phpinspect-make-bmap))

@@ -135,22 +135,22 @@ candidate. Candidates can be indexed functions and variables.")
       (phpinspect-namespace-p token)))
 
 (defun phpinspect-find-statement-before-point (bmap meta point)
-  (message "going through %s" (phpinspect-meta-token meta))
-  (let ((children (seq-reverse (cdr (phpinspect-meta-token meta)))))
+  (phpinspect--log "going through %s" (phpinspect-meta-token meta))
+  (let ((children (reverse (cdr (phpinspect-meta-token meta)))))
     (let ((previous-siblings))
       (catch 'return
         (dolist (child children)
           (when (phpinspect-probably-token-p child)
-            (message "probably token: %s" child)
-            ;; (message "Child: %s" child)
+            (phpinspect--log "probably token: %s" child)
+            ;; (phpinspect--log "Child: %s" child)
             (setq child (phpinspect-bmap-token-meta bmap child))
             (when (< (phpinspect-meta-start child) point)
-              (if (phpinspect-blocklike-p (phpinspect-meta-token child))
+              (if (and (not previous-siblings) (phpinspect-blocklike-p (phpinspect-meta-token child)))
                   (progn
-                    (message "recursing into %s" (phpinspect-meta-token child))
+                    (phpinspect--log "recursing into %s" (phpinspect-meta-token child))
                     (throw 'return (phpinspect-find-statement-before-point bmap child point)))
                 (when (phpinspect-end-of-statement-p (phpinspect-meta-token child))
-                  (message "returning %s, end of statement: %s" previous-siblings (phpinspect-meta-token child))
+                  (phpinspect--log "returning %s, end of statement: %s" previous-siblings (phpinspect-meta-token child))
                   (throw 'return previous-siblings))
                 (push (phpinspect-meta-token child) previous-siblings)))))
         previous-siblings))))
@@ -158,16 +158,16 @@ candidate. Candidates can be indexed functions and variables.")
 
 (cl-defmethod phpinspect-get-resolvecontext
   ((bmap phpinspect-bmap) (point integer))
-  (let* ((enclosing (phpinspect-bmap-tokens-overlapping bmap point))
-         (enclosing-tokens)
+  (let* ((enclosing-tokens)
          ;; When there are no enclosing tokens, point is probably at the absolute
          ;; end of the buffer, so we find the last child before point.
-         (subject (or (car enclosing) (phpinspect-bmap-last-token-before-point bmap point)))
+         (subject (phpinspect-bmap-last-token-before-point bmap point))
          (subject-token)
          (siblings))
     ;; Dig down through tokens that can contain statements
     (catch 'break
       (while (and subject (phpinspect-enclosing-token-p (phpinspect-meta-token subject)))
+        (phpinspect--log "Token %s is enclosing" (phpinspect-meta-token subject))
         (let ((new-subject
                (phpinspect-bmap-token-meta
                 bmap (car (last (phpinspect-meta-token subject))))))
@@ -422,7 +422,7 @@ TODO:
                                resolvecontext))
          (static))
 
-    (message  "Eldoc statement before checking outside list: %s" statement)
+    (phpinspect--log  "Eldoc statement before checking outside list: %s" statement)
     (when (and (phpinspect-list-p parent-token) enclosing-token)
       (setq statement
             (phpinspect-find-statement-before-point
@@ -430,8 +430,8 @@ TODO:
              (phpinspect-meta-end
               (phpinspect-bmap-token-meta token-map parent-token)))))
 
-    (message "Enclosing token: %s" enclosing-token)
-    (message  "Eldoc statement: %s" statement)
+    (phpinspect--log "Enclosing token: %s" enclosing-token)
+    (phpinspect--log  "Eldoc statement: %s" statement)
 
     (setq arg-list (seq-find #'phpinspect-list-p (reverse statement)))
 
@@ -831,7 +831,7 @@ EXPRESSION."
         (enclosing-token)
         (type))
     (while (and enclosing-tokens (not type))
-      ;;(message "Trying to find type in %s" enclosing-token)
+      ;;(phpinspect--log "Trying to find type in %s" enclosing-token)
       (setq enclosing-token (pop enclosing-tokens))
 
       (setq type
@@ -1099,7 +1099,7 @@ level of a token. Nested variables are ignored."
     strings))
 
 (defun phpinspect--suggest-attributes-at-point
-    (token-tree resolvecontext &optional static)
+    (resolvecontext &optional static)
   "Suggest object or class attributes at point.
 
 TOKEN-TREE must be a syntax tree containing enough context to
@@ -1205,7 +1205,7 @@ static variables and static methods."
     (point)))
 
 (defun phpinspect--suggest-at-point ()
-      (phpinspect--log "Entering suggest at point." )
+  (phpinspect--log "Entering suggest at point. Point: %d" (point))
   (let* ((bmap (phpinspect-buffer-parse-map phpinspect-current-buffer))
          (resolvecontext (phpinspect-get-resolvecontext bmap (point)))
          (last-tokens (last (phpinspect--resolvecontext-subject resolvecontext) 2)))
@@ -1215,11 +1215,10 @@ static variables and static methods."
     (cond ((and (phpinspect-object-attrib-p (car last-tokens))
                 (phpinspect-word-p (cadr last-tokens)))
            (phpinspect--log "word-attributes")
-           (phpinspect--suggest-attributes-at-point token-tree
-                                                    resolvecontext))
+           (phpinspect--suggest-attributes-at-point resolvecontext))
           ((phpinspect-object-attrib-p (cadr last-tokens))
            (phpinspect--log "object-attributes")
-           (phpinspect--suggest-attributes-at-point token-tree resolvecontext))
+           (phpinspect--suggest-attributes-at-point resolvecontext))
           ((phpinspect-static-attrib-p (cadr last-tokens))
            (phpinspect--log "static-attributes")
            (phpinspect--suggest-attributes-at-point token-tree resolvecontext t))

@@ -82,15 +82,29 @@
     (+ point (phpinspect-edit-delta edit))))
 
 (defsubst phpinspect-edtrack-register-edit (track start end pre-change-length)
-  (let ((edit (phpinspect-edtrack-edits track)))
-    (while (and edit (< end (phpinspect-edit-end edit)))
-      (setq edit (cdr edit)))
+  (let ((edit-before (phpinspect-edtrack-edits track)))
+    (while (and edit-before (< end (phpinspect-edit-end edit-before)))
+      (setq edit-before (cdr edit-before)))
 
-    (let* ((new-edit (cons (- (+ start pre-change-length) (phpinspect-edit-delta edit)) (- (- end start) pre-change-length))))
-      (if edit
+    (phpinspect-edtrack-register-taint
+     track
+     (phpinspect-edtrack-original-position-at-point track start)
+     (phpinspect-edtrack-original-position-at-point track end))
+
+    (let* ((new-edit (cons
+                      ;; The end location of the edited region, before being
+                      ;; edited, with the delta edits that happened at preceding
+                      ;; points in the buffer subtratted. This corresponds with
+                      ;; the original position of the region end before the
+                      ;; buffer was ever edited.
+                      (- (+ start pre-change-length) (or (phpinspect-edit-delta edit-before) 0))
+
+                      ;; The delta of this edit.
+                      (- (- end start) pre-change-length))))
+      (if edit-before
           (progn
-            (setcdr edit (cons (car edit) (cdr edit)))
-            (setcar edit new-edit))
+            (setcdr edit-before (cons (car edit-before) (cdr edit-before)))
+            (setcar edit-before new-edit))
         (if (phpinspect-edtrack-edits track)
             (push new-edit (cdr (last (phpinspect-edtrack-edits track))))
           (push new-edit (phpinspect-edtrack-edits track)))))))
