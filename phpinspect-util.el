@@ -146,7 +146,16 @@ it evaluates to a non-nil value."
      :code (append (phpinspect--pattern-code pattern1)
                    (phpinspect--pattern-code pattern2)))))
 
-
+(defun phpinspect--locate-dominating-project-file (start-file)
+  "Locate the first dominating file in `phpinspect-project-root-file-list`.
+Starts looking at START-FILE and then recurses up the directory
+hierarchy as long as no matching files are found.  See also
+`locate-dominating-file'."
+  (let ((dominating-file))
+    (seq-find (lambda (file)
+                (setq dominating-file (locate-dominating-file start-file file)))
+              phpinspect-project-root-file-list)
+    dominating-file))
 
 (provide 'phpinspect-util)
 ;;; phpinspect-util.el ends here
