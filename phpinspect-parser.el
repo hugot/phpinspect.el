@@ -584,7 +584,7 @@ parsing. Usually used in combination with
                                delimiter-predicate)))
     `(lambda (context buffer max-point &optional continue-condition root)
        (with-current-buffer buffer
-         (let* ((tokens)
+         (let* ((tokens (list ,tree-type))
                 (root-start (point))
                 (bmap (phpinspect-pctx-bmap context))
                 (previous-bmap (phpinspect-pctx-previous-bmap context))
@@ -622,10 +622,24 @@ parsing. Usually used in combination with
 
 
                      ;; Re-register existing token
-                     (let ((delta (- start-position original-position)))
-                       (phpinspect-bmap-overlay
-                        bmap previous-bmap existing-meta delta
-                        (phpinspect-pctx-consume-whitespace context)))
+                     (phpinspect-bmap-overlay
+                      bmap previous-bmap existing-meta (- start-position original-position)
+                      (phpinspect-pctx-consume-whitespace context))
+
+                     ;; Check if we can fast-forward to more siblings
+                     (when (phpinspect-meta-right-siblings existing-meta)
+                       (dolist (sibling (phpinspect-meta-right-siblings existing-meta))
+                         (setq existing-meta (phpinspect-bmap-token-meta previous-bmap sibling))
+                         (unless (phpinspect-taint-iterator-region-is-tainted-p
+                                  taint-iterator current-end-position (phpinspect-meta-end existing-meta))
+                           (nconc tokens (list token))
+                           (setq token (phpinspect-meta-token existing-meta))
+                           (phpinspect-bmap-overlay
+                            bmap previous-bmap existing-meta (- start-position original-position)
+                            (phpinspect-pctx-consume-whitespace context))
+
+                           (setq current-end-position (phpinspect-edtrack-current-position-at-point
+                                                       edtrack (phpinspect-meta-end existing-meta))))))
 
                      ;;(message "Current pos: %d, end pos: %d" (point) current-end-position)
                      (goto-char current-end-position)
@@ -643,12 +657,8 @@ parsing. Usually used in combination with
                        handlers)
                     (t (forward-char)))
               (when token
-                (if (null tokens)
-                    (setq tokens (list token))
-                  (progn
-                    (nconc tokens (list token))))
+                (nconc tokens (list token))
                 (setq token nil))))
-           (push ,tree-type tokens)
            (when root
              (phpinspect-pctx-register-token context tokens root-start (point)))
 

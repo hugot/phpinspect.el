@@ -69,8 +69,8 @@
   (and (<= (phpinspect-region-start reg1) (phpinspect-region-start reg2))
        (>= (phpinspect-region-end reg1) (phpinspect-region-end reg2))))
 
-(defsubst phpinspect-make-meta (parent start end whitespace-before token &optional overlay)
-  (list 'meta parent start end whitespace-before token overlay))
+(defsubst phpinspect-make-meta (parent start end whitespace-before token &optional overlay right-siblings)
+  (list 'meta parent start end whitespace-before token overlay right-siblings))
 
 (defsubst phpinspect-meta-parent (meta)
   (cadr meta))
@@ -79,6 +79,10 @@
 (gv-define-setter phpinspect-meta-start (start meta) `(setcar (cddr ,meta) ,start))
 (gv-define-setter phpinspect-meta-overlay (overlay meta) `(setcar (nthcdr 6 ,meta) ,overlay))
 (gv-define-setter phpinspect-meta-parent (parent meta) `(setcar (cdr ,meta) ,parent))
+(gv-define-setter phpinspect-meta-right-siblings (siblings meta) `(setcar (nthcdr 7 ,meta) ,siblings))
+
+(defsubst phpinspect-meta-right-siblings (meta)
+  (car (nthcdr 7 meta)))
 
 (defsubst phpinspect-meta-overlay (meta)
   (car (nthcdr 6 meta)))
@@ -204,7 +208,8 @@
     (when (and last-token-start
                (<= start last-token-start))
       (let ((child)
-            (stack (phpinspect-bmap-token-stack bmap)))
+            (stack (phpinspect-bmap-token-stack bmap))
+            (right-siblings))
 
         (while (and (car stack) (>= (phpinspect-meta-start (car stack))
                                     start))
@@ -214,7 +219,15 @@
             (setf (phpinspect-meta-parent
                    (phpinspect-overlay-token-meta
                     (phpinspect-meta-overlay child)))
-                  token-meta)))
+                  token-meta))
+
+          (setf (phpinspect-meta-right-siblings child) right-siblings)
+          (when (phpinspect-meta-overlay child)
+            (setf (phpinspect-meta-right-siblings
+                   (phpinspect-overlay-token-meta
+                    (phpinspect-meta-overlay child)))
+                  right-siblings))
+          (push (phpinspect-meta-token child) right-siblings))
 
         (setf (phpinspect-bmap-token-stack bmap) stack)))
 

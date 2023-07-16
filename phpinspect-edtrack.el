@@ -38,17 +38,22 @@
 (defsubst phpinspect-taint-iterator-current (iter)
   (car iter))
 
-(defsubst phpinspect-taint-iterator-token-is-tainted-p (iter meta)
-  (when (phpinspect-taint-iterator-current iter)
-    (while (and (phpinspect-taint-iterator-current iter)
-                (> (phpinspect-meta-start meta)
-                   (phpinspect-taint-end
-                    (phpinspect-taint-iterator-current iter))))
-      (setf (phpinspect-taint-iterator-current iter) (pop (cdr iter))))
+(defsubst phpinspect-taint-iterator-follow (iter pos)
+  (or (while (and (phpinspect-taint-iterator-current iter)
+                  (> pos (phpinspect-taint-end
+                          (phpinspect-taint-iterator-current iter))))
+        (setf (phpinspect-taint-iterator-current iter) (pop (cdr iter))))
+      (phpinspect-taint-iterator-current iter)))
 
-    (and (phpinspect-taint-iterator-current iter)
-         (phpinspect-taint-overlaps-meta
-          (phpinspect-taint-iterator-current iter) meta))))
+(defsubst phpinspect-taint-iterator-token-is-tainted-p (iter meta)
+  (and (phpinspect-taint-iterator-follow iter (phpinspect-meta-start meta))
+       (phpinspect-taint-overlaps-meta
+        (phpinspect-taint-iterator-current iter) meta)))
+
+(defsubst phpinspect-taint-iterator-region-is-tainted-p (iter start end)
+  (and (phpinspect-taint-iterator-follow iter start)
+       (phpinspect-taint-overlaps-region
+        (phpinspect-taint-iterator-current iter) start end)))
 
 (defsubst phpinspect-edit-original-end (edit)
   (or (caar edit) 0))
@@ -121,6 +126,14 @@
 (defsubst phpinspect-taint-overlaps-point (taint point)
   (and (> (phpinspect-taint-end taint) point)
        (<= (phpinspect-taint-start taint) point)))
+
+(defsubst phpinspect-taint-overlaps-region (taint start end)
+  (or (phpinspect-taint-overlaps-point taint start)
+      (phpinspect-taint-overlaps-point taint end)
+      (and (> end (phpinspect-taint-start taint))
+           (<= start (phpinspect-taint-start taint)))
+      (and (> end (phpinspect-taint-end taint))
+           (<= start (phpinspect-taint-end taint)))))
 
 (defsubst phpinspect-taint-overlaps (taint1 taint2)
   (or (phpinspect-taint-overlaps-point taint1 (phpinspect-taint-start taint2))
