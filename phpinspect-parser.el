@@ -549,22 +549,6 @@ parsing. Usually used in combination with
                       bmap previous-bmap existing-meta delta
                       (phpinspect-pctx-consume-whitespace context))
 
-                     ;; Check if we can fast-forward to more siblings
-                     ;; (when (phpinspect-meta-right-siblings existing-meta)
-                     ;;   (dolist (sibling (phpinspect-meta-right-siblings existing-meta))
-                     ;;     (setq existing-meta (phpinspect-bmap-token-meta previous-bmap sibling))
-                     ;;     (unless (phpinspect-taint-iterator-region-is-tainted-p
-                     ;;              taint-iterator current-end-position (phpinspect-meta-end existing-meta))
-                     ;;       (nconc tokens (list token))
-                     ;;       (setq token (phpinspect-meta-token existing-meta))
-                     ;;       (phpinspect-bmap-overlay
-                     ;;        bmap previous-bmap existing-meta (- start-position original-position)
-                     ;;        (phpinspect-meta-whitespace-before existing-meta))
-
-                     ;;       (setq current-end-position (phpinspect-edtrack-current-position-at-point
-                     ;;                                   edtrack (phpinspect-meta-end existing-meta))))))
-
-                     ;;(message "Current pos: %d, end pos: %d" (point) current-end-position)
                      (goto-char current-end-position)
 
                      ;; Skip over whitespace after so that we don't do a full
