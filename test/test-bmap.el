@@ -29,6 +29,14 @@
     (should (eq 'token (phpinspect-meta-token
                         (phpinspect-bmap-token-starting-at bmap2 7))))
 
+    ;; Nesting for token-starting-at
+    (should (eq 'token3 (phpinspect-meta-token
+                         (phpinspect-bmap-token-starting-at bmap 50))))
+
+    (should (eq 'token3 (phpinspect-meta-token
+                         (phpinspect-bmap-token-starting-at bmap2 55))))
+
+
     (should (phpinspect-bmap-token-meta bmap 'token))
     (should (phpinspect-bmap-token-meta bmap2 'token2))
     (should (phpinspect-bmap-token-meta bmap2 'token))

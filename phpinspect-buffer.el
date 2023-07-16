@@ -90,7 +90,17 @@ linked with."
 (cl-defmethod phpinspect-buffer-token-meta ((buffer phpinspect-buffer) token)
   (phpinspect-bmap-token-meta (phpinspect-buffer-map buffer) token))
 
-(cl-defmethod phpinspect-buffer-location-resover ((buffer phpinspect-buffer))
-  (phpinspect-bmap-make-location-resolver (phpinspect-buffer-map buffer)))
+(cl-defmethod phpinspect-buffer-location-resolver ((buffer phpinspect-buffer))
+  "Derive location resolver from BUFFER's buffer map. Guarantees to
+retrieve the lastest available map of BUFFER upon first
+invocation, but subsequent invocations will not update the used
+map afterwards, so don't keep the resolver around for long term
+use."
+  (let ((bmap-resolver))
+    (lambda (token)
+      (funcall (with-memoization bmap-resolver
+                 (phpinspect-bmap-make-location-resolver (phpinspect-buffer-map buffer)))
+               token))))
+
 
 (provide 'phpinspect-buffer)

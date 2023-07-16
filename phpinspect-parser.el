@@ -385,7 +385,10 @@ during runtime.  Parsers are implemented with macros, so changing
 handler functions without calling this function will often not
 have any effect."
   (interactive)
-  (obarray-map #'fmakunbound phpinspect-parser-obarray))
+  (obarray-map (lambda (parser-symbol)
+                 (fmakunbound parser-symbol)
+                 (setf (phpinspect-parser-incremental-func (symbol-value parser-symbol)) nil))
+               phpinspect-parser-obarray))
 
 (defmacro phpinspect-pctx-save-whitespace (pctx &rest body)
   (declare (indent 1))
@@ -492,83 +495,6 @@ parsing. Usually used in combination with
     (setf (phpinspect-pctx-whitespace-before pctx) "")
     whitespace))
 
-(defun phpinspect-make-bmap-parser-function (tree-type handler-list &optional delimiter-predicate)
-  "Like `phpinspect-make-parser-function', but returned function is able to reuse an already parsed tree."
-  (let ((handlers (mapcar
-                   (lambda (handler-name)
-                     (let* ((handler-name (symbol-name handler-name))
-                            (handler (intern-soft handler-name phpinspect-handler-obarray)))
-                       (if handler
-                           handler
-                         (error "No handler found by name \"%s\"" handler-name))))
-                   handler-list))
-        (delimiter-predicate (if (symbolp delimiter-predicate)
-                                 `(quote ,delimiter-predicate)
-                               delimiter-predicate)))
-    `(lambda (context buffer max-point &optional continue-condition root)
-       (with-current-buffer buffer
-         (let* ((tokens)
-                (root-start (point))
-                (bmap (phpinspect-pctx-bmap context))
-                (previous-bmap (phpinspect-pctx-previous-bmap context))
-                (edtrack (phpinspect-pctx-edtrack context))
-                (taint-iterator (when edtrack (phpinspect-edtrack-make-taint-iterator edtrack)))
-                (delimiter-predicate (when (functionp ,delimiter-predicate) ,delimiter-predicate)))
-           (phpinspect-pctx-save-whitespace context
-            (while (and (< (point) max-point)
-                        (if continue-condition (funcall continue-condition) t)
-                        (not (if delimiter-predicate
-                                 (funcall delimiter-predicate (car (last tokens)))
-                               nil)))
-              (cond ,@(mapcar
-                       (lambda (handler)
-                         `((looking-at ,(plist-get (symbol-value handler) 'regexp))
-                           (let* ((match (match-string 0))
-                                  (start-position (point))
-                                  (original-position
-                                   (when (and previous-bmap edtrack)
-                                     (phpinspect-edtrack-original-position-at-point edtrack start-position)))
-                                  (existing-meta)
-                                  (current-end-position)
-                                  (token))
-                             (when (and previous-bmap edtrack)
-                               (setq existing-meta (phpinspect-bmap-token-starting-at previous-bmap original-position))
-
-                               (when existing-meta
-                                 (setq current-end-position (phpinspect-edtrack-current-position-at-point
-                                                             edtrack (phpinspect-meta-end existing-meta)))))
-
-                             (if (and existing-meta
-                                      (not (or (phpinspect-root-p (phpinspect-meta-token existing-meta))
-                                               (phpinspect-taint-iterator-token-is-tainted-p taint-iterator existing-meta))))
-                                 (progn
-                                   (setq token (phpinspect-meta-token existing-meta))
-
-                                   ;; Re-register existing token
-                                   (let ((delta (- start-position original-position)))
-                                     (phpinspect-bmap-overlay
-                                      bmap previous-bmap existing-meta delta
-                                      (phpinspect-pctx-consume-whitespace context)))
-
-                                   (goto-char current-end-position))
-                               (progn
-                                 (setq token (funcall ,(symbol-function handler) match max-point))
-                                 (when token
-                                   (phpinspect-pctx-register-token context token start-position (point)))))
-                             (when token
-                               (if (null tokens)
-                                   (setq tokens (list token))
-                                 (progn
-                                   (nconc tokens (list token))))))))
-                       handlers)
-                    (t (forward-char)))))
-           (push ,tree-type tokens)
-           (when root
-             (phpinspect-pctx-register-token context tokens root-start (point)))
-
-           ;; Return
-           tokens)))))
-
 (defun phpinspect-make-incremental-parser-function (tree-type handler-list &optional delimiter-predicate)
   "Like `phpinspect-make-parser-function', but returned function is able to reuse an already parsed tree."
   (let ((handlers (mapcar
@@ -596,6 +522,7 @@ parsing. Usually used in combination with
                 (original-position)
                 (current-end-position)
                 (existing-meta)
+                (delta)
                 (token)
                 (delimiter-predicate (when (functionp ,delimiter-predicate) ,delimiter-predicate)))
            (phpinspect-pctx-save-whitespace context
@@ -605,7 +532,6 @@ parsing. Usually used in combination with
                                  (funcall delimiter-predicate (car (last tokens)))
                                nil)))
               (setq start-position (point))
-
               (cond ((and previous-bmap edtrack
                           (setq existing-meta
                                 (phpinspect-bmap-token-starting-at
@@ -614,32 +540,29 @@ parsing. Usually used in combination with
                                        (phpinspect-edtrack-original-position-at-point edtrack start-position))))
                           (not (or (phpinspect-root-p (phpinspect-meta-token existing-meta))
                                    (phpinspect-taint-iterator-token-is-tainted-p taint-iterator existing-meta))))
-                     (setq current-end-position (phpinspect-edtrack-current-position-at-point
-                                                 edtrack (phpinspect-meta-end existing-meta)))
-
-                     (setq token (phpinspect-meta-token existing-meta))
-                     ;;(message "reusing token %s" token)
-
+                     (setq delta (- start-position original-position)
+                           current-end-position (+ (phpinspect-meta-end existing-meta) delta)
+                           token (phpinspect-meta-token existing-meta))
 
                      ;; Re-register existing token
                      (phpinspect-bmap-overlay
-                      bmap previous-bmap existing-meta (- start-position original-position)
+                      bmap previous-bmap existing-meta delta
                       (phpinspect-pctx-consume-whitespace context))
 
                      ;; Check if we can fast-forward to more siblings
-                     (when (phpinspect-meta-right-siblings existing-meta)
-                       (dolist (sibling (phpinspect-meta-right-siblings existing-meta))
-                         (setq existing-meta (phpinspect-bmap-token-meta previous-bmap sibling))
-                         (unless (phpinspect-taint-iterator-region-is-tainted-p
-                                  taint-iterator current-end-position (phpinspect-meta-end existing-meta))
-                           (nconc tokens (list token))
-                           (setq token (phpinspect-meta-token existing-meta))
-                           (phpinspect-bmap-overlay
-                            bmap previous-bmap existing-meta (- start-position original-position)
-                            (phpinspect-pctx-consume-whitespace context))
+                     ;; (when (phpinspect-meta-right-siblings existing-meta)
+                     ;;   (dolist (sibling (phpinspect-meta-right-siblings existing-meta))
+                     ;;     (setq existing-meta (phpinspect-bmap-token-meta previous-bmap sibling))
+                     ;;     (unless (phpinspect-taint-iterator-region-is-tainted-p
+                     ;;              taint-iterator current-end-position (phpinspect-meta-end existing-meta))
+                     ;;       (nconc tokens (list token))
+                     ;;       (setq token (phpinspect-meta-token existing-meta))
+                     ;;       (phpinspect-bmap-overlay
+                     ;;        bmap previous-bmap existing-meta (- start-position original-position)
+                     ;;        (phpinspect-meta-whitespace-before existing-meta))
 
-                           (setq current-end-position (phpinspect-edtrack-current-position-at-point
-                                                       edtrack (phpinspect-meta-end existing-meta))))))
+                     ;;       (setq current-end-position (phpinspect-edtrack-current-position-at-point
+                     ;;                                   edtrack (phpinspect-meta-end existing-meta))))))
 
                      ;;(message "Current pos: %d, end pos: %d" (point) current-end-position)
                      (goto-char current-end-position)
@@ -825,13 +748,13 @@ executing.")
                 (doc-block (save-restriction
                              (goto-char region-start)
                              (narrow-to-region region-start region-end)
-                             (funcall parser (current-buffer) (point-max) nil 'root))))
+                             (funcall parser (current-buffer) (point-max) nil))))
            (forward-char 2)
            doc-block))
         (t
          (let ((parser (phpinspect-get-parser-func 'comment))
                (end-position (line-end-position)))
-           (funcall parser (current-buffer) end-position nil 'root)))))
+           (funcall parser (current-buffer) end-position nil)))))
 
 (phpinspect-defhandler variable (start-token &rest _ignored)
   "Handler for tokens indicating reference to a variable"
@@ -875,7 +798,7 @@ executing.")
   (forward-char (length start-token))
 
   (let ((parser (phpinspect-get-parser-func 'use)))
-    (funcall parser (current-buffer) max-point nil 'root)))
+    (funcall parser (current-buffer) max-point nil)))
 
 (phpinspect-defhandler attribute-reference (start-token &rest _ignored)
   "Handler for references to object attributes, or static class attributes."
@@ -921,7 +844,7 @@ executing.")
   (setq start-token (phpinspect--strip-word-end-space start-token))
   (forward-char (length start-token))
   (let* ((parser (phpinspect-get-parser-func 'const))
-         (token (funcall parser (current-buffer) max-point nil 'root)))
+         (token (funcall parser (current-buffer) max-point nil)))
     (when (phpinspect-incomplete-token-p (car (last token)))
       (setcar token :incomplete-const))
     token))
@@ -969,7 +892,7 @@ static keywords with the same meaning as in a class block."
          (continue-condition (lambda ()
                                (not (and (char-equal (char-after) ?})
                                          (setq complete-block t)))))
-         (parsed (funcall parser (current-buffer) max-point continue-condition 'root)))
+         (parsed (funcall parser (current-buffer) max-point continue-condition)))
     (if complete-block
         (forward-char)
       (setcar parsed :incomplete-block))

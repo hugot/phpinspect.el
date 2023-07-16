@@ -463,7 +463,7 @@ Return value is a list of the types that are \"newed\"."
 
 
 (cl-defmethod phpinspect-index-get-class
-  ((index (head phpinspect--root-index) (class-name phpinspect--type)))
+  ((index (head phpinspect--root-index)) (class-name phpinspect--type))
   (alist-get class-name (alist-get 'classes index)
              nil nil #'phpinspect--type=))
 

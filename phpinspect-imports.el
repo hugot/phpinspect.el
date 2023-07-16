@@ -62,7 +62,7 @@ buffer position to insert the use statement at."
                (format "%c%cuse %s;%c" ?\n ?\n fqn ?\n))
             (phpinspect-insert-at-point
              (phpinspect-meta-end
-                   (phpinspect-buffer-token-meta
+              (phpinspect-buffer-token-meta
                     buffer (seq-find #'phpinspect-terminator-p namespace-token)))
              (format "%c%cuse %s;%c" ?\n ?\n fqn ?\n)))))
     ;; else
@@ -131,14 +131,12 @@ that there are import (\"use\") statements for them."
                                (phpinspect-index-get-class
                                 index class-name)))
 
-
-
               (let ((namespace
-                     (seq-find #'phpinspect-namespace-p
+                     (seq-find (lambda (meta) (phpinspect-namespace-p (phpinspect-meta-token meta)))
                                (phpinspect-buffer-tokens-enclosing-point
-                                phpinspect-current-buffer (phpinspect-meta-start meta)))))
-                ;; Add use statements for types that aren't imported.
+                                phpinspect-current-buffer (phpinspect-region-start region)))))
 
+                ;; Add use statements for types that aren't imported.
                 (unless (or (or (alist-get type class-imports)
                                 (alist-get type imports))
                             (gethash (phpinspect-intern-name
@@ -149,7 +147,7 @@ that there are import (\"use\") statements for them."
                                      (phpinspect-autoloader-types
                                       (phpinspect-project-autoload project))))
                   (phpinspect-add-use-interactive
-                   type phpinspect-current-buffer project namespace)
+                   type phpinspect-current-buffer project (phpinspect-meta-token namespace))
                   ;; Buffer has been modified by adding type, update tree +
                   ;; location map. This is not optimal but will have to do until
                   ;; partial parsing is implemented.

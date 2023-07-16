@@ -93,6 +93,9 @@
 (defsubst phpinspect-meta-end (meta)
   (cadddr meta))
 
+(defsubst phpinspect-meta-whitespace-before (meta)
+  (car (cddddr meta)))
+
 (defsubst phpinspect-meta-width (meta)
   (- (phpinspect-meta-end meta) (phpinspect-meta-start meta)))
 

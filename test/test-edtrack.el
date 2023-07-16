@@ -12,13 +12,15 @@
          (edit2 (phpinspect-edtrack-register-edit edtrack 15 22 7)))
 
     (should (equal `((255 . -50) (27 . 0) (15 . -5)) (phpinspect-edtrack-edits edtrack)))))
-    ;; (pp (phpinspect-edtrack-edits edtrack))
-    ;; (should (= 10 (phpinspect-edit-end edit1)))
-    ;; (should (= 22 (phpinspect-edit-end edit2)))
 
-    ;; (should (= 30 (phpinspect-edtrack-original-position-at-point edtrack 25)))
-    ;; (should (= 4 (phpinspect-edtrack-original-position-at-point edtrack 4)))
-    ;; (should (= 260 (phpinspect-edtrack-original-position-at-point edtrack 205)))))
+(ert-deftest phpinspect-edtrack-orginal-position-at-point ()
+  (let ((track (phpinspect-make-edtrack)))
+    (phpinspect-edtrack-register-edit track 10 20 0)
+    (should (= 10 (phpinspect-edtrack-original-position-at-point track 20)))
+    (should (= 10 (phpinspect-edtrack-original-position-at-point track 15)))
+    (phpinspect-edtrack-register-edit track 30 40 5)
+    (should (= 35 (phpinspect-edtrack-original-position-at-point track 50)))
+    (should (= 25 (phpinspect-edtrack-original-position-at-point track 39)))))
 
 (ert-deftest phpinsepct-edtrack-register-multi-edits ()
   (let ((track (phpinspect-make-edtrack)))

@@ -124,7 +124,8 @@
       (let ((function (phpinspect-meta-token (phpinspect-meta-parent (phpinspect-meta-parent bello1)))))
         (should (= 2 (length function)))
         (should (phpinspect-declaration-p (cadr function)))
-        (should (member '(:word "Bello") (cadr function))))
+        (should (member '(:word "Bello") (cadr function)))
+        (should (member '(:word "echo") (cadr function))))
 
       (phpinspect-document-apply-edit document 24 25 1 "{")
       (should (string= "<?php function Bello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }"
@@ -134,3 +135,74 @@
       (should parsed)
       (setq bello2 (car (phpinspect-buffer-tokens-enclosing-point buffer 18)))
       (should (eq (phpinspect-meta-token bello) (phpinspect-meta-token bello2))))))
+
+(ert-deftest phpinspect-buffer-parse-incrementally-position-change ()
+  (with-temp-buffer
+    (let ((buffer (phpinspect-make-buffer :buffer (current-buffer))))
+      (insert "<?php
+declare(strict_types=1);
+
+namespace App\\Controller\\Api\\V1;
+
+class AccountStatisticsController {
+
+    function __construct(){}
+}")
+
+      (setq-local phpinspect-test-buffer t)
+      (add-to-list 'after-change-functions
+                   (lambda (start end pre-change-length)
+                     (when (boundp 'phpinspect-test-buffer)
+                       (phpinspect-buffer-register-edit buffer start end pre-change-length))))
+
+      (let* ((bmap (phpinspect-buffer-parse-map buffer))
+             (class-location 67)
+             (class (phpinspect-bmap-token-starting-at bmap class-location))
+
+        (should class)
+        (should (phpinspect-class-p (phpinspect-meta-token class)))
+        (should (= class-location (phpinspect-meta-start class))))
+
+      (goto-char 65)
+      (let ((edit-string "use Symfony\\Component\\HttpFoundation\\JsonResponse;\n")
+            bmap class tokens-enclosing use-statement)
+        (insert edit-string)
+
+        (setq bmap (phpinspect-buffer-parse-map buffer)
+              class (phpinspect-bmap-token-starting-at bmap (+ 67 (length edit-string))))
+
+        (setq class-location (+ class-location (length edit-string)))
+        (should class)
+        (should (phpinspect-class-p (phpinspect-meta-token class)))
+        (should (= class-location (phpinspect-meta-start class)))
+
+        (setq tokens-enclosing (phpinspect-bmap-tokens-overlapping bmap class-location))
+        (setq class (seq-find (lambda (meta) (phpinspect-class-p (phpinspect-meta-token meta)))
+                              tokens-enclosing))
+        (should  class)
+        (should (= class-location (phpinspect-meta-start class)))
+        (should (phpinspect-class-p (phpinspect-meta-token class)))
+
+        (setq use-statement (phpinspect-bmap-token-starting-at bmap 65))
+        (should use-statement)
+        (should (phpinspect-use-p (phpinspect-meta-token use-statement)))
+        (should (seq-find #'phpinspect-use-p (seq-find #'phpinspect-namespace-p (phpinspect-buffer-tree buffer))))
+
+        (let ((second-use))
+          (goto-char 65)
+          (setq edit-string "use Another\\Use\\Statement;\n")
+          (insert edit-string)
+
+          (setq class-location (+ class-location (length edit-string)))
+          (setq bmap (phpinspect-buffer-parse-map buffer)
+                class (phpinspect-bmap-token-starting-at bmap class-location))
+
+          (should class)
+
+          (setq second-use (phpinspect-bmap-token-starting-at bmap 65))
+          (should second-use)
+
+          (setq class (phpinspect-bmap-token-starting-at bmap class-location))
+          (should  class)
+          (should (= class-location (phpinspect-meta-start class)))
+          (should (phpinspect-class-p (phpinspect-meta-token class)))))))))

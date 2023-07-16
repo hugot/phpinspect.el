@@ -59,11 +59,10 @@
   (or (caar edit) 0))
 
 (defsubst phpinspect-edit-end (edit)
-  (if edit
-      (let ((end (or (caar edit) 0))
-            (delta 0)
-            (previous-edit (cdr edit)))
-        (+ end (phpinspect-edit-delta previous-edit)))))
+  (let ((end (or (caar edit) 0))
+        (delta 0)
+        (previous-edit (cdr edit)))
+    (+ end (phpinspect-edit-delta previous-edit))))
 
 (defsubst phpinspect-edit-delta (edit)
   (let ((delta (or (cdar edit) 0))
@@ -73,28 +72,47 @@
     delta))
 
 (defsubst phpinspect-edtrack-original-position-at-point (track point)
-  (let ((edit (phpinspect-edtrack-edits track)))
+  (let ((edit (phpinspect-edtrack-edits track))
+        (encroached)
+        (pos))
     (while (and edit (< point (phpinspect-edit-end edit)))
       (setq edit (cdr edit)))
 
-    (- point (phpinspect-edit-delta edit))))
+    (setq pos (- point (phpinspect-edit-delta edit)))
+
+    ;; When point is within the edit delta's range, correct the delta by the
+    ;; amount of encroachment.
+    (if (< 0 (setq encroached (- (+ (phpinspect-edit-end edit) (or (cdar edit) 0)) point)))
+        (+ pos encroached)
+      pos)))
 
 (defsubst phpinspect-edtrack-current-position-at-point (track point)
-  (let ((edit (phpinspect-edtrack-edits track)))
+  (let ((edit (phpinspect-edtrack-edits track))
+        (encroached)
+        (pos))
     (while (and edit (< point (phpinspect-edit-original-end edit)))
       (setq edit (cdr edit)))
 
-    (+ point (phpinspect-edit-delta edit))))
+    (setq pos (+ point (phpinspect-edit-delta edit)))
+
+    (if (< 0 (setq encroached (- (+ (phpinspect-edit-original-end edit) (or (cdar edit) 0)) point)))
+        (- pos encroached)
+      pos)))
+
 
 (defsubst phpinspect-edtrack-register-edit (track start end pre-change-length)
+  (phpinspect--log
+   "Edtrack registered change: [start: %d, end: %d, pre-change-length: %d]"
+   start end pre-change-length)
+
+  (phpinspect-edtrack-register-taint
+   track
+   (phpinspect-edtrack-original-position-at-point track start)
+   (phpinspect-edtrack-original-position-at-point track (+ start pre-change-length)))
+
   (let ((edit-before (phpinspect-edtrack-edits track)))
     (while (and edit-before (< end (phpinspect-edit-end edit-before)))
       (setq edit-before (cdr edit-before)))
-
-    (phpinspect-edtrack-register-taint
-     track
-     (phpinspect-edtrack-original-position-at-point track start)
-     (phpinspect-edtrack-original-position-at-point track end))
 
     (let* ((new-edit (cons
                       ;; The end location of the edited region, before being
