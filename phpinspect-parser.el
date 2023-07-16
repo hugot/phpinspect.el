@@ -37,6 +37,69 @@
   (define-inline phpinspect--word-end-regex ()
     (inline-quote "\\([[:blank:]]\\|[^0-9a-zA-Z_]\\)")))
 
+(defvar phpinspect-parse-context nil
+  "An instance of `phpinspect-pctx' that is used when
+parsing. Usually used in combination with
+`phpinspect-with-parse-context'")
+
+(defmacro phpinspect-with-parse-context (ctx &rest body)
+  (declare (indent 1))
+  (let ((old-ctx phpinspect-parse-context))
+    `(unwind-protect
+         (progn
+           (setq phpinspect-parse-context ,ctx)
+           ,@body)
+       (setq phpinspect-parse-context ,old-ctx))))
+
+(cl-defstruct (phpinspect-pctx (:constructor phpinspect-make-pctx))
+  "Parser Context"
+  (incremental nil)
+  (interrupt-threshold (time-convert '(2 . 1000))
+                       :documentation
+                       "After how much time `interrupt-predicate'
+should be polled. This is 2ms by default.")
+  (-start-time nil
+               :documentation "The time at which the parse started.
+This variable is for private use and not always set.")
+  (interrupt-predicate nil
+                      :documentation
+                      "A function that is called in intervals during parsing when
+set. If this function returns a non-nil value, the parse process
+is interrupted and the symbol `phpinspect-parse-interrupted' is
+thrown.")
+  (edtrack nil
+           :type phpinspect-edtrack)
+  (bmap (phpinspect-make-bmap)
+        :type phpinspect-bmap)
+  (previous-bmap nil
+                 :type phpinspect-bmap)
+  (whitespace-before ""
+                     :type string))
+
+(defsubst phpinspect-pctx-check-interrupt (pctx)
+  (unless (phpinspect-pctx--start-time pctx)
+    (setf (phpinspect-pctx--start-time pctx) (time-convert nil)))
+
+  ;; Interrupt when blocking too long while input is pending.
+  (when (and (time-less-p (phpinspect-pctx-interrupt-threshold pctx)
+                          (time-since (phpinspect-pctx--start-time pctx)))
+             (funcall (phpinspect-pctx-interrupt-predicate pctx)))
+    (throw 'phpinspect-parse-interrupted nil)))
+
+
+
+(defsubst phpinspect-pctx-register-token (pctx token start end)
+  (phpinspect-bmap-register
+   (phpinspect-pctx-bmap pctx) start end token (phpinspect-pctx-consume-whitespace pctx)))
+
+(defsubst phpinspect-pctx-register-whitespace (pctx whitespace)
+  (setf (phpinspect-pctx-whitespace-before pctx) whitespace))
+
+(defsubst phpinspect-pctx-consume-whitespace (pctx)
+  (let ((whitespace (phpinspect-pctx-whitespace-before pctx)))
+    (setf (phpinspect-pctx-whitespace-before pctx) "")
+    whitespace))
+
 (defun phpinspect-list-handlers ()
   (let ((handlers))
     (mapatoms (lambda (handler)
@@ -370,9 +433,14 @@ parser function is then returned in byte-compiled form."
 
     (if (and phpinspect-parse-context
              (phpinspect-pctx-incremental phpinspect-parse-context))
+
         (let ((func (phpinspect-parser-compile-incremental (symbol-value parser-symbol))))
-          (lambda (&rest arguments)
-            (apply func phpinspect-parse-context arguments)))
+          (if (phpinspect-pctx-interrupt-predicate phpinspect-parse-context)
+              (lambda (&rest arguments)
+                (phpinspect-pctx-check-interrupt phpinspect-parse-context)
+                (apply func phpinspect-parse-context arguments))
+            (lambda (&rest arguments)
+              (apply func phpinspect-parse-context arguments))))
       (or (symbol-function parser-symbol)
           (defalias parser-symbol
             (phpinspect-parser-compile (symbol-value parser-symbol)))))))
@@ -457,43 +525,6 @@ token is \";\", which marks the end of a statement in PHP."
            ;; Return
            tokens)))))
 
-(defvar phpinspect-parse-context nil
-  "An instance of `phpinspect-pctx' that is used when
-parsing. Usually used in combination with
-`phpinspect-with-parse-context'")
-
-(defmacro phpinspect-with-parse-context (ctx &rest body)
-  (declare (indent 1))
-  (let ((old-ctx phpinspect-parse-context))
-    `(unwind-protect
-         (progn
-           (setq phpinspect-parse-context ,ctx)
-           ,@body)
-       (setq phpinspect-parse-context ,old-ctx))))
-
-(cl-defstruct (phpinspect-pctx (:constructor phpinspect-make-pctx))
-  "Parser Context"
-  (incremental nil)
-  (edtrack nil
-           :type phpinspect-edtrack)
-  (bmap (phpinspect-make-bmap)
-        :type phpinspect-bmap)
-  (previous-bmap nil
-                 :type phpinspect-bmap)
-  (whitespace-before ""
-                     :type string))
-
-(defsubst phpinspect-pctx-register-token (pctx token start end)
-  (phpinspect-bmap-register
-   (phpinspect-pctx-bmap pctx) start end token (phpinspect-pctx-consume-whitespace pctx)))
-
-(defsubst phpinspect-pctx-register-whitespace (pctx whitespace)
-  (setf (phpinspect-pctx-whitespace-before pctx) whitespace))
-
-(defsubst phpinspect-pctx-consume-whitespace (pctx)
-  (let ((whitespace (phpinspect-pctx-whitespace-before pctx)))
-    (setf (phpinspect-pctx-whitespace-before pctx) "")
-    whitespace))
 
 (defun phpinspect-make-incremental-parser-function (tree-type handler-list &optional delimiter-predicate)
   "Like `phpinspect-make-parser-function', but returned function is able to reuse an already parsed tree."
@@ -516,6 +547,7 @@ parsing. Usually used in combination with
                 (previous-bmap (phpinspect-pctx-previous-bmap context))
                 (edtrack (phpinspect-pctx-edtrack context))
                 (taint-iterator (when edtrack (phpinspect-edtrack-make-taint-iterator edtrack)))
+                (check-interrupt (phpinspect-pctx-interrupt-predicate context))
 
                 ;; Loop variables
                 (start-position)
@@ -550,6 +582,9 @@ parsing. Usually used in combination with
                       (phpinspect-pctx-consume-whitespace context))
 
                      (goto-char current-end-position)
+
+                     (when check-interrupt
+                       (phpinspect-pctx-check-interrupt context))
 
                      ;; Skip over whitespace after so that we don't do a full
                      ;; run down all of the handlers during the next iteration

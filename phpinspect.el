@@ -282,87 +282,88 @@ TODO:
  - Respect `eldoc-echo-area-use-multiline-p`
  - This function is too big and has repetitive code. Split up and simplify.
 "
-  (let* ((token-map (phpinspect-buffer-parse-map phpinspect-current-buffer))
-         (resolvecontext (phpinspect-get-resolvecontext token-map (point)))
-         (parent-token (car (phpinspect--resolvecontext-enclosing-tokens
-                                      resolvecontext)))
-         (enclosing-token (cadr (phpinspect--resolvecontext-enclosing-tokens
-                                 resolvecontext)))
-         (statement (phpinspect--resolvecontext-subject resolvecontext))
-         (arg-list)
-         (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
-                               resolvecontext))
-         (static))
+  (catch 'phpinspect-parse-interrupted
+    (let* ((token-map (phpinspect-buffer-parse-map phpinspect-current-buffer))
+           (resolvecontext (phpinspect-get-resolvecontext token-map (point)))
+           (parent-token (car (phpinspect--resolvecontext-enclosing-tokens
+                               resolvecontext)))
+           (enclosing-token (cadr (phpinspect--resolvecontext-enclosing-tokens
+                                   resolvecontext)))
+           (statement (phpinspect--resolvecontext-subject resolvecontext))
+           (arg-list)
+           (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
+                           resolvecontext))
+           (static))
 
-    (phpinspect--log  "Eldoc statement before checking outside list: %s" statement)
-    (when (and (phpinspect-list-p parent-token) enclosing-token)
-      (setq statement
-            (phpinspect-find-statement-before-point
-             token-map (phpinspect-bmap-token-meta token-map enclosing-token)
-             (phpinspect-meta-end
-              (phpinspect-bmap-token-meta token-map parent-token)))))
+      (phpinspect--log  "Eldoc statement before checking outside list: %s" statement)
+      (when (and (phpinspect-list-p parent-token) enclosing-token)
+        (setq statement
+              (phpinspect-find-statement-before-point
+               token-map (phpinspect-bmap-token-meta token-map enclosing-token)
+               (phpinspect-meta-end
+                (phpinspect-bmap-token-meta token-map parent-token)))))
 
-    (phpinspect--log "Enclosing token: %s" enclosing-token)
-    (phpinspect--log  "Eldoc statement: %s" statement)
+      (phpinspect--log "Enclosing token: %s" enclosing-token)
+      (phpinspect--log  "Eldoc statement: %s" statement)
 
-    (setq arg-list (seq-find #'phpinspect-list-p (reverse statement)))
+      (setq arg-list (seq-find #'phpinspect-list-p (reverse statement)))
 
-    (when (and (phpinspect-list-p arg-list)
-               enclosing-token
-               (or (phpinspect-object-attrib-p (car (last statement 2)))
-                   (setq static (phpinspect-static-attrib-p (car (last statement 2))))))
+      (when (and (phpinspect-list-p arg-list)
+                 enclosing-token
+                 (or (phpinspect-object-attrib-p (car (last statement 2)))
+                     (setq static (phpinspect-static-attrib-p (car (last statement 2))))))
 
-      ;; Set resolvecontext subject to the last statement in the enclosing token, minus
-      ;; the method name. The last enclosing token is an incomplete list, so point is
-      ;; likely to be at a location inside a method call like "$a->b->doSomething(". The
-      ;; resulting subject would be "$a->b".
-      (setf (phpinspect--resolvecontext-subject resolvecontext)
-            (phpinspect--get-last-statement-in-token (butlast statement 2)))
+        ;; Set resolvecontext subject to the last statement in the enclosing token, minus
+        ;; the method name. The last enclosing token is an incomplete list, so point is
+        ;; likely to be at a location inside a method call like "$a->b->doSomething(". The
+        ;; resulting subject would be "$a->b".
+        (setf (phpinspect--resolvecontext-subject resolvecontext)
+              (phpinspect--get-last-statement-in-token (butlast statement 2)))
 
-      (let* ((type-of-previous-statement
-              (phpinspect-resolve-type-from-context resolvecontext type-resolver))
-             (method-name-sym (phpinspect-intern-name (cadr (cadar (last statement 2)))))
-             (class (phpinspect-project-get-class-create
-                     (phpinspect--cache-get-project-create
-                      (phpinspect--get-or-create-global-cache)
-                      (phpinspect--resolvecontext-project-root resolvecontext))
-                     type-of-previous-statement))
-             (method (when class
-                       (if static
-                           (phpinspect--class-get-static-method class method-name-sym)
+        (let* ((type-of-previous-statement
+                (phpinspect-resolve-type-from-context resolvecontext type-resolver))
+               (method-name-sym (phpinspect-intern-name (cadr (cadar (last statement 2)))))
+               (class (phpinspect-project-get-class-create
+                       (phpinspect--cache-get-project-create
+                        (phpinspect--get-or-create-global-cache)
+                        (phpinspect--resolvecontext-project-root resolvecontext))
+                       type-of-previous-statement))
+               (method (when class
+                         (if static
+                             (phpinspect--class-get-static-method class method-name-sym)
                            (phpinspect--class-get-method class method-name-sym)))))
-        (phpinspect--log "Eldoc method name: %s" method-name-sym)
-        (phpinspect--log "Eldoc type of previous statement: %s"
-                         type-of-previous-statement)
-        (phpinspect--log "Eldoc method: %s" method)
-        (when method
-          (let ((arg-count -1)
-                (comma-count
-                 (length (seq-filter #'phpinspect-comma-p arg-list))))
-            (concat (truncate-string-to-width
-                     (phpinspect--function-name method) phpinspect-eldoc-word-width) ": ("
-                     (mapconcat
-                      (lambda (arg)
-                        (setq arg-count (+ arg-count 1))
-                        (if (= arg-count comma-count)
-                            (propertize (concat
-                                         "$"
-                                         (truncate-string-to-width
-                                          (car arg)
-                                          phpinspect-eldoc-word-width)
-                                         " "
-                                         (phpinspect--format-type-name (or (cadr arg) "")))
-                                        'face 'eldoc-highlight-function-argument)
-                          (concat "$"
-                                  (truncate-string-to-width (car arg)
-                                                            phpinspect-eldoc-word-width)
-                                  (if (cadr arg) " " "")
-                                  (phpinspect--format-type-name (or (cadr arg) "")))))
-                      (phpinspect--function-arguments method)
-                      ", ")
-                     "): "
-                     (phpinspect--format-type-name
-                      (phpinspect--function-return-type method)))))))))
+          (phpinspect--log "Eldoc method name: %s" method-name-sym)
+          (phpinspect--log "Eldoc type of previous statement: %s"
+                           type-of-previous-statement)
+          (phpinspect--log "Eldoc method: %s" method)
+          (when method
+            (let ((arg-count -1)
+                  (comma-count
+                   (length (seq-filter #'phpinspect-comma-p arg-list))))
+              (concat (truncate-string-to-width
+                       (phpinspect--function-name method) phpinspect-eldoc-word-width) ": ("
+                       (mapconcat
+                        (lambda (arg)
+                          (setq arg-count (+ arg-count 1))
+                          (if (= arg-count comma-count)
+                              (propertize (concat
+                                           "$"
+                                           (truncate-string-to-width
+                                            (car arg)
+                                            phpinspect-eldoc-word-width)
+                                           " "
+                                           (phpinspect--format-type-name (or (cadr arg) "")))
+                                          'face 'eldoc-highlight-function-argument)
+                            (concat "$"
+                                    (truncate-string-to-width (car arg)
+                                                              phpinspect-eldoc-word-width)
+                                    (if (cadr arg) " " "")
+                                    (phpinspect--format-type-name (or (cadr arg) "")))))
+                        (phpinspect--function-arguments method)
+                        ", ")
+                       "): "
+                       (phpinspect--format-type-name
+                        (phpinspect--function-return-type method))))))))))
 
 (cl-defstruct (phpinspect--assignment
                (:constructor phpinspect--make-assignment))
@@ -974,9 +975,6 @@ level of a token. Nested variables are ignored."
     (resolvecontext &optional static)
   "Suggest object or class attributes at point.
 
-TOKEN-TREE must be a syntax tree containing enough context to
-infer the types of the preceding statements
-
 RESOLVECONTEXT must be a structure of the type
 `phpinspect--resolvecontext'.  The PHP type of its subject is
 resolved to provide completion candidates.
@@ -1097,22 +1095,23 @@ static variables and static methods."
                           arg)))
       (insert "(")))
    ((eq command 'candidates)
-    (let ((completion-list (phpinspect--make-completion-list))
-          (candidates))
-      (dolist (completion (phpinspect--suggest-at-point))
-        (phpinspect--completion-list-add
-         completion-list
-         (phpinspect--make-completion completion)))
+    (catch 'phpinspect-parse-interrupted
+      (let ((completion-list (phpinspect--make-completion-list))
+            (candidates))
+        (dolist (completion (phpinspect--suggest-at-point))
+          (phpinspect--completion-list-add
+           completion-list
+           (phpinspect--make-completion completion)))
 
-      (setq candidates
-            (seq-filter (lambda (completion)
-                          (when completion
-                            (string-match (concat "^" (regexp-quote arg))
-                                          completion)))
-                        (phpinspect--completion-list-strings
-                                   completion-list)))
-      (setq phpinspect--last-completion-list completion-list)
-      candidates))
+        (setq candidates
+              (seq-filter (lambda (completion)
+                            (when completion
+                              (string-match (concat "^" (regexp-quote arg))
+                                            completion)))
+                          (phpinspect--completion-list-strings
+                           completion-list)))
+        (setq phpinspect--last-completion-list completion-list)
+        candidates)))
    ((eq command 'annotation)
     (concat " " (phpinspect--completion-annotation
                  (phpinspect--completion-list-get-metadata

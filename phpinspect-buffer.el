@@ -55,6 +55,7 @@ linked with."
         (let* ((map (phpinspect-make-bmap))
                (buffer-map (phpinspect-buffer-map buffer))
                (ctx (phpinspect-make-pctx
+                     :interrupt-predicate #'input-pending-p
                      :bmap map
                      :incremental t
                      :previous-bmap buffer-map
@@ -81,6 +82,16 @@ linked with."
 
 (cl-defmethod phpinspect-buffer-register-edit
   ((buffer phpinspect-buffer) (start integer) (end integer) (pre-change-length integer))
+  "Mark a region of the buffer as edited."
+
+  ;; Take into account "atoms" (tokens without clear delimiters like words,
+  ;; variables and object attributes. The meaning of these tokens will change as
+  ;; they grow or shrink, so their ful regions need to be marked for a reparse).
+  (save-excursion
+    (goto-char start)
+    (when (looking-back "\\($->|::\\)?[^][)(}{[:blank:]\n;'\"]+" nil t)
+      (setq start (- start (length (match-string 0))))))
+
   (phpinspect-edtrack-register-edit
    (phpinspect-buffer-edit-tracker buffer) start end pre-change-length))
 
