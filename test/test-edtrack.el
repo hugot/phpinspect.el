@@ -6,12 +6,25 @@
     (should (= 13 (phpinspect-edit-end edit)))))
 
 (ert-deftest phpinspect-edtrack-register-edit ()
-  (let* ((edtrack (phpinspect-make-edtrack))
-         (edit1 (phpinspect-edtrack-register-edit edtrack 5 10 10))
-         (edit3 (phpinspect-edtrack-register-edit edtrack 100 200 150))
-         (edit2 (phpinspect-edtrack-register-edit edtrack 15 22 7)))
+  (let* ((edtrack (phpinspect-make-edtrack)))
+    (phpinspect-edtrack-register-edit edtrack 5 10 10)
+    (phpinspect-edtrack-register-edit edtrack 100 200 150)
+    (phpinspect-edtrack-register-edit edtrack 15 22 7)
 
     (should (equal `((255 . -50) (27 . 0) (15 . -5)) (phpinspect-edtrack-edits edtrack)))))
+
+(ert-deftest phpinspect-edtrack-register-encroaching-edit ()
+  (let* ((edtrack (phpinspect-make-edtrack)))
+    (phpinspect-edtrack-register-edit edtrack 5 10 0)
+    (phpinspect-edtrack-register-edit edtrack 100 150 25)
+
+    ;; Encroaches on delta of edit before by 15 points ((125 + 25) - 135 = 15),
+    ;; so the original end position should be calculated as 135 - (25 - 15) - 5 = 120
+    ;; (see also `phpinspect-edtrack-original-position-at-point')
+    (phpinspect-edtrack-register-edit edtrack 135 170 0)
+
+    (should (equal `((120 . 35) (120 . 25) (5 . 5)) (phpinspect-edtrack-edits edtrack)))))
+
 
 (ert-deftest phpinspect-edtrack-orginal-position-at-point ()
   (let ((track (phpinspect-make-edtrack)))
@@ -74,4 +87,4 @@
              iterator (phpinspect-make-meta nil 65 73 nil nil)))
 
         (should (phpinspect-taint-iterator-token-is-tainted-p
-             iterator (phpinspect-make-meta nil 100 130 nil nil)))))
+                 iterator (phpinspect-make-meta nil 100 130 nil nil)))))

@@ -563,6 +563,9 @@ token is \";\", which marks the end of a statement in PHP."
                         (not (if delimiter-predicate
                                  (funcall delimiter-predicate (car (last tokens)))
                                nil)))
+              (when check-interrupt
+                (phpinspect-pctx-check-interrupt context))
+
               (setq start-position (point))
               (cond ((and previous-bmap edtrack
                           (setq existing-meta
@@ -582,9 +585,6 @@ token is \";\", which marks the end of a statement in PHP."
                       (phpinspect-pctx-consume-whitespace context))
 
                      (goto-char current-end-position)
-
-                     (when check-interrupt
-                       (phpinspect-pctx-check-interrupt context))
 
                      ;; Skip over whitespace after so that we don't do a full
                      ;; run down all of the handlers during the next iteration

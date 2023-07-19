@@ -120,7 +120,9 @@
                       ;; points in the buffer subtratted. This corresponds with
                       ;; the original position of the region end before the
                       ;; buffer was ever edited.
-                      (- (+ start pre-change-length) (or (phpinspect-edit-delta edit-before) 0))
+                      (phpinspect-edtrack-original-position-at-point
+                       track (+ start pre-change-length))
+
 
                       ;; The delta of this edit.
                       (- (- end start) pre-change-length))))
