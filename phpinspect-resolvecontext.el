@@ -56,22 +56,17 @@
       (phpinspect-namespace-p token)))
 
 (defun phpinspect-find-statement-before-point (bmap meta point)
-  (phpinspect--log "going through %s" (phpinspect-meta-token meta))
   (let ((children (reverse (cdr (phpinspect-meta-token meta)))))
     (let ((previous-siblings))
       (catch 'return
         (dolist (child children)
           (when (phpinspect-probably-token-p child)
-            (phpinspect--log "probably token: %s" child)
-            ;; (phpinspect--log "Child: %s" child)
             (setq child (phpinspect-bmap-token-meta bmap child))
             (when (< (phpinspect-meta-start child) point)
               (if (and (not previous-siblings) (phpinspect-blocklike-p (phpinspect-meta-token child)))
                   (progn
-                    (phpinspect--log "recursing into %s" (phpinspect-meta-token child))
                     (throw 'return (phpinspect-find-statement-before-point bmap child point)))
                 (when (phpinspect-end-of-statement-p (phpinspect-meta-token child))
-                  (phpinspect--log "returning %s, end of statement: %s" previous-siblings (phpinspect-meta-token child))
                   (throw 'return previous-siblings))
                 (push (phpinspect-meta-token child) previous-siblings)))))
         previous-siblings))))

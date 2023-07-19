@@ -324,7 +324,6 @@
          (ending))
     (unless (hash-table-empty-p ends)
       (while (not (or (<= point 0) (setq ending (phpinspect-bmap-tokens-ending-at bmap point))))
-        (phpinspect--log "Checking point %d" point)
         (setq point (- point 1)))
       (car (last ending)))))
 
