@@ -273,6 +273,14 @@ ARG-LIST. ARG-LIST should be a list token as returned by
                        (phpinspect--make-type :name (car (last arg))))
             nil)))))
 
+(defun phpinspect--determine-completion-point ()
+  "Find first point backwards that could contain any kind of
+context for completion."
+  (save-excursion
+    (re-search-backward "[^[:blank:]\n]")
+    (forward-char)
+    (point)))
+
 (defun phpinspect-eldoc-function ()
   "An `eldoc-documentation-function` implementation for PHP files.
 
@@ -284,7 +292,7 @@ TODO:
 "
   (catch 'phpinspect-parse-interrupted
     (let* ((token-map (phpinspect-buffer-parse-map phpinspect-current-buffer))
-           (resolvecontext (phpinspect-get-resolvecontext token-map (point)))
+           (resolvecontext (phpinspect-get-resolvecontext token-map (phpinspect--determine-completion-point)))
            (parent-token (car (phpinspect--resolvecontext-enclosing-tokens
                                resolvecontext)))
            (enclosing-token (cadr (phpinspect--resolvecontext-enclosing-tokens
@@ -1052,7 +1060,7 @@ static variables and static methods."
 (defun phpinspect--suggest-at-point ()
   (phpinspect--log "Entering suggest at point. Point: %d" (point))
   (let* ((bmap (phpinspect-buffer-parse-map phpinspect-current-buffer))
-         (resolvecontext (phpinspect-get-resolvecontext bmap (point)))
+         (resolvecontext (phpinspect-get-resolvecontext bmap (phpinspect--determine-completion-point)))
          (last-tokens (last (phpinspect--resolvecontext-subject resolvecontext) 2)))
     (phpinspect--log "Subject: %s" (phpinspect--resolvecontext-subject
                                     resolvecontext))

@@ -319,11 +319,18 @@
   (and (listp token)
        (keywordp (car token))))
 
-(cl-defmethod phpinspect-bmap-last-token-before-point ((bmap phpinspect-bmap) point)
+(cl-defmethod phpinspect-bmap-last-token-before-point ((bmap phpinspect-bmap) point &optional limit)
+  "Search backward in BMAP for last token ending before POINT.
+
+LIMIT is the maximum number of positions to check backward before
+giving up. If not provided, this is 10."
+  (unless limit (setq limit 10))
   (let* ((ends (phpinspect-bmap-ends bmap))
-         (ending))
+         (ending)
+         (point-limit (- point limit)))
     (unless (hash-table-empty-p ends)
-      (while (not (or (<= point 0) (setq ending (phpinspect-bmap-tokens-ending-at bmap point))))
+      (while (not (or (<= point 0) (<= point point-limit)
+                      (setq ending (phpinspect-bmap-tokens-ending-at bmap point))))
         (setq point (- point 1)))
       (car (last ending)))))
 
