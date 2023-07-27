@@ -55,6 +55,10 @@
       (phpinspect-class-p token)
       (phpinspect-namespace-p token)))
 
+(defsubst phpinspect-return-p (token)
+  (and (phpinspect-word-p token)
+       (string= "return" (cadr token))))
+
 (defun phpinspect-find-statement-before-point (bmap meta point)
   (let ((children (reverse (cdr (phpinspect-meta-token meta)))))
     (let ((previous-siblings))
@@ -66,7 +70,8 @@
               (if (and (not previous-siblings) (phpinspect-blocklike-p (phpinspect-meta-token child)))
                   (progn
                     (throw 'return (phpinspect-find-statement-before-point bmap child point)))
-                (when (phpinspect-end-of-statement-p (phpinspect-meta-token child))
+                (when (or (phpinspect-return-p (phpinspect-meta-token child))
+                          (phpinspect-end-of-statement-p (phpinspect-meta-token child)))
                   (throw 'return previous-siblings))
                 (push (phpinspect-meta-token child) previous-siblings)))))
         previous-siblings))))
@@ -79,7 +84,16 @@
          (subject (phpinspect-bmap-last-token-before-point bmap point))
          (subject-token)
          (siblings))
-    (phpinspect--log "Last token before point: %s" subject)
+    (phpinspect--log "Last token before point: %s" (phpinspect-meta-token subject))
+
+    (let ((next-sibling (car (phpinspect-meta-right-siblings subject))))
+      ;; When the right sibling of the last ending token overlaps point, this is
+      ;; our actual subject.
+      (when (and next-sibling
+                 (setq next-sibling (phpinspect-bmap-token-meta bmap next-sibling))
+                 (phpinspect-meta-overlaps-point next-sibling point))
+        (setq subject next-sibling)))
+
     ;; Dig down through tokens that can contain statements
     (catch 'break
       (while (and subject

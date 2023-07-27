@@ -40,6 +40,7 @@
     (catch 'matched
       (dolist (strategy phpinspect-eldoc-strategies)
         (when (phpinspect-eld-strategy-supports strategy query rctx)
+          (phpinspect--log "Found matching eldoc strategy. Executing...")
           (throw 'matched (phpinspect-eld-strategy-execute strategy query rctx)))))))
 
 (cl-defgeneric phpinspect-eld-strategy-supports (strategy (query phpinspect-eldoc-query) (context phpinspect--resolvecontext))
@@ -85,20 +86,15 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
     ;; When our subject is inside a list, it is probably an argument of a
     ;; function/method call, which is what this strategy provides information for.
     (or (phpinspect-list-p parent-token)
-
-        ;; When our subject IS a list, we're probably in an empty/incomplete
-        ;; argument list.
-        (and (= 1 (length (phpinspect--resolvecontext-subject rctx)))
-             (phpinspect-list-p
-              (car (last (phpinspect--resolvecontext-subject rctx)))))
-
-        ;; When the last token in our subject is an incomplete list, we're
-        ;; probably at the end of the buffer in an unfinished argument list.
-        (phpinspect-incomplete-list-p
+        ;; When the last token in our subject is a list, we're either at the end
+        ;; of a buffer in an incomplete argument list (no closing paren), or in
+        ;; an empty argument list of a function call.
+        (phpinspect-list-p
          (car (last (phpinspect--resolvecontext-subject rctx)))))))
 
 (cl-defmethod phpinspect-eld-strategy-execute
   ((strat phpinspect-eld-function-args) (q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
+  (phpinspect--log "Executing `phpinspect-eld-function-args' strategy")
   (let* ((token-map (phpinspect-buffer-parse-map (phpinspect-eldoc-query-buffer q)))
          (enclosing-token (cadr (phpinspect--resolvecontext-enclosing-tokens
                                  rctx)))
@@ -107,19 +103,21 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                      (phpinspect-eldoc-query-point q)))
          match-result static arg-list arg-pos)
 
+    (phpinspect--log "Eldoc statement is:  %s" statement)
     (when enclosing-token
       (cond
        ;; Method call
        ((setq match-result (phpinspect--match-sequence (last statement 2)
                              :f #'phpinspect-attrib-p
                              :f #'phpinspect-list-p))
+        (phpinspect--log "Eldoc context is a method call")
 
         (setq arg-list (car (last match-result))
               static (phpinspect-static-attrib-p (car match-result))
               arg-pos (seq-reduce
                        (lambda (count token)
                          (if (and (phpinspect-comma-p token)
-                                  (> (phpinspect-eldoc-query-point q)
+                                  (>= (phpinspect-eldoc-query-point q)
                                      (phpinspect-meta-end
                                       (phpinspect-bmap-token-meta token-map token))))
                              (+ count 1)
