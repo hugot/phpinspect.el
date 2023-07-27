@@ -88,3 +88,26 @@
 
         (should (phpinspect-taint-iterator-token-is-tainted-p
                  iterator (phpinspect-make-meta nil 100 130 nil nil)))))
+
+(ert-deftest phpinspect-edtrack-edit-derived-taint-iterator ()
+  (let ((track (phpinspect-make-edtrack))
+        iterator)
+    (phpinspect-edtrack-register-edit track 10 20 5)
+    (phpinspect-edtrack-register-edit track 15 30 0)
+    (phpinspect-edtrack-register-edit track 20 25 10)
+
+    (setq iterator (phpinspect-edtrack-make-taint-iterator track))
+
+    (should (phpinspect-taint-iterator-region-is-tainted-p iterator 15 20))
+    (should (phpinspect-taint-iterator-region-is-tainted-p iterator 25 30))
+    (should-not (phpinspect-taint-iterator-region-is-tainted-p iterator 30 35))))
+
+(ert-deftest phpinspect-edtrack-taint-overlapping-edits ()
+  (let ((track (phpinspect-make-edtrack))
+        iterator)
+    (phpinspect-edtrack-register-edit track 10 20 5)
+
+    (should (equal (list (cons 10 15)) (phpinspect-edtrack-taint-pool track)))
+
+    (phpinspect-edtrack-register-edit track 15 0 1)
+    (should (equal (list (cons 10 16)) (phpinspect-edtrack-taint-pool track)))))
