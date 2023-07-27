@@ -121,6 +121,11 @@
      :enclosing-tokens (nreverse enclosing-tokens)
      :project-root (phpinspect-current-project-root))))
 
+(defun phpinspect--resolvecontext-project (rctx)
+  (phpinspect--cache-get-project-create
+   (phpinspect--get-or-create-global-cache)
+   (phpinspect--resolvecontext-project-root rctx)))
+
 (defun phpinspect--get-resolvecontext (token &optional resolvecontext)
   "Find the deepest nested incomplete token in TOKEN.
 If RESOLVECONTEXT is nil, it is created.  Returns RESOLVECONTEXT

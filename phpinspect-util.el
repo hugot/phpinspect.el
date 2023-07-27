@@ -72,20 +72,22 @@ pattern. See `phpinspect--match-sequence'."
         :type list
         :documentation "The original code list used to create this pattern"))
 
-(defsubst phpinspect--make-pattern (&rest pattern)
-  (phpinspect--make-pattern-generated
-   :matcher (apply #'phpinspect--match-sequence-lambda pattern)
-   :code pattern))
+(defmacro phpinspect--make-pattern (&rest pattern)
+  `(phpinspect--make-pattern-generated
+    :matcher (phpinspect--match-sequence-lambda ,@pattern)
+    :code  (list ,@(mapcar (lambda (part) (if (eq '* part) `(quote ,part) part))
+                           pattern))))
 
-(defun phpinspect--match-sequence-lambda (&rest pattern)
-  (lambda (sequence)
-    (apply #'phpinspect--match-sequence sequence pattern)))
+(defmacro phpinspect--match-sequence-lambda (&rest pattern)
+  (let ((sequence-sym (gensym)))
+    `(lambda (,sequence-sym)
+       (phpinspect--match-sequence ,sequence-sym ,@pattern))))
 
 (cl-defmethod phpinspect--pattern-match ((pattern phpinspect--pattern) sequence)
   "Match SEQUENCE to PATTERN."
   (funcall (phpinspect--pattern-matcher pattern) sequence))
 
-(defun phpinspect--match-sequence (sequence &rest pattern)
+(defmacro phpinspect--match-sequence (sequence &rest pattern)
   "Match SEQUENCE to positional matchers defined in PATTERN.
 
 PATTERN is a plist with the allowed keys being :m and :f. Each
@@ -107,30 +109,43 @@ element at this position in SEQUENCE.
 the function provided as value. The function is executed with the
 list element as argument, and will be considered as matching if
 it evaluates to a non-nil value."
+  (declare (indent 1))
   (let* ((pattern-length (length pattern))
-         (count 0)
+         (sequence-length (/ pattern-length 2))
          (sequence-pos 0)
-         (sequence-length (/ pattern-length 2)))
+         (sequence-sym (gensym))
+         (match-sym (gensym))
+         checkers key value)
 
-    (and (= sequence-length (length sequence))
-         (catch 'found
-           (while (< count pattern-length)
-             (let ((key (elt pattern count))
-                   (value (elt pattern (+ count 1))))
-               (unless (keywordp key)
-                 (error (format "Invalid, expected keyword, got %s" key)))
+    (while (setq key (pop pattern))
+      (unless (keywordp key)
+        (error "Invalid pattern argument, expected keyword, got: %s" key))
 
-               (cond ((eq key :m)
-                      (unless (eq value '*)
-                        (unless (equal value (elt sequence sequence-pos))
-                          (throw 'found nil))))
-                     ((eq key :f)
-                      (unless (funcall value (elt sequence sequence-pos))
-                        (throw 'found nil)))
-                     (t (error (format "Invalid keyword: %s" key))))
-               (setq count (+ count 2)
-                     sequence-pos (+ sequence-pos 1))))
-           (throw 'found t)))))
+      (unless (setq value (pop pattern))
+        (error "No value for key %s" key))
+
+      (cond ((eq key :m)
+             (unless (eq value '*)
+               (setq checkers
+                     (nconc checkers (list `(equal ,value (elt ,sequence-sym ,sequence-pos)))))))
+            ((eq key :f)
+             (setq checkers
+                   (nconc
+                    checkers (list
+                              (if (symbolp value)
+                                  `(,value (elt ,sequence-sym ,sequence-pos))
+                                `(funcall ,value (elt ,sequence-sym ,sequence-pos)))))))
+            (t (error "Invalid keyword: %s" key)))
+
+      (setq checkers (nconc checkers (list `(setq ,match-sym (nconc ,match-sym (list (elt ,sequence-sym ,sequence-pos)))))))
+
+      (setq sequence-pos (+ sequence-pos 1)))
+
+    `(let ((,sequence-sym ,sequence)
+           ,match-sym)
+       (and (= ,sequence-length (length ,sequence))
+            ,@checkers)
+       ,match-sym)))
 
 (defun phpinspect--pattern-concat (pattern1 pattern2)
   (let* ((pattern1-sequence-length (/ (length (phpinspect--pattern-code pattern1)) 2)))

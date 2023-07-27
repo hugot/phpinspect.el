@@ -98,8 +98,15 @@
 (cl-defmethod phpinspect--class-get-method ((class phpinspect--class) method-name)
   (gethash method-name (phpinspect--class-methods class)))
 
-(cl-defmethod phpinspect--class-get-static-method ((class phpinspect--class) method-name)
+(cl-defmethod phpinspect--class-get-static-method ((class phpinspect--class) (method-name symbol))
   (gethash method-name (phpinspect--class-static-methods class)))
+
+(cl-defmethod phpinspect--class-get-variable
+  ((class phpinspect--class) (variable-name string))
+  (catch 'found
+    (dolist (variable (phpinspect--class-variables class))
+      (when (string= variable-name (phpinspect--variable-name variable))
+        (throw 'found variable)))))
 
 (cl-defmethod phpinspect--add-method-copy-to-map
   ((map hash-table)
@@ -179,7 +186,8 @@
 (cl-defmethod phpinspect--class-update-method ((class phpinspect--class)
                                                (method phpinspect--function))
   (let* ((existing (gethash (phpinspect--function-name-symbol method)
-                           (phpinspect--class-methods class))))
+                            (phpinspect--class-methods class))))
+
     (if existing
         (phpinspect--merge-method
          (alist-get 'class-name (phpinspect--class-index class))

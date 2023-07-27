@@ -95,10 +95,6 @@ Projects get purged when they are removed from the global cache.")
                  :documentation "All active file watchers in this project,
 indexed by the absolute paths of the files they're watching."))
 
-(cl-defgeneric phpinspect-project-add-class
-    ((project phpinspect-project) (class (head phpinspect--indexed-class)))
-  "Add an indexed CLASS to PROJECT.")
-
 (cl-defmethod phpinspect-project-purge ((project phpinspect-project))
   "Disable all background processes for project and put it in a `purged` state."
   (maphash (lambda (_ watcher) (file-notify-rm-watch watcher))

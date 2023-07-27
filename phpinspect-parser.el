@@ -911,7 +911,7 @@ static keywords with the same meaning as in a class block."
          (continue-condition (lambda ()
                                (not (and (char-equal (char-after) ?})
                                          (setq complete-block t)))))
-         (parsed (funcall parser (current-buffer) max-point continue-condition)))
+         (parsed (funcall parser (current-buffer) max-point continue-condition 'root)))
     (if complete-block
         (forward-char)
       (setcar parsed :incomplete-block))

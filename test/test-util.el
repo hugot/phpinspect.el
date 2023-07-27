@@ -25,21 +25,22 @@
 
 (ert-deftest phpinspect--pattern ()
   (let* ((a "a")
-         (pattern1 (phpinspect--make-pattern :m `(,a) :m '* :m "b"))
-         (pattern2 (phpinspect--make-pattern :f #'listp :m '* :m "b")))
+         (pattern1 (phpinspect--make-pattern :m `(,a) :m * :m "b"))
+         (pattern2 (phpinspect--make-pattern :f #'listp :m * :m "b")))
 
     (should (equal '(:m ("a") :m * :m "b") (phpinspect--pattern-code pattern1)))
     (should (equal '(:f listp :m * :m "b") (phpinspect--pattern-code pattern2)))
 
     (dolist (pattern `(,pattern1 ,pattern2))
       (should (phpinspect--pattern-match pattern '(("a") "c" "b")))
+      (should (equal '(("a") "c" "b") (phpinspect--pattern-match pattern '(("a") "c" "b"))))
       (should (phpinspect--pattern-match pattern '(("a") nil "b")))
       (should-not (phpinspect--pattern-match pattern '(1 nil "b")))
       (should-not (phpinspect--pattern-match pattern '(("a") nil "b" "c"))))))
 
 (ert-deftest phpinspect--pattern-concat ()
-  (let* ((pattern1 (phpinspect--make-pattern :m "a" :m '* :m "b"))
-         (pattern2 (phpinspect--make-pattern :f #'stringp :m '* :m "D"))
+  (let* ((pattern1 (phpinspect--make-pattern :m "a" :m * :m "b"))
+         (pattern2 (phpinspect--make-pattern :f #'stringp :m * :m "D"))
          (result (phpinspect--pattern-concat pattern1 pattern2)))
 
     (should (equal '(:m "a" :m * :m "b" :f stringp :m * :m "D") (phpinspect--pattern-code result)))
