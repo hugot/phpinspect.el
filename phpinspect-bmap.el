@@ -323,8 +323,8 @@
   "Search backward in BMAP for last token ending before POINT.
 
 LIMIT is the maximum number of positions to check backward before
-giving up. If not provided, this is 10."
-  (unless limit (setq limit 10))
+giving up. If not provided, this is 100."
+  (unless limit (setq limit 100))
   (let* ((ends (phpinspect-bmap-ends bmap))
          (ending)
          (point-limit (- point limit)))
