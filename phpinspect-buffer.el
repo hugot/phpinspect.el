@@ -73,7 +73,9 @@ linked with."
 
 
 (cl-defmethod phpinspect-buffer-reparse ((buffer phpinspect-buffer))
+  (setf (phpinspect-buffer-tree buffer) nil)
   (setf (phpinspect-buffer-map buffer) (phpinspect-make-bmap))
+  (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
   (phpinspect-buffer-parse buffer))
 
 (defsubst phpinspect-buffer-parse-map (buffer)
