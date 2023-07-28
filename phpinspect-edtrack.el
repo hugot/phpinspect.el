@@ -122,7 +122,13 @@
     (let ((delta ;; The delta of this edit.
            (- (- end start) pre-change-length))
           new-edit)
-      (if (= (phpinspect-edtrack-last-edit-start track) start)
+      (if (and (= (phpinspect-edtrack-last-edit-start track) start)
+               ;; Confirm that this is indeed a growing edit and not an edit
+               ;; starting at the same place by chance
+               (or (and (> delta 0) (> (cdr (phpinspect-edtrack-last-edit track)) 0)
+                        (> delta (cdr (phpinspect-edtrack-last-edit track))))
+                   (and (< delta 0) (< (cdr (phpinspect-edtrack-last-edit track)) 0)
+                        (< delta (cdr (phpinspect-edtrack-last-edit track))))))
           ;; `after-change-functions' can be called in succession with the same
           ;; start point for a continuously growing edited region. For example,
           ;; when typing without interruptions, subsequent calls can be:
@@ -196,6 +202,8 @@
 
 (defsubst phpinspect-edtrack-clear (track)
   (setf (phpinspect-edtrack-edits track) nil)
+  (setf (phpinspect-edtrack-last-edit track) nil)
+  (setf (phpinspect-edtrack-last-edit-start track) -1)
   (phpinspect-edtrack-clear-taint-pool track))
 
 (defsubst phpinspect-edtrack-register-taint (track start end)

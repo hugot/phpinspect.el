@@ -61,6 +61,7 @@ linked with."
                      :previous-bmap buffer-map
                      :edtrack (phpinspect-buffer-edit-tracker buffer))))
           (phpinspect-with-parse-context ctx
+            (phpinspect--log "Parsing buffer")
             (let ((parsed (phpinspect-parse-current-buffer)))
               (setf (phpinspect-buffer-map buffer) map)
               (setf (phpinspect-buffer-tree buffer) parsed)
@@ -91,8 +92,9 @@ linked with."
   ;; they grow or shrink, so their ful regions need to be marked for a reparse).
   (save-excursion
     (goto-char start)
-    (when (looking-back "\\($->|::\\)?[^][)(}{[:blank:]\n;'\"]+" nil t)
-      (setq start (- start (length (match-string 0))))))
+    (when (looking-back "\\($|->|::\\)?[^][)(}{[:blank:]\n;'\"]+" nil t)
+      (setq start (- start (length (match-string 0))))
+      (setq pre-change-length (+ pre-change-length (length (match-string 0))))))
 
   (phpinspect-edtrack-register-edit
    (phpinspect-buffer-edit-tracker buffer) start end pre-change-length))
