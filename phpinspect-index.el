@@ -132,7 +132,9 @@ function (think \"new\" statements, return types etc.)."
                        (cadr (cadr (car (last var-annotations))))))))
     (phpinspect--log "calling resolver from index-variable-from-scope")
     (phpinspect--make-variable
-     :name variable-name
+     ;; Static class variables are always prefixed with dollar signs when
+     ;; referenced.
+     :name (if static (concat "$" variable-name) variable-name)
      :scope `(,(car scope))
      :lifetime (when static '(:static))
      :type (if type (funcall type-resolver (phpinspect--make-type :name type))))))

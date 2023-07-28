@@ -99,9 +99,10 @@ more recent"
   (let ((class (phpinspect-get-or-create-cached-project-class
                 (phpinspect-current-project-root)
                 class-name)))
-    ;; TODO return static variables/constants when static is set
     (when class
-      (phpinspect--class-variables class))))
+      (if static
+          (append (phpinspect--class-get-static-variables class) (phpinspect--class-get-constants class))
+        (phpinspect--class-get-variables class)))))
 
 (defun phpinspect--make-method-lister (resolvecontext buffer-classes &optional static)
   (lambda (fqn)

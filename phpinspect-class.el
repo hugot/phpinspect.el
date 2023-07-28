@@ -78,7 +78,9 @@
     (phpinspect--class-update-static-method class method))
 
   (setf (phpinspect--class-variables class)
-        (alist-get 'variables index))
+        (append (alist-get 'variables index)
+                (alist-get 'constants index)
+                (alist-get 'static-variables index)))
 
   (setf (phpinspect--class-extended-classes class)
         (seq-filter
@@ -107,6 +109,15 @@
     (dolist (variable (phpinspect--class-variables class))
       (when (string= variable-name (phpinspect--variable-name variable))
         (throw 'found variable)))))
+
+(cl-defmethod phpinspect--class-get-variables ((class phpinspect--class))
+  (seq-filter #'phpinspect--variable-vanilla-p (phpinspect--class-variables class)))
+
+(cl-defmethod phpinspect--class-get-static-variables ((class phpinspect--class))
+  (seq-filter #'phpinspect--variable-static-p (phpinspect--class-variables class)))
+
+(cl-defmethod phpinspect--class-get-constants ((class phpinspect--class))
+  (seq-filter #'phpinspect--variable-const-p (phpinspect--class-variables class)))
 
 (cl-defmethod phpinspect--add-method-copy-to-map
   ((map hash-table)

@@ -260,5 +260,9 @@ mutability of the variable")
 (defun phpinspect--variable-const-p (variable)
   (phpinspect-const-p (phpinspect--variable-mutability variable)))
 
+(defun phpinspect--variable-vanilla-p (variable)
+  (not (or (phpinspect--variable-static-p variable)
+           (phpinspect--variable-const-p variable))))
+
 (provide 'phpinspect-type)
 ;;; phpinspect-type.el ends here

@@ -146,7 +146,6 @@ users will have to use \\[phpinspect-purge-cache]."
             (when imports
               (phpinspect-project-enqueue-imports project imports)))))
 
-
       (when imports (phpinspect-project-enqueue-imports project imports)))))
 
 
@@ -226,26 +225,11 @@ Example configuration:
 
 (defun phpinspect--suggest-at-point ()
   (phpinspect--log "Entering suggest at point. Point: %d" (point))
-  (let* ((bmap (phpinspect-buffer-parse-map phpinspect-current-buffer))
-         (resolvecontext (phpinspect-get-resolvecontext bmap (phpinspect--determine-completion-point)))
-         (last-tokens (last (phpinspect--resolvecontext-subject resolvecontext) 2)))
-    (phpinspect--log "Subject: %s" (phpinspect--resolvecontext-subject
-                                    resolvecontext))
-    (phpinspect--log "Last tokens: %s" last-tokens)
-    (cond ((and (phpinspect-object-attrib-p (car last-tokens))
-                (phpinspect-word-p (cadr last-tokens)))
-           (phpinspect--log "word-attributes")
-           (phpinspect-suggest-attributes-at-point resolvecontext))
-          ((phpinspect-object-attrib-p (cadr last-tokens))
-           (phpinspect--log "object-attributes")
-           (phpinspect-suggest-attributes-at-point resolvecontext))
-          ((phpinspect-static-attrib-p (cadr last-tokens))
-           (phpinspect--log "static-attributes")
-           (phpinspect-suggest-attributes-at-point token-tree resolvecontext t))
-          ((phpinspect-variable-p (car(phpinspect--resolvecontext-subject
-                                       resolvecontext)))
-           (phpinspect-suggest-variables-at-point resolvecontext)))))
-
+  (phpinspect-completion-query-execute
+   (phpinspect-make-completion-query
+    :buffer phpinspect-current-buffer
+    :completion-point (phpinspect--determine-completion-point)
+    :point (point))))
 
 (defun phpinspect-company-backend (command &optional arg &rest _ignored)
   "A company backend for PHP."
@@ -271,12 +255,8 @@ Example configuration:
       (insert "(")))
    ((eq command 'candidates)
     (catch 'phpinspect-parse-interrupted
-      (let ((completion-list (phpinspect--make-completion-list))
+      (let ((completion-list (phpinspect--suggest-at-point))
             (candidates))
-        (dolist (completion (phpinspect--suggest-at-point))
-          (phpinspect--completion-list-add
-           completion-list
-           (phpinspect--make-completion completion)))
 
         (setq candidates
               (seq-filter (lambda (completion)
