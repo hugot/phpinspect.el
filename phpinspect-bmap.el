@@ -325,14 +325,23 @@
 LIMIT is the maximum number of positions to check backward before
 giving up. If not provided, this is 100."
   (unless limit (setq limit 100))
-  (let* ((ends (phpinspect-bmap-ends bmap))
-         (ending)
+  (let* ((ending)
          (point-limit (- point limit)))
-    (unless (hash-table-empty-p ends)
+    (unless (hash-table-empty-p (phpinspect-bmap-ends bmap))
       (while (not (or (<= point 0) (<= point point-limit)
                       (setq ending (phpinspect-bmap-tokens-ending-at bmap point))))
         (setq point (- point 1)))
       (car (last ending)))))
+
+(cl-defmethod phpinspect-bmap-last-token-starting-before-point ((bmap phpinspect-bmap) point &optional limit)
+  (unless limit (setq limit 100))
+  (let* ((starting)
+         (point-limit (- point limit)))
+    (unless (hash-table-empty-p (phpinspect-bmap-starts bmap))
+      (while (not (or (<= point 0) (<= point point-limit)
+                      (setq starting (phpinspect-bmap-token-starting-at bmap point))))
+        (setq point (- point 1)))
+      starting)))
 
 (defsubst phpinspect-bmap-overlay (bmap bmap-overlay token-meta pos-delta &optional whitespace-before)
   (let* ((overlays (phpinspect-bmap-overlays bmap))

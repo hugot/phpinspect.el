@@ -28,6 +28,11 @@
 (require 'phpinspect-fs)
 (require 'filenotify)
 
+(defvar phpinspect-auto-reindex nil
+  "Whether or not phpinspect should automatically search for new
+files. The current implementation is clumsy and can result in
+serious performance hits. Enable at your own risk (:")
+
 (defvar phpinspect-project-root-function #'phpinspect--find-project-root
   "Function that phpinspect uses to find the root directory of a project.")
 

@@ -154,6 +154,20 @@ NAMESPACE may be nil, or a string with a namespace FQN."
     (setf (phpinspect--type-collection type) t))
   type)
 
+(defun phpinspect--find-innermost-incomplete-class (token)
+  (let ((last-token (car (last token))))
+    (cond ((phpinspect-incomplete-class-p token) token)
+          ((phpinspect-incomplete-token-p last-token)
+           (phpinspect--find-innermost-incomplete-class last-token)))))
+
+(defun phpinspect--find-class-token (token)
+  "Recurse into token tree until a class is found."
+  (when (and (listp token) (> (length token) 1))
+    (let ((last-token (car (last token))))
+      (cond ((phpinspect-class-p token) token)
+            (last-token
+             (phpinspect--find-class-token last-token))))))
+
 (defun phpinspect--make-type-resolver (types &optional token-tree namespace)
   "Little wrapper closure to pass around and resolve types with."
   (let* ((inside-class
@@ -215,7 +229,6 @@ return type of the function."))
 (cl-defmethod phpinspect--function-name ((func phpinspect--function))
   (symbol-name (phpinspect--function-name-symbol func)))
 
-
 (cl-defstruct (phpinspect--variable (:constructor phpinspect--make-variable))
   "A PHP Variable."
   (name nil
@@ -223,16 +236,29 @@ return type of the function."))
         :documentation
         "A string containing the name of the variable.")
   (scope nil
-         :type phpinspect-scope
          :documentation
          "When the variable is an object attribute, this should
 contain the scope of the variable as returned by
-`phpinspect-parse-scope`")
+`phpinspect-parse-scope'")
+  (lifetime nil
+            :documentation
+            "The lifetime of the variable (e.g. whether it is static or not). Will
+contain the parsed keyword token indicating the lifetime of the variable")
+  (mutability nil
+              :documentation
+              "The mutability of the variable (e.g. whether it is constant or
+not). Will contain the parsed keyword token indicating the
+mutability of the variable")
   (type nil
         :type string
         :documentation
         "A string containing the FQN of the variable's type"))
 
+(defun phpinspect--variable-static-p (variable)
+  (phpinspect-static-p (phpinspect--variable-lifetime variable)))
+
+(defun phpinspect--variable-const-p (variable)
+  (phpinspect-const-p (phpinspect--variable-mutability variable)))
 
 (provide 'phpinspect-type)
 ;;; phpinspect-type.el ends here

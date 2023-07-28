@@ -76,6 +76,24 @@
                 (push (phpinspect-meta-token child) previous-siblings)))))
         previous-siblings))))
 
+(defun phpinspect--get-last-statement-in-token (token)
+  (setq token (cond ((phpinspect-function-p token)
+                     (phpinspect-function-block token))
+                    ((phpinspect-namespace-p token)
+                     (phpinspect-namespace-block token))
+                    (t token)))
+  (nreverse
+   (seq-take-while
+    (let ((keep-taking t) (last-test nil))
+      (lambda (elt)
+        (when last-test
+          (setq keep-taking nil))
+        (setq last-test (phpinspect-variable-p elt))
+        (and keep-taking
+             (not (phpinspect-end-of-statement-p elt))
+             (listp elt))))
+    (reverse token))))
+
 (cl-defmethod phpinspect-get-resolvecontext
   ((bmap phpinspect-bmap) (point integer))
   (let* ((enclosing-tokens)

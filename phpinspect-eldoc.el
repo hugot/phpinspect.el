@@ -23,7 +23,8 @@
 
 ;;; Code:
 
-
+(defvar phpinspect-eldoc-word-width 14
+  "The maximum width of words in eldoc strings.")
 
 (cl-defstruct (phpinspect-eldoc-query (:constructor phpinspect-make-eldoc-query))
   (point 0

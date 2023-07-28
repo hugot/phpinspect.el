@@ -26,6 +26,7 @@
 (require 'cl-lib)
 (require 'phpinspect-project)
 (require 'phpinspect-fs)
+(require 'phpinspect-util)
 
 (cl-defstruct (phpinspect-psr0
                (:constructor phpinspect-make-psr0-generated))

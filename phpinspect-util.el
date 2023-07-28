@@ -172,5 +172,20 @@ hierarchy as long as no matching files are found.  See also
               phpinspect-project-root-file-list)
     dominating-file))
 
+(defun phpinspect--determine-completion-point ()
+  "Find first point backwards that could contain any kind of
+context for completion."
+  (save-excursion
+    (re-search-backward "[^[:blank:]\n]")
+    (forward-char)
+    (point)))
+
+(defmacro phpinspect-json-preset (&rest body)
+  "Default options to wrap around `json-read' and similar BODY."
+  `(let ((json-object-type 'hash-table)
+	     (json-array-type 'list)
+	     (json-key-type 'string))
+     ,@body))
+
 (provide 'phpinspect-util)
 ;;; phpinspect-util.el ends here

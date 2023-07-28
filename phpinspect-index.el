@@ -113,12 +113,13 @@ function (think \"new\" statements, return types etc.)."
 (defun phpinspect--index-const-from-scope (scope)
   (phpinspect--make-variable
    :scope `(,(car scope))
+   :mutability `(,(caadr scope))
    :name (cadr (cadr (cadr scope)))))
 
 (defun phpinspect--var-annotations-from-token (token)
   (seq-filter #'phpinspect-var-annotation-p token))
 
-(defun phpinspect--index-variable-from-scope (type-resolver scope comment-before)
+(defun phpinspect--index-variable-from-scope (type-resolver scope comment-before &optional static)
   "Index the variable inside `scope`."
   (let* ((var-annotations (phpinspect--var-annotations-from-token comment-before))
          (variable-name (cadr (cadr scope)))
@@ -133,6 +134,7 @@ function (think \"new\" statements, return types etc.)."
     (phpinspect--make-variable
      :name variable-name
      :scope `(,(car scope))
+     :lifetime (when static '(:static))
      :type (if type (funcall type-resolver (phpinspect--make-type :name type))))))
 
 (defun phpinspect-doc-block-p (token)
@@ -248,7 +250,8 @@ function (think \"new\" statements, return types etc.)."
                            (push (phpinspect--index-variable-from-scope type-resolver
                                                                         (list (car token)
                                                                               (cadadr token))
-                                                                        comment-before)
+                                                                        comment-before
+                                                                        'static)
                                  static-variables))))
                    (t
                     (phpinspect--log "comment-before is: %s" comment-before)
