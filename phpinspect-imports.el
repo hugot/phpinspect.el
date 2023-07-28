@@ -148,16 +148,8 @@ that there are import (\"use\") statements for them."
                                       (phpinspect-project-autoload project))))
                   (phpinspect-add-use-interactive
                    type phpinspect-current-buffer project (phpinspect-meta-token namespace))
-                  ;; Buffer has been modified by adding type, update tree +
-                  ;; location map. This is not optimal but will have to do until
-                  ;; partial parsing is implemented.
-                  ;;
-                  ;; Note: this basically implements a bug where the locations
-                  ;; of classes are no longer congruent with their location in
-                  ;; the buffer's code. In files that contain multiple namespace
-                  ;; blocks this could cause problems as a namespace may grow by
-                  ;; added import statements and start envelopping the classes
-                  ;; below it.
+                  ;; Buffer has been modified by adding type, update buffer map
+                  ;; and index for correct location data.
                   (setq index
                         (phpinspect--index-tokens
                          (phpinspect-buffer-parse phpinspect-current-buffer)
