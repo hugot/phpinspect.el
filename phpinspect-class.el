@@ -97,7 +97,7 @@
 
   (phpinspect--class-trigger-update class))
 
-(cl-defmethod phpinspect--class-get-method ((class phpinspect--class) method-name)
+(cl-defmethod phpinspect--class-get-method ((class phpinspect--class) (method-name symbol))
   (gethash method-name (phpinspect--class-methods class)))
 
 (cl-defmethod phpinspect--class-get-static-method ((class phpinspect--class) (method-name symbol))

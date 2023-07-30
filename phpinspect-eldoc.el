@@ -62,20 +62,42 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
   ((strat phpinspect-eld-attribute) (q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
   (phpinspect-attrib-p (car (last (phpinspect--resolvecontext-subject rctx)))))
 
-;; (cl-defmethod phpinspect-eld-strategy-execute
-;;   ((strat phpinspect-eld-attribute) (q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
-;;   (let ((attrib (car (last (phpinspect--resolvecontext-subject rctx))))
-;;         type-before)
-;;     (setf (phpinspect--resolvecontext-subject rctx) (butlast (phpinspect--resolvecontext-subject rctx)))
-;;     (setq type-before (phpinspect-resolve-type-from-context rctx))
+(cl-defmethod phpinspect-eld-strategy-execute
+  ((strat phpinspect-eld-attribute) (q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
+  (let ((attrib (car (last (phpinspect--resolvecontext-subject rctx))))
+        type-before)
+    (setf (phpinspect--resolvecontext-subject rctx) (butlast (phpinspect--resolvecontext-subject rctx)))
+    (setq type-before (phpinspect-resolve-type-from-context rctx))
 
-;;     (when type-before
-;;       (let ((class (phpinspect-project-get-class-create
-;;                     (phpinspect--resolvecontext-project rctx)
-;;                     type-before))
-;;             attribute)
-;;         (cond ((phpinspect-static-attrib-p attrib)
-;;                (setq attribute (or (phpinspect--class-get-variable
+    (when type-before
+      (let ((class (phpinspect-project-get-class-create
+                    (phpinspect--resolvecontext-project rctx)
+                    type-before))
+            (attribute-name (cadadr attrib))
+            variable
+            method
+            result)
+        (cond ((phpinspect-static-attrib-p attrib)
+               (setq variable (phpinspect--class-get-variable class attribute-name))
+
+               (if (and variable
+                        (or (phpinspect--variable-static-p variable)
+                            (phpinspect--variable-const-p variable)))
+                   (setq result variable)
+                 (setq method (phpinspect--class-get-static-method
+                               class (phpinspect-intern-name attribute-name)))
+                 (when method
+                   (setq result (phpinspect-make-function-doc :fn method)))))
+              ((phpinspect-object-attrib-p attrib)
+               (setq variable (phpinspect--class-get-variable class attribute-name))
+
+               (if (and variable
+                        (phpinspect--variable-vanilla-p variable))
+                   (setq result variable)
+                 (setq method (phpinspect--class-get-method
+                               class (phpinspect-intern-name attribute-name)))
+                 (when method
+                   (setq result (phpinspect-make-function-doc :fn method))))))))))
 
 
 (cl-defstruct (phpinspect-eld-function-args (:constructor phpinspect-make-eld-function-args))
@@ -143,6 +165,16 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
           (when method
             (phpinspect-make-function-doc :fn method :arg-pos arg-pos))))))))
 
+(cl-defmethod phpinspect-eldoc-string ((var phpinspect--variable))
+  (concat (truncate-string-to-width
+           (propertize (concat (if (phpinspect--variable-vanilla-p var) "$" "")
+                               (phpinspect--variable-name var))
+                       'face 'font-lock-variable-name-face)
+           phpinspect-eldoc-word-width)
+          ": "
+          (propertize (phpinspect--format-type-name (phpinspect--variable-type var))
+                      'face 'font-lock-type-face)))
+
 (cl-defstruct (phpinspect-function-doc (:constructor phpinspect-make-function-doc))
   (fn nil
       :type phpinspect--function)
@@ -170,10 +202,11 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
               (phpinspect--function-arguments fn)
               ", ")
              "): "
-             (phpinspect--format-type-name
-              (phpinspect--function-return-type fn)))))
+             (propertize
+              (phpinspect--format-type-name (phpinspect--function-return-type fn))
+              'face 'font-lock-type-face))))
 
-(defvar phpinspect-eldoc-strategies (list ;;(phpinspect-make-eld-attribute)
+(defvar phpinspect-eldoc-strategies (list (phpinspect-make-eld-attribute)
                                           (phpinspect-make-eld-function-args))
   "The eldoc strategies that phpinspect is currently allowed to
 employ. Strategies are queried in the order of this list. See

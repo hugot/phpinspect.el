@@ -188,6 +188,11 @@ NAMESPACE may be nil, or a string with a namespace FQN."
          type)))))
 
 (cl-defgeneric phpinspect--format-type-name (name)
+  (if name
+      (error "Unexpected value: %s" name)
+    "unknown-type"))
+
+(cl-defmethod phpinspect--format-type-name ((name string))
   (string-remove-prefix "\\" name))
 
 (cl-defmethod phpinspect--format-type-name ((type phpinspect--type))

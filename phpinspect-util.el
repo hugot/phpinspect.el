@@ -176,7 +176,7 @@ hierarchy as long as no matching files are found.  See also
   "Find first point backwards that could contain any kind of
 context for completion."
   (save-excursion
-    (re-search-backward "[^[:blank:]\n]")
+    (re-search-backward "[^[:blank:]\n]" nil t)
     (forward-char)
     (point)))
 
