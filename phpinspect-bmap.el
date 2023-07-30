@@ -23,6 +23,8 @@
 
 ;;; Code:
 
+(require 'phpinspect-splayt)
+
 (cl-defstruct (phpinspect-bmap (:constructor phpinspect-make-bmap))
   (starts (make-hash-table :test #'eql
                            :size (floor (/ (point-max) 4))
@@ -35,8 +37,8 @@
                            :rehash-size 1.5))
   (token-stack nil
                :type list)
-  (overlays nil
-            :type list)
+  (overlays (phpinspect-make-splayt)
+            :type phpinspect-splayt)
   (last-token-start nil
                      :type integer))
 
@@ -288,10 +290,9 @@
       (gethash point (phpinspect-bmap-ends bmap)))))
 
 (defsubst phpinspect-bmap-overlay-at-point (bmap point)
-  (catch 'found
-    (dolist (overlay (phpinspect-bmap-overlays bmap))
-      (when (phpinspect-overlay-overlaps-point overlay point)
-        (throw 'found overlay)))))
+  (let ((overlay (phpinspect-splayt-find (phpinspect-bmap-overlays bmap) point #'<= #'<= #'<=)))
+    (when (and overlay (phpinspect-overlay-overlaps-point overlay point))
+      overlay)))
 
 (defsubst phpinspect-bmap-tokens-overlapping (bmap point)
   (let ((tokens))
@@ -311,7 +312,7 @@
   (or (gethash token (phpinspect-bmap-meta bmap))
       (let ((found?))
         (catch 'found
-          (dolist (overlay (phpinspect-bmap-overlays bmap))
+          (phpinspect-splayt-traverse (overlay (phpinspect-bmap-overlays bmap))
             (when (setq found? (phpinspect-bmap-token-meta overlay token))
               (throw 'found found?)))))))
 
@@ -347,27 +348,9 @@ giving up. If not provided, this is 100."
   (let* ((overlays (phpinspect-bmap-overlays bmap))
          (start (+ (phpinspect-meta-start token-meta) pos-delta))
          (end (+ (phpinspect-meta-end token-meta) pos-delta))
-         (overlay `(overlay ,start ,end ,pos-delta ,bmap-overlay ,token-meta))
-         (before))
+         (overlay `(overlay ,start ,end ,pos-delta ,bmap-overlay ,token-meta)))
     (phpinspect-bmap-register bmap start end (phpinspect-meta-token token-meta) whitespace-before overlay)
-
-    (if overlays
-        (progn
-          (catch 'break
-            (while (setq before (car overlays))
-              (if (> (phpinspect-overlay-start overlay) (phpinspect-overlay-end before))
-                  (throw 'break nil)
-                (setq overlays (cdr overlays)))))
-
-          (if (and before (cdr overlays))
-              ;; Append after
-              (progn
-                (setcdr overlays (cons overlay (cdr overlays))))
-            ;; Append at end of overlay list
-            (nconc (phpinspect-bmap-overlays bmap) (list overlay))))
-
-      ;; No exising overlays, overwrite
-      (push overlay (phpinspect-bmap-overlays bmap)))))
+    (phpinspect-splayt-insert (phpinspect-bmap-overlays bmap) (phpinspect-overlay-end overlay) overlay)))
 
 (defun phpinspect-bmap-make-location-resolver (bmap)
   (lambda (token)

@@ -610,6 +610,7 @@ class Thing
 (load-file (concat phpinspect-test-directory "/test-bmap.el"))
 (load-file (concat phpinspect-test-directory "/test-edtrack.el"))
 (load-file (concat phpinspect-test-directory "/test-resolvecontext.el"))
+(load-file (concat phpinspect-test-directory "/test-splayt.el"))
 
 (provide 'phpinspect-test)
 ;;; phpinspect-test.el ends here
