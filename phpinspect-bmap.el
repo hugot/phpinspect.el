@@ -302,8 +302,16 @@
 
     (sort tokens #'phpinspect-meta-sort-width)))
 
+(defsubst phpinspect-overlay-encloses-meta (overlay meta)
+  (and (>= (phpinspect-meta-start meta) (phpinspect-overlay-start overlay))
+       (<= (phpinspect-meta-end meta) (phpinspect-overlay-end overlay))))
+
 (cl-defmethod phpinspect-bmap-token-meta ((overlay (head overlay)) token)
-  (phpinspect-bmap-token-meta (phpinspect-overlay-bmap overlay) token))
+  (let ((meta
+         (phpinspect-overlay-wrap-meta
+          overlay (phpinspect-bmap-token-meta (phpinspect-overlay-bmap overlay) token))))
+    (when (and meta (phpinspect-overlay-encloses-meta overlay meta))
+      meta)))
 
 (cl-defmethod phpinspect-bmap-token-meta ((bmap phpinspect-bmap) token)
   (unless (phpinspect-probably-token-p token)
