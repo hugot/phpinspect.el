@@ -115,6 +115,22 @@
     (should (string= "nine" (phpinspect-splayt-find-smallest-after tree 8)))
     (should (string= "three" (phpinspect-splayt-find-smallest-after tree 1)))))
 
+
+(ert-deftest phpinspect-splayt-find-largest-before ()
+  (let ((tree (phpinspect-make-splayt)))
+    (phpinspect-splayt-insert tree 9 "nine")
+    (phpinspect-splayt-insert tree 3 "three")
+    (phpinspect-splayt-insert tree 11 "eleven")
+    (phpinspect-splayt-insert tree 8 "eight")
+    (phpinspect-splayt-insert tree 12 "twelve")
+    (phpinspect-splayt-insert tree 4 "four")
+    (phpinspect-splayt-insert tree 1 "one")
+
+
+    (should (string= "four" (phpinspect-splayt-find-largest-before tree 8)))
+    (should (string= "eleven" (phpinspect-splayt-find-largest-before tree 12)))))
+
+
 (ert-deftest phpinspect-splayt-find-all-after ()
   (let ((tree (phpinspect-make-splayt)))
     (phpinspect-splayt-insert tree 9 "nine")

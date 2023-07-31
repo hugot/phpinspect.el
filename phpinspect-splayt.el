@@ -355,6 +355,41 @@ near the top of the tee."
                     (throw 'return smallest)))
                  (t (throw 'return smallest)))))))))
 
+(define-inline phpinspect-splayt-find-largest-node-before (splayt key)
+  (inline-letevals (splayt key)
+    (inline-quote
+     (let ((current (phpinspect-splayt-root-node ,splayt))
+           largest)
+
+       (catch 'break
+         (while current
+           (if (<= ,key  (phpinspect-splayt-node-key current))
+               (setf current (phpinspect-splayt-node-left current)
+                     largest current)
+             (throw 'break nil))))
+
+       (catch 'return
+         (while current
+           (when (= (+ ,key 1) (phpinspect-splayt-node-key current))
+             (throw 'return current))
+
+           (cond ((and (phpinspect-splayt-node-parent current)
+                       (> ,key (phpinspect-splayt-node-key (phpinspect-splayt-node-parent current)))
+                       (eq (phpinspect-splayt-node-left (phpinspect-splayt-node-parent current))
+                           current))
+                  (setf current (phpinspect-splayt-node-parent current)
+                        largest current))
+                 ((phpinspect-splayt-node-right current)
+                  (setf current (phpinspect-splayt-node-right current))
+                  (when (> ,key (phpinspect-splayt-node-key current))
+                    (setf largest current)))
+                 ((<= ,key (phpinspect-splayt-node-key current))
+                  (if (phpinspect-splayt-node-left current)
+                      (setf current (phpinspect-splayt-node-left current))
+                    (throw 'return largest)))
+                 (t (throw 'return largest)))))))))
+
+
 (defsubst phpinspect-splayt-find-all-after (splayt key)
   "Find all values in SPLAYT with a key higher than KEY."
   (let ((first (phpinspect-splayt-find-smallest-node-after splayt key))
@@ -377,6 +412,14 @@ near the top of the tee."
    (phpinspect-splayt-node-value
     (phpinspect-splay
      ,splayt (phpinspect-splayt-find-smallest-node-after ,splayt ,key)))))
+
+(define-inline phpinspect-splayt-find-largest-before (splayt key)
+  "Find value of node with smallest key that is higher than KEY in SPLAYT."
+  (inline-quote
+   (phpinspect-splayt-node-value
+    (phpinspect-splay
+     ,splayt (phpinspect-splayt-find-largest-node-before ,splayt ,key)))))
+
 
 (defsubst phpinspect-splayt-find (splayt key)
   (phpinspect-splayt-node-value (phpinspect-splayt-find-node splayt key)))
