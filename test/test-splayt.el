@@ -27,24 +27,30 @@
 
 (ert-deftest phpinspect-splayt-node-rotate ()
   (let* ((one (phpinspect-make-splayt-node 1 "one"))
-         (node (phpinspect-make-splayt-node
+         (four (phpinspect-make-splayt-node 4 "four"))
+         (three (phpinspect-make-splayt-node
                 3 "three"
                 one
-                (phpinspect-make-splayt-node 4 "four"))))
-    (phpinspect-splayt-node-rotate-right node)
-    (should (equal (phpinspect-make-splayt-node
-                    1 "one" nil
-                    (phpinspect-make-splayt-node
-                     3 "three" nil (phpinspect-make-splayt-node 4 "four")))
-                   one))
+                four)))
+    (setf (phpinspect-splayt-node-parent four) three)
+    (setf (phpinspect-splayt-node-parent one) three)
+    (phpinspect-splayt-node-rotate-right three)
 
-    (phpinspect-splayt-node-rotate-left node one)
+    (should (eq one (phpinspect-splayt-node-parent three)))
+    (should (eq three (phpinspect-splayt-node-parent four)))
+    (should (eq three (phpinspect-splayt-node-right one)))
+    (should (eq four (phpinspect-splayt-node-right three)))
+    (should-not (phpinspect-splayt-node-left one))
+    (should-not (phpinspect-splayt-node-left four))
+    (should-not (phpinspect-splayt-node-left three))
 
-    (should (equal (phpinspect-make-splayt-node
-                    1 "one" nil
-                    (phpinspect-make-splayt-node
-                     4 "four" (phpinspect-make-splayt-node 3 "three")))
-                   one))))
+    (phpinspect-splayt-node-rotate-left one)
+
+    (should (eq one (phpinspect-splayt-node-left three)))
+    (should (eq three (phpinspect-splayt-node-parent four)))
+    (should (eq three (phpinspect-splayt-node-parent one)))
+    (should (eq four (phpinspect-splayt-node-right three)))
+    (should (eq one (phpinspect-splayt-node-left three)))))
 
 (ert-deftest phpinspect-splayt ()
   (let ((tree (phpinspect-make-splayt)))
@@ -63,7 +69,17 @@
     (should (string= "nine" (phpinspect-splayt-find tree 9)))
     (should (string= "four" (phpinspect-splayt-find tree 4)))
     (should (string= "twelve" (phpinspect-splayt-find tree 12)))
-    (should (string= "eleven" (phpinspect-splayt-find tree 11)))))
+    (should (string= "eleven" (phpinspect-splayt-find tree 11)))
+
+    (let ((expected (sort '("nine" "three" "eleven" "eight" "twelve" "four" "one") #'string-lessp))
+          (result))
+
+      (phpinspect-splayt-traverse (item tree)
+        (push item result))
+
+      (setq result (sort result #'string-lessp))
+
+      (should (equal expected result)))))
 
 (ert-deftest phpinspect-splayt-traverse ()
   (let ((tree (phpinspect-make-splayt)))
@@ -84,3 +100,31 @@
       (setq result (sort result #'string-lessp))
 
       (should (equal expected result)))))
+
+(ert-deftest phpinspect-splayt-find-smallest-after ()
+  (let ((tree (phpinspect-make-splayt)))
+    (phpinspect-splayt-insert tree 9 "nine")
+    (phpinspect-splayt-insert tree 3 "three")
+    (phpinspect-splayt-insert tree 11 "eleven")
+    (phpinspect-splayt-insert tree 8 "eight")
+    (phpinspect-splayt-insert tree 12 "twelve")
+    (phpinspect-splayt-insert tree 4 "four")
+    (phpinspect-splayt-insert tree 1 "one")
+
+
+    (should (string= "nine" (phpinspect-splayt-find-smallest-after tree 8)))
+    (should (string= "three" (phpinspect-splayt-find-smallest-after tree 1)))))
+
+(ert-deftest phpinspect-splayt-find-all-after ()
+  (let ((tree (phpinspect-make-splayt)))
+    (phpinspect-splayt-insert tree 9 "nine")
+    (phpinspect-splayt-insert tree 3 "three")
+    (phpinspect-splayt-insert tree 11 "eleven")
+    (phpinspect-splayt-insert tree 8 "eight")
+    (phpinspect-splayt-insert tree 12 "twelve")
+    (phpinspect-splayt-insert tree 4 "four")
+    (phpinspect-splayt-insert tree 1 "one")
+
+
+    (should (equal (sort '("eight" "nine" "eleven" "twelve") #'string-lessp)
+                   (sort (phpinspect-splayt-find-all-after tree 7) #'string-lessp)))))

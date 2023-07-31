@@ -77,27 +77,28 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
             variable
             method
             result)
-        (cond ((phpinspect-static-attrib-p attrib)
-               (setq variable (phpinspect--class-get-variable class attribute-name))
+        (when attribute-name
+          (cond ((phpinspect-static-attrib-p attrib)
+                 (setq variable (phpinspect--class-get-variable class attribute-name))
 
-               (if (and variable
-                        (or (phpinspect--variable-static-p variable)
-                            (phpinspect--variable-const-p variable)))
-                   (setq result variable)
-                 (setq method (phpinspect--class-get-static-method
-                               class (phpinspect-intern-name attribute-name)))
-                 (when method
-                   (setq result (phpinspect-make-function-doc :fn method)))))
-              ((phpinspect-object-attrib-p attrib)
-               (setq variable (phpinspect--class-get-variable class attribute-name))
+                 (if (and variable
+                          (or (phpinspect--variable-static-p variable)
+                              (phpinspect--variable-const-p variable)))
+                     (setq result variable)
+                   (setq method (phpinspect--class-get-static-method
+                                 class (phpinspect-intern-name attribute-name)))
+                   (when method
+                     (setq result (phpinspect-make-function-doc :fn method)))))
+                ((phpinspect-object-attrib-p attrib)
+                 (setq variable (phpinspect--class-get-variable class attribute-name))
 
-               (if (and variable
-                        (phpinspect--variable-vanilla-p variable))
-                   (setq result variable)
-                 (setq method (phpinspect--class-get-method
-                               class (phpinspect-intern-name attribute-name)))
-                 (when method
-                   (setq result (phpinspect-make-function-doc :fn method))))))))))
+                 (if (and variable
+                          (phpinspect--variable-vanilla-p variable))
+                     (setq result variable)
+                   (setq method (phpinspect--class-get-method
+                                 class (phpinspect-intern-name attribute-name)))
+                   (when method
+                     (setq result (phpinspect-make-function-doc :fn method)))))))))))
 
 
 (cl-defstruct (phpinspect-eld-function-args (:constructor phpinspect-make-eld-function-args))
@@ -127,6 +128,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
          match-result static arg-list arg-pos)
 
     (phpinspect--log "Eldoc statement is:  %s" statement)
+    (phpinspect--log "Enclosing token was: %s" enclosing-token)
     (when enclosing-token
       (cond
        ;; Method call

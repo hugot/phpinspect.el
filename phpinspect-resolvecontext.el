@@ -60,21 +60,24 @@
        (string= "return" (cadr token))))
 
 (defun phpinspect-find-statement-before-point (bmap meta point)
-  (let ((children (reverse (cdr (phpinspect-meta-token meta)))))
-    (let ((previous-siblings))
-      (catch 'return
-        (dolist (child children)
-          (when (phpinspect-probably-token-p child)
-            (setq child (phpinspect-bmap-token-meta bmap child))
-            (when (< (phpinspect-meta-start child) point)
-              (if (and (not previous-siblings) (phpinspect-blocklike-p (phpinspect-meta-token child)))
-                  (progn
-                    (throw 'return (phpinspect-find-statement-before-point bmap child point)))
-                (when (or (phpinspect-return-p (phpinspect-meta-token child))
-                          (phpinspect-end-of-statement-p (phpinspect-meta-token child)))
-                  (throw 'return previous-siblings))
-                (push (phpinspect-meta-token child) previous-siblings)))))
-        previous-siblings))))
+  (let ((children (reverse (cdr (phpinspect-meta-token meta))))
+        child-meta
+        previous-siblings)
+    (catch 'return
+      (dolist (child children)
+        (when (phpinspect-probably-token-p child)
+          (setq child-meta (phpinspect-bmap-token-meta bmap child))
+          (unless child-meta
+            (phpinspect--log "[ERROR] No metadata object found for token %s" child))
+          (when (< (phpinspect-meta-start child-meta) point)
+            (if (and (not previous-siblings) (phpinspect-blocklike-p child))
+                (progn
+                  (throw 'return (phpinspect-find-statement-before-point bmap child-meta point)))
+              (when (or (phpinspect-return-p child)
+                        (phpinspect-end-of-statement-p  child))
+                (throw 'return previous-siblings))
+              (push child previous-siblings)))))
+      previous-siblings)))
 
 (defun phpinspect--get-last-statement-in-token (token)
   (setq token (cond ((phpinspect-function-p token)
@@ -102,7 +105,10 @@
          (subject (phpinspect-bmap-last-token-before-point bmap point))
          (subject-token)
          (siblings))
-    (phpinspect--log "Last token before point: %s" (phpinspect-meta-token subject))
+    (phpinspect--log "Last token before point: %s, right siblings: %s, parent: %s"
+                     (phpinspect-meta-string subject)
+                     (phpinspect-meta-right-siblings subject)
+                     (phpinspect-meta-string (phpinspect-meta-parent subject)))
 
     (let ((next-sibling (car (phpinspect-meta-right-siblings subject))))
       ;; When the right sibling of the last ending token overlaps point, this is

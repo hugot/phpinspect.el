@@ -62,7 +62,7 @@
 
         (garbage-collect)
 
-        ;;(profiler-start 'cpu+mem)
+        ;;(profiler-start 'cpu)
         (message "Incremental parse after 2 more edits:")
         (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :previous-bmap bmap-after :edtrack edtrack)
           (benchmark 1 '(phpinspect-parse-current-buffer)))

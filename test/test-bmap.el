@@ -94,6 +94,9 @@
     (phpinspect-bmap-overlay
      bmap bmap2 (phpinspect-bmap-token-starting-at bmap2 200) 20)
 
+    (phpinspect-bmap-overlay
+     bmap bmap2 (phpinspect-bmap-token-starting-at bmap2 220) 20)
+
     (setq result (phpinspect-bmap-tokens-overlapping bmap 240))
     (should (equal '((:token6) (:token5)) (mapcar #'phpinspect-meta-token result)))
 

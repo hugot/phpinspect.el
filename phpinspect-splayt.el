@@ -27,192 +27,223 @@
 ;; Important functions:
 ;; - `phpinspect-splayt-insert'
 ;; - `phpinspect-splayt-find'
+;; - `phpinspect-splayt-find-smallest-after'
+;; - `phpinspect-splayt-find-all-after'
 ;; - `phpinspect-splayt-traverse'
+;;;
+;;
+;; DEVELOPING
+;;
+;; The main aim for this tree implementation is to be reasonably fast and
+;; comfortable to use for most of phpinspect's common operations. That means:
+;;
+;; - Fast insertion of sequential keys (for example when parsing a buffer from left to right)
+;; - Consing as few bytes as possible by keeping the data structure simple, to avoid GC pauses as much as possible
+;; - Fast repeated acces of "hot" regions (for example the edited region of a buffer)
+;; - A straight forward public API to retrieve sets of nodes
+;;
+;; ** Inline Functions **
+;; There is a lot of use of `define-inline' in this file. Most of these inlines
+;; improve performance significantly. This is especially true for smaller
+;; inlined functions. It might be possible to change one or two of the larger
+;; functions to normal defuns without reintroducing a lot of ovehead. If you
+;; want to do this to make debugging the code a little easier, and you can
+;; backup that it doesn't impact performance all that much with some benchmarks
+;; (especially parse-file.el in the benchmarks folder), your PR will be welcomed.
+;;
+
 
 ;;; Code:
 
-(defsubst phpinspect-make-splayt-node (key value &optional left right)
-  (cons (cons key value) (cons left right)))
+(define-inline phpinspect-make-splayt-node (key value &optional left right parent temp-store)
+  (inline-quote (cons (cons ,key ,value) (list ,left ,right ,parent ,temp-store))))
 
-(defsubst phpinspect-splayt-node-left (node)
-  (cadr node))
+(define-inline phpinspect-splayt-node-left (node)
+  (inline-quote (cadr ,node)))
 
-(defsubst phpinspect-splayt-node-right (node)
-  (cddr node))
+(define-inline phpinspect-splayt-node-right (node)
+  (inline-quote (caddr ,node)))
 
-(defsubst phpinspect-splayt-node-key (node)
-  (caar node))
+(define-inline phpinspect-splayt-node-key (node)
+  (inline-quote (caar ,node)))
 
-(defsubst phpinspect-splayt-node-value (node)
-  (cdar node))
+(define-inline phpinspect-splayt-node-value (node)
+  (inline-quote (cdar ,node)))
 
-(gv-define-setter phpinspect-splayt-node-left (left node) `(setcar (cdr ,node) ,left))
-(gv-define-setter phpinspect-splayt-node-right (right node) `(setcdr (cdr ,node) ,right))
-(gv-define-setter phpinspect-splayt-node-key (key node) `(setcar (car ,node) ,value))
-(gv-define-setter phpinspect-splayt-node-value (value node) `(setcdr (car ,node) ,value))
+(define-inline phpinspect-splayt-node-parent (node)
+  (inline-quote (cadddr ,node)))
 
-(defsubst phpinspect-splayt-node-update-parent (node parent new-val)
-  (if (eq node (phpinspect-splayt-node-left parent))
-      (setf (phpinspect-splayt-node-left parent) new-val)
-    (setf (phpinspect-splayt-node-right parent) new-val)))
+(define-inline phpinspect-splayt-node-temp-store (node)
+  "Dedicated place to store data when necessary. Mostly used for
+rotations without instantiating a lexical environment with
+`let'. When only used once or twice in a function call, this
+apeared to be a little more performant than using `let'."
+  (inline-quote (car (cddddr ,node))))
 
-(defsubst phpinspect-make-splayt (&optional root-node)
-  (cons root-node nil))
+(define-inline phpinspect-splayt-node-update-parent (node parent new-val)
+  (inline-letevals (node parent new-val)
+    (inline-quote
+     (if (eq ,node (phpinspect-splayt-node-left ,parent))
+         (setf (phpinspect-splayt-node-left ,parent) ,new-val)
+       (setf (phpinspect-splayt-node-right ,parent) ,new-val)))))
 
-(defsubst phpinspect-splayt-root-node (splayt)
-  (car splayt))
+(define-inline phpinspect-make-splayt (&optional root-node)
+  (inline-quote
+   (cons ,root-node nil)))
 
-(gv-define-setter phpinspect-splayt-root-node (node splayt) `(setcar ,splayt ,node))
+(define-inline phpinspect-splayt-root-node (splayt)
+  (inline-quote (car ,splayt)))
 
-(defsubst phpinspect-splayt-node-rotate-right (node &optional parent splayt)
-  (let* ((left (phpinspect-splayt-node-left node))
-         (left-right (phpinspect-splayt-node-right left)))
-    (setf (phpinspect-splayt-node-right left) node)
-    (setf (phpinspect-splayt-node-left node) left-right)
+(define-inline phpinspect-splayt-node-rotate-right (node &optional splayt)
+  (inline-letevals (node splayt)
+    (inline-quote
+     (progn
+       ;; Save right node of left child
+       (setf (phpinspect-splayt-node-temp-store ,node)
+             (phpinspect-splayt-node-right (phpinspect-splayt-node-left ,node)))
 
-    (when (and splayt (eq node (phpinspect-splayt-root-node splayt)))
-      (setf (phpinspect-splayt-root-node splayt) left))
+       ;; Update node parent to reference left as child
+       (when (phpinspect-splayt-node-parent ,node)
+         (phpinspect-splayt-node-update-parent
+          ,node (phpinspect-splayt-node-parent ,node) (phpinspect-splayt-node-left ,node)))
 
-    (when parent
-      (phpinspect-splayt-node-update-parent node parent left))))
+       ;; Set left node new parent
+       (setf (phpinspect-splayt-node-parent (phpinspect-splayt-node-left ,node))
+             (phpinspect-splayt-node-parent ,node))
 
-(defsubst phpinspect-splayt-node-rotate-left (node &optional parent splayt)
-  (let* ((right (phpinspect-splayt-node-right node))
-         (right-left (phpinspect-splayt-node-left right)))
-    (setf (phpinspect-splayt-node-left right) node)
-    (setf (phpinspect-splayt-node-right node) right-left)
+       ;; Set left node as node's new parent
+       (setf (phpinspect-splayt-node-parent ,node)
+             (phpinspect-splayt-node-left ,node))
 
-    (when (and splayt (eq node (phpinspect-splayt-root-node splayt)))
-      (setf (phpinspect-splayt-root-node splayt) right))
+       ;; Set node as left's right child
+       (setf (phpinspect-splayt-node-right (phpinspect-splayt-node-left ,node)) ,node)
 
-    (when parent
-      (phpinspect-splayt-node-update-parent node parent right))))
+       ;; Set left's right child as node's left child
+       (setf (phpinspect-splayt-node-left ,node) (phpinspect-splayt-node-temp-store ,node))
 
-(defsubst phpinspect-make-splayt-nav (splayt &optional current-node parents)
-  (cons splayt (cons (or current-node (phpinspect-splayt-root-node splayt))
-                     parents)))
+       ;; Update new left child's parent
+       (when (phpinspect-splayt-node-left ,node)
+         (setf (phpinspect-splayt-node-parent (phpinspect-splayt-node-left ,node)) ,node))
 
-(defsubst phpinspect-splayt-nav-splayt (nav)
-  (car nav))
+       ;; Update root node of tree when necessary
+       (when (and ,splayt (eq ,node (phpinspect-splayt-root-node ,splayt)))
+         (setf (phpinspect-splayt-root-node ,splayt) (phpinspect-splayt-node-parent ,node)))))))
 
-(defsubst phpinspect-splayt-nav-current (nav)
-  (cadr nav))
+(define-inline phpinspect-splayt-node-rotate-left (node &optional splayt)
+  (inline-letevals (node splayt)
+    (inline-quote
+     (progn
+       ;; Save left node of right child
+       (setf (phpinspect-splayt-node-temp-store ,node)
+             (phpinspect-splayt-node-left (phpinspect-splayt-node-right ,node)))
 
-(defsubst phpinspect-splayt-nav-parents (nav)
-  (cddr nav))
+       ;; Update node parent to reference right as child
+       (when (phpinspect-splayt-node-parent ,node)
+         (phpinspect-splayt-node-update-parent
+          ,node (phpinspect-splayt-node-parent ,node) (phpinspect-splayt-node-right ,node)))
 
-(gv-define-setter phpinspect-splayt-nav-current (node nav) `(setcar (cdr ,nav) ,node))
-(gv-define-setter phpinspect-splayt-nav-parents (parents nav) `(setcdr (cdr ,nav) ,parents))
+       ;; Set right node new parent
+       (setf (phpinspect-splayt-node-parent (phpinspect-splayt-node-right ,node))
+             (phpinspect-splayt-node-parent ,node))
 
-(defsubst phpinspect-splayt-nav-right (nav)
-  (push (phpinspect-splayt-nav-current nav) (phpinspect-splayt-nav-parents nav))
-  (setf (phpinspect-splayt-nav-current nav)
-        (phpinspect-splayt-node-right (phpinspect-splayt-nav-current nav))))
+       ;; Set right node as node's new parent
+       (setf (phpinspect-splayt-node-parent ,node)
+             (phpinspect-splayt-node-right ,node))
 
-(defsubst phpinspect-splayt-nav-left (nav)
-  (push (phpinspect-splayt-nav-current nav) (phpinspect-splayt-nav-parents nav))
-  (setf (phpinspect-splayt-nav-current nav)
-        (phpinspect-splayt-node-left (phpinspect-splayt-nav-current nav))))
+       ;; Set node as right's left child
+       (setf (phpinspect-splayt-node-left (phpinspect-splayt-node-right ,node)) ,node)
 
-(defsubst phpinspect-splayt-nav-has-left-p (nav)
-  (phpinspect-splayt-node-left (phpinspect-splayt-nav-current nav)))
+       ;; Set right's left child as node's  right child
+       (setf (phpinspect-splayt-node-right ,node) (phpinspect-splayt-node-temp-store ,node))
 
-(defsubst phpinspect-splayt-nav-has-right-p (nav)
-  (phpinspect-splayt-node-right (phpinspect-splayt-nav-current nav)))
+       ;; Update new right child's parent
+       (when (phpinspect-splayt-node-right ,node)
+         (setf (phpinspect-splayt-node-parent (phpinspect-splayt-node-right ,node)) ,node))
 
-(defsubst phpinspect-splayt-nav-up (nav)
-  (setf (phpinspect-splayt-nav-current nav)
-        (pop (phpinspect-splayt-nav-parents nav))))
+       ;; Update root node of tree when necessary
+       (when (and ,splayt (eq ,node (phpinspect-splayt-root-node ,splayt)))
+         (setf (phpinspect-splayt-root-node ,splayt) (phpinspect-splayt-node-parent ,node)))))))
 
-(defsubst phpinspect-splayt-nav-current-value (nav)
-  (phpinspect-splayt-node-value (phpinspect-splayt-nav-current nav)))
+(define-inline phpinspect-splayt-insert (splayt key value)
+  (inline-quote
+   (phpinspect-splayt-insert-node ,splayt (phpinspect-make-splayt-node ,key ,value))))
 
-(defsubst phpinspect-splayt-nav-current-key (nav)
-  (phpinspect-splayt-node-key (phpinspect-splayt-nav-current nav)))
+(define-inline phpinspect-splayt-node-grandparent (node)
+  (inline-quote (phpinspect-splayt-node-parent (phpinspect-splayt-node-parent ,node))))
 
-(defsubst phpinspect-splayt-insert (splayt key value)
-  (phpinspect-splayt-insert-node splayt (phpinspect-make-splayt-node key value)))
+(define-inline phpinspect-splay (splayt node)
+  (inline-letevals (splayt node)
+    (let ((parent (inline-quote (phpinspect-splayt-node-parent ,node)))
+          (grandparent (inline-quote (phpinspect-splayt-node-grandparent ,node))))
+      (inline-quote
+       (progn
+         (while ,parent
+           (if (phpinspect-splayt-node-grandparent ,node)
+               (cond
+                ;; Zig-Zig rotation
+                ((and (eq ,parent (phpinspect-splayt-node-left ,grandparent))
+                      (eq ,node (phpinspect-splayt-node-left ,parent)))
+                 (phpinspect-splayt-node-rotate-right ,grandparent ,splayt)
+                 (phpinspect-splayt-node-rotate-right ,parent ,splayt))
 
-(defsubst phpinspect-splay (splayt node parents)
-  (let (grandparent great-grandparent)
-    (while parents
-      (setq parent (pop parents))
-      (setq grandparent (pop parents))
+                ;; Zag-Zag rotation
+                ((and (eq (phpinspect-splayt-node-parent ,node)
+                          (phpinspect-splayt-node-right (phpinspect-splayt-node-grandparent ,node)))
+                      (eq ,node (phpinspect-splayt-node-right (phpinspect-splayt-node-parent ,node))))
+                 (phpinspect-splayt-node-rotate-left ,grandparent ,splayt)
+                 (phpinspect-splayt-node-rotate-left ,parent ,splayt))
 
-      (if grandparent
-          (cond
-           ;; Zig-Zig rotation
-           ((and (eq parent (phpinspect-splayt-node-left grandparent))
-                 (eq node (phpinspect-splayt-node-left parent)))
-            (phpinspect-splayt-node-rotate-right grandparent (car parents) splayt)
-            (phpinspect-splayt-node-rotate-right parent (car parents) splayt))
+                ;; Zig-Zag rotation
+                ((and (eq ,parent (phpinspect-splayt-node-right ,grandparent))
+                      (eq ,node (phpinspect-splayt-node-left ,parent)))
+                 (phpinspect-splayt-node-rotate-right ,parent ,splayt)
+                 (phpinspect-splayt-node-rotate-left ,parent ,splayt))
 
-           ;; Zag-Zag rotation
-           ((and (eq parent (phpinspect-splayt-node-right grandparent))
-                 (eq node (phpinspect-splayt-node-right parent)))
-            (phpinspect-splayt-node-rotate-left grandparent (car parents) splayt)
-            (phpinspect-splayt-node-rotate-left parent (car parents) splayt))
+                ;; Zag-Zig rotation
+                ((and (eq ,parent (phpinspect-splayt-node-left ,grandparent))
+                      (eq ,node (phpinspect-splayt-node-right ,parent)))
+                 (phpinspect-splayt-node-rotate-left ,parent ,splayt)
+                 (phpinspect-splayt-node-rotate-right ,parent ,splayt))
+                (t
+                 (error "Failed in determining rotation strategy. (phpinspect-splayt-node-grandparent ,node): %s, parent: %s, ,node: %s")))
 
-           ;; Zig-Zag rotation
-           ((and (eq parent (phpinspect-splayt-node-right grandparent))
-                 (eq node (phpinspect-splayt-node-left parent)))
-            (phpinspect-splayt-node-rotate-right parent grandparent splayt)
-            (phpinspect-splayt-node-rotate-left grandparent (car parents) splayt))
+             ;; Else
+             (if (eq ,node (phpinspect-splayt-node-left ,parent))
+                 (phpinspect-splayt-node-rotate-right ,parent ,splayt)
+               (phpinspect-splayt-node-rotate-left ,parent ,splayt))))
 
-           ;; Zag-Zig rotation
-           ((and (eq parent (phpinspect-splayt-node-left grandparent))
-                 (eq node (phpinspect-splayt-node-right parent)))
-            (phpinspect-splayt-node-rotate-left parent grandparent splayt)
-            (phpinspect-splayt-node-rotate-right grandparent (car parents) splayt))
-           (t
-            (error "Failed in determining rotation strategy")))
-        ;; Else
-        (if (eq node (phpinspect-splayt-node-left parent))
-            (phpinspect-splayt-node-rotate-right parent (car parents) splayt)
-          (phpinspect-splayt-node-rotate-left parent (car parents) splayt))))))
+         ,node)))))
 
-(defsubst phpinspect-splayt-insert-node (splayt node)
-  (if (not (phpinspect-splayt-root-node splayt))
-      (setf (phpinspect-splayt-root-node splayt) node)
+(define-inline phpinspect-splayt-insert-node (splayt node)
+  (inline-letevals (splayt node (parent (inline-quote (phpinspect-splayt-node-temp-store ,node))))
+    (inline-quote
+     (if (not (phpinspect-splayt-root-node ,splayt))
+         (setf (phpinspect-splayt-root-node ,splayt) ,node)
+       (progn
+         (setf ,parent (phpinspect-splayt-find-insertion-node ,splayt (phpinspect-splayt-node-key ,node)))
+         (unless ,parent
+           (error "Error: failed to find parent node for %s" ,node))
 
-    ;; Else
-    (let ((nav (phpinspect-make-splayt-nav splayt)))
-      (catch 'break
-        (while t
-          (if (< (phpinspect-splayt-node-key node)
-                 (phpinspect-splayt-nav-current-key nav))
-              (if (phpinspect-splayt-nav-has-left-p nav)
-                  (phpinspect-splayt-nav-left nav)
-                (setf (phpinspect-splayt-node-left (phpinspect-splayt-nav-current nav))
-                      node)
-                (throw 'break nil))
+         (setf (phpinspect-splayt-node-parent ,node) ,parent)
+         (if (< (phpinspect-splayt-node-key ,parent) (phpinspect-splayt-node-key ,node))
+             (setf (phpinspect-splayt-node-right ,parent) ,node)
+           (setf (phpinspect-splayt-node-left ,parent) ,node))
 
-            ;; Else
-            (if (phpinspect-splayt-nav-has-right-p nav)
-                (phpinspect-splayt-nav-right nav)
-              (setf (phpinspect-splayt-node-right (phpinspect-splayt-nav-current nav))
-                    node)
-              (throw 'break nil))))))))
+         (phpinspect-splay ,splayt ,node))))))
 
-(defmacro phpinspect-splayt-traverse (place-and-splayt &rest body)
-  "Traverse splay tree in cadr of PLACE-AND-SPLAYT, executing BODY.
-
-The car of PLACE-AND-SPLAYT is assigned the value of each node.
-
-Traversal is breadth-first to take advantage of the splay trees
-main benefit: the most accessed interval of keys is likely to be
-near the top of the tee."
+(defmacro phpinspect-splayt-node-traverse (place-and-node &rest body)
   (declare (indent 1))
-  (let ((place (car place-and-splayt))
+  (let ((place (car place-and-node))
         (current-sym (gensym))
-        (splayt-sym (gensym))
         (stack-sym (gensym))
         (queue-sym (gensym))
         (reverse-sym (gensym))
+        (node-sym (gensym))
         (size-sym (gensym)))
-    `(let* ((,splayt-sym ,(cadr place-and-splayt))
+    `(let* ((,node-sym ,(cadr place-and-node))
             ;; Make place locally scoped variable if a symbol
-            (,queue-sym (list (phpinspect-splayt-root-node ,splayt-sym)))
+            (,queue-sym (when ,node-sym
+                          (list ,node-sym)))
             (,reverse-sym t)
             ,size-sym
             ,stack-sym
@@ -231,10 +262,10 @@ near the top of the tee."
              ,@body)
 
            (when (phpinspect-splayt-node-right ,current-sym)
-             (setq ,queue-sym (nconc ,queue-sym (list (phpinspect-splayt-node-right ,current-sym)))))
+             (push (phpinspect-splayt-node-right ,current-sym) ,queue-sym))
 
            (when (phpinspect-splayt-node-left ,current-sym)
-             (setq ,queue-sym (nconc ,queue-sym (list (phpinspect-splayt-node-left ,current-sym)))))
+             (push (phpinspect-splayt-node-left ,current-sym) ,queue-sym))
 
            (setq ,size-sym (- ,size-sym 1)))
 
@@ -244,38 +275,110 @@ near the top of the tee."
              (setf ,place (phpinspect-splayt-node-value ,current-sym))
              ,@body))
 
-         (setq ,reverse-sym (not ,reverse-sym))))))
+         (setq ,reverse-sym (not ,reverse-sym)))
 
-(defsubst phpinspect-splayt-find (splayt key &optional navigator matcher continue-predicate)
-  (unless navigator (setq navigator #'<))
-  (unless matcher (setq matcher #'=))
+       nil)))
 
-  (let ((nav (phpinspect-make-splayt-nav splayt))
-        current next)
-    (when (phpinspect-splayt-nav-current nav)
-      (catch 'found
-        (while t
-          (setq current (phpinspect-splayt-nav-current nav)
-                next nil)
-          (cond
-           ((funcall navigator key (phpinspect-splayt-nav-current-key nav))
-            (when (phpinspect-splayt-nav-has-left-p nav)
-              (phpinspect-splayt-nav-left nav)
-              (setq next (phpinspect-splayt-nav-current nav))))
-           (t
-            (when (phpinspect-splayt-nav-has-right-p nav)
-              (phpinspect-splayt-nav-right nav)
-              (setq next (phpinspect-splayt-nav-current nav)))))
+(defmacro phpinspect-splayt-traverse (place-and-splayt &rest body)
+  "Traverse splay tree in cadr of PLACE-AND-SPLAYT, executing BODY.
 
-          (if (funcall matcher key (phpinspect-splayt-node-key current))
-              (when (or (not next)
-                        (not continue-predicate)
-                        (not (funcall continue-predicate key (phpinspect-splayt-node-key next))))
-                (phpinspect-splay
-                 splayt current
-                 (if next (cdr (phpinspect-splayt-nav-parents nav)) (phpinspect-splayt-nav-parents nav)))
-                (throw 'found (phpinspect-splayt-node-value current)))
-            (unless next
-              (throw 'found nil))))))))
+The car of PLACE-AND-SPLAYT is assigned the value of each node.
+
+Traversal is breadth-first to take advantage of the splay trees
+main benefit: the most accessed interval of keys is likely to be
+near the top of the tee."
+  (declare (indent 1))
+  `(phpinspect-splayt-node-traverse
+       (,(car place-and-splayt) (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
+     ,@body))
+
+(define-inline phpinspect-splayt-find-node (splayt key)
+  (inline-letevals (splayt key)
+    (inline-quote
+     (let ((current (phpinspect-splayt-root-node ,splayt)))
+       (catch 'return
+         (while current
+           (if (= ,key (phpinspect-splayt-node-key current))
+               (progn
+                 (phpinspect-splay ,splayt current)
+                 (throw 'return current))
+             (if (< ,key (phpinspect-splayt-node-key current))
+                 (setq current (phpinspect-splayt-node-left current))
+               (setq current (phpinspect-splayt-node-right current))))))))))
+
+(define-inline phpinspect-splayt-find-insertion-node (splayt key)
+  (inline-letevals (splayt key)
+    (inline-quote
+     (let ((current (phpinspect-splayt-root-node ,splayt)))
+       (catch 'return
+         (while current
+           (if (or (and (> (phpinspect-splayt-node-key current) ,key)
+                        (not (phpinspect-splayt-node-left current)))
+                   (and (<= (phpinspect-splayt-node-key current) ,key)
+                        (not (phpinspect-splayt-node-right current))))
+               (throw 'return current)
+             (if (< ,key (phpinspect-splayt-node-key current))
+                 (setq current (phpinspect-splayt-node-left current))
+               (setq current (phpinspect-splayt-node-right current))))))))))
+
+(define-inline phpinspect-splayt-find-smallest-node-after (splayt key)
+  (inline-letevals (splayt key)
+    (inline-quote
+     (let ((current (phpinspect-splayt-root-node ,splayt))
+           smallest)
+
+       (catch 'break
+         (while current
+           (if (>= ,key  (phpinspect-splayt-node-key current))
+               (setf current (phpinspect-splayt-node-right current)
+                     smallest current)
+             (throw 'break nil))))
+
+       (catch 'return
+         (while current
+           (when (= (+ ,key 1) (phpinspect-splayt-node-key current))
+             (throw 'return current))
+
+           (cond ((and (phpinspect-splayt-node-parent current)
+                       (< ,key (phpinspect-splayt-node-key (phpinspect-splayt-node-parent current)))
+                       (eq (phpinspect-splayt-node-right (phpinspect-splayt-node-parent current))
+                           current))
+                  (setf current (phpinspect-splayt-node-parent current)
+                        smallest current))
+                 ((phpinspect-splayt-node-left current)
+                  (setf current (phpinspect-splayt-node-left current))
+                  (when (< ,key (phpinspect-splayt-node-key current))
+                    (setf smallest current)))
+                 ((>= ,key (phpinspect-splayt-node-key current))
+                  (if (phpinspect-splayt-node-right current)
+                      (setf current (phpinspect-splayt-node-right current))
+                    (throw 'return smallest)))
+                 (t (throw 'return smallest)))))))))
+
+(defsubst phpinspect-splayt-find-all-after (splayt key)
+  "Find all values in SPLAYT with a key higher than KEY."
+  (let ((first (phpinspect-splayt-find-smallest-node-after splayt key))
+        all)
+    (while first
+      (push (phpinspect-splayt-node-value first) all)
+
+      (phpinspect-splayt-node-traverse (sibling (phpinspect-splayt-node-right first))
+        (setq all (nconc all (list sibling))))
+
+      (if (and (phpinspect-splayt-node-parent first)
+               (eq first (phpinspect-splayt-node-left (phpinspect-splayt-node-parent first))))
+          (setq first (phpinspect-splayt-node-parent first))
+        (setq first nil)))
+    all))
+
+(define-inline phpinspect-splayt-find-smallest-after (splayt key)
+  "Find value of node with smallest key that is higher than KEY in SPLAYT."
+  (inline-quote
+   (phpinspect-splayt-node-value
+    (phpinspect-splay
+     ,splayt (phpinspect-splayt-find-smallest-node-after ,splayt ,key)))))
+
+(defsubst phpinspect-splayt-find (splayt key)
+  (phpinspect-splayt-node-value (phpinspect-splayt-find-node splayt key)))
 
 (provide 'phpinspect-splayt)
