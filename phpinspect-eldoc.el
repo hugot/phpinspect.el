@@ -36,16 +36,6 @@
   (buffer nil
           :type phpinspect-buffer))
 
-(cl-defmethod phpinspect-eldoc-query-execute ((query phpinspect-eldoc-query))
-  (let* ((buffer (phpinspect-eldoc-query-buffer query))
-         (point (phpinspect-eldoc-query-point query))
-         (buffer-map (phpinspect-buffer-parse-map buffer))
-         (rctx (phpinspect-get-resolvecontext buffer-map point)))
-    (catch 'matched
-      (dolist (strategy phpinspect-eldoc-strategies)
-        (when (phpinspect-eld-strategy-supports strategy query rctx)
-          (phpinspect--log "Found matching eldoc strategy. Executing...")
-          (throw 'matched (phpinspect-eld-strategy-execute strategy query rctx)))))))
 
 (cl-defgeneric phpinspect-eld-strategy-supports (strategy (query phpinspect-eldoc-query) (context phpinspect--resolvecontext))
   "Should return non-nil if STRATEGY should be deployed for QUERY
@@ -62,11 +52,11 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
   "Eldoc strategy for object attributes.")
 
 (cl-defmethod phpinspect-eld-strategy-supports
-  ((strat phpinspect-eld-attribute) (q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
+  ((_strat phpinspect-eld-attribute) (_q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
   (phpinspect-attrib-p (car (last (phpinspect--resolvecontext-subject rctx)))))
 
 (cl-defmethod phpinspect-eld-strategy-execute
-  ((strat phpinspect-eld-attribute) (q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
+  ((_strat phpinspect-eld-attribute) (_q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
   (let ((attrib (car (last (phpinspect--resolvecontext-subject rctx))))
         type-before)
     (setf (phpinspect--resolvecontext-subject rctx) (butlast (phpinspect--resolvecontext-subject rctx)))
@@ -77,9 +67,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                     (phpinspect--resolvecontext-project rctx)
                     type-before))
             (attribute-name (cadadr attrib))
-            variable
-            method
-            result)
+            variable method result)
         (when attribute-name
           (cond ((phpinspect-static-attrib-p attrib)
                  (setq variable (phpinspect--class-get-variable class attribute-name))
@@ -101,14 +89,15 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                    (setq method (phpinspect--class-get-method
                                  class (phpinspect-intern-name attribute-name)))
                    (when method
-                     (setq result (phpinspect-make-function-doc :fn method)))))))))))
+                     (setq result (phpinspect-make-function-doc :fn method))))))
+          result)))))
 
 
 (cl-defstruct (phpinspect-eld-function-args (:constructor phpinspect-make-eld-function-args))
   "Eldoc strategy for function arguments.")
 
 (cl-defmethod phpinspect-eld-strategy-supports
-  ((strat phpinspect-eld-function-args) (q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
+  ((_strat phpinspect-eld-function-args) (_q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
   (let ((parent-token (car (phpinspect--resolvecontext-enclosing-tokens rctx))))
     ;; When our subject is inside a list, it is probably an argument of a
     ;; function/method call, which is what this strategy provides information for.
@@ -120,10 +109,9 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
          (car (last (phpinspect--resolvecontext-subject rctx)))))))
 
 (cl-defmethod phpinspect-eld-strategy-execute
-  ((strat phpinspect-eld-function-args) (q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
+  ((_strat phpinspect-eld-function-args) (q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
   (phpinspect--log "Executing `phpinspect-eld-function-args' strategy")
-  (let* ((token-map (phpinspect-buffer-parse-map (phpinspect-eldoc-query-buffer q)))
-         (enclosing-token (car (phpinspect--resolvecontext-enclosing-metadata
+  (let* ((enclosing-token (car (phpinspect--resolvecontext-enclosing-metadata
                                  rctx)))
          (left-sibling )
          (statement )
@@ -238,6 +226,17 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
   "The eldoc strategies that phpinspect is currently allowed to
 employ. Strategies are queried in the order of this list. See
 also `phpinspect-eldoc-query-execute'.")
+
+(cl-defmethod phpinspect-eldoc-query-execute ((query phpinspect-eldoc-query))
+  (let* ((buffer (phpinspect-eldoc-query-buffer query))
+         (point (phpinspect-eldoc-query-point query))
+         (buffer-map (phpinspect-buffer-parse-map buffer))
+         (rctx (phpinspect-get-resolvecontext buffer-map point)))
+    (catch 'matched
+      (dolist (strategy phpinspect-eldoc-strategies)
+        (when (phpinspect-eld-strategy-supports strategy query rctx)
+          (phpinspect--log "Found matching eldoc strategy. Executing...")
+          (throw 'matched (phpinspect-eld-strategy-execute strategy query rctx)))))))
 
 (defun phpinspect-eldoc-function ()
   "An `eldoc-documentation-function` implementation for PHP files.

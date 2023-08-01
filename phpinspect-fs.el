@@ -61,13 +61,13 @@ thread, PREFER-ASYNC has no effect.")
 (cl-defgeneric phpinspect-fs-directory-files (fs directory match))
 (cl-defgeneric phpinspect-fs-directory-files-recursively (fs directory match))
 
-(cl-defmethod phpinspect-fs-file-exists-p ((fs phpinspect-fs) file)
+(cl-defmethod phpinspect-fs-file-exists-p ((_fs phpinspect-fs) file)
   (file-exists-p file))
 
 (cl-defmethod phpinspect-fs-file-exists-p ((fs phpinspect-virtual-fs) file)
   (and (gethash file (phpinspect-virtual-fs-files fs)) t))
 
-(cl-defmethod phpinspect-fs-file-directory-p ((fs phpinspect-fs) file)
+(cl-defmethod phpinspect-fs-file-directory-p ((_fs phpinspect-fs) file)
   (file-directory-p file))
 
 (cl-defmethod phpinspect-fs-file-directory-p ((fs phpinspect-virtual-fs) file)
@@ -86,14 +86,15 @@ thread, PREFER-ASYNC has no effect.")
     (when file
       (phpinspect-virtual-file-modification-time file))))
 
-(cl-defmethod phpinspect-fs-file-modification-time ((fs phpinspect-fs) file)
+(cl-defmethod phpinspect-fs-file-modification-time ((_fs phpinspect-fs) file)
   (let ((attributes (file-attributes file)))
     (when attributes
       (file-attribute-modification-time attributes))))
 
 
 (defsubst phpinspect--insert-file-contents-asynchronously (file)
-  "Inserts FILE contents into the current buffer asynchronously, while blocking the current thread.
+  "Inserts FILE contents into the current buffer asynchronously,
+while blocking the current thread.
 
 Errors when executed in main thread, as it should be used to make
 background operations less invasive. Usage in the main thread can
@@ -127,7 +128,7 @@ only be the result of a logic error."
       (condition-wait condition)
       (when err (error err)))))
 
-(cl-defmethod phpinspect-fs-insert-file-contents ((fs phpinspect-fs) file &optional prefer-async)
+(cl-defmethod phpinspect-fs-insert-file-contents ((_fs phpinspect-fs) file &optional prefer-async)
   "Insert file contents from FILE. "
   (if (and prefer-async (not (eq (current-thread) main-thread))
            phpinspect--cat-executable)
@@ -138,7 +139,7 @@ only be the result of a logic error."
   (let ((file-obj (gethash file (phpinspect-virtual-fs-files fs))))
     (when file (insert (or (phpinspect-virtual-file-contents file-obj) "")))))
 
-(cl-defmethod phpinspect-fs-directory-files ((fs phpinspect-fs) directory &optional match)
+(cl-defmethod phpinspect-fs-directory-files ((_fs phpinspect-fs) directory &optional match)
   (directory-files directory t match t))
 
 (cl-defmethod phpinspect-fs-directory-files ((fs phpinspect-virtual-fs) directory &optional match)
@@ -154,7 +155,7 @@ only be the result of a logic error."
      (phpinspect-virtual-fs-files fs))
     files))
 
-(cl-defmethod phpinspect-fs-directory-files-recursively ((fs phpinspect-fs) directory &optional match)
+(cl-defmethod phpinspect-fs-directory-files-recursively ((_fs phpinspect-fs) directory &optional match)
   (directory-files-recursively directory
                                match
                                t ;; Ignore directories that cannot be read

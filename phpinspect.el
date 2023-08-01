@@ -1,10 +1,11 @@
-; phpinspect.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
+;;; phpinspect.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
 ;; Version: 0
+;; Package-Requires: ((compat "29"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by

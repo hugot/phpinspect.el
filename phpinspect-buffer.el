@@ -23,7 +23,7 @@
 
 ;;; Code:
 
-;;(require 'phpinspect-tree)
+(require 'phpinspect-parser)
 (require 'phpinspect-bmap)
 (require 'phpinspect-edtrack)
 

@@ -90,6 +90,65 @@ candidate. Candidates can be indexed functions and variables.")
   (buffer nil
           :type phpinspect-buffer))
 
+
+(cl-defgeneric phpinspect-comp-strategy-supports (strategy (query phpinspect-completion-query) (context phpinspect--resolvecontext))
+  "Should return non-nil if STRATEGY should be deployed for QUERY
+and CONTEXT. All strategies must implement this method.")
+
+(cl-defgeneric phpinspect-comp-strategy-execute (strategy (query phpinspect-completion-query) (context phpinspect--resolvecontext))
+  "Should return a list of objects for which
+`phpinspect--make-completion' is implemented.")
+
+(cl-defstruct (phpinspect-comp-sigil (:constructor phpinspect-make-comp-sigil))
+  "Completion strategy for the sigil ($) character.")
+
+(cl-defmethod phpinspect-comp-strategy-supports
+  ((_strat phpinspect-comp-sigil) (q phpinspect-completion-query)
+   (_rctx phpinspect--resolvecontext))
+  (and (= (phpinspect-completion-query-completion-point q)
+          (phpinspect-completion-query-point q))
+       (phpinspect-variable-p
+        (phpinspect-meta-token
+         (phpinspect-bmap-last-token-before-point
+          (phpinspect-buffer-parse-map (phpinspect-completion-query-buffer q))
+          (phpinspect-completion-query-point q))))))
+
+(cl-defmethod phpinspect-comp-strategy-execute
+  ((_strat phpinspect-comp-sigil) (_q phpinspect-completion-query)
+   (rctx phpinspect--resolvecontext))
+  (phpinspect-suggest-variables-at-point rctx))
+
+(cl-defstruct (phpinspect-comp-attribute (:constructor phpinspect-make-comp-attribute))
+  "Completion strategy for object attributes")
+
+(cl-defmethod phpinspect-comp-strategy-supports
+  ((_strat phpinspect-comp-attribute) (_q phpinspect-completion-query)
+   (rctx phpinspect--resolvecontext))
+  (phpinspect-object-attrib-p (car (last (phpinspect--resolvecontext-subject rctx)))))
+
+(cl-defmethod phpinspect-comp-strategy-execute
+  ((_strat phpinspect-comp-attribute) (_q phpinspect-completion-query)
+   (rctx phpinspect--resolvecontext))
+  (phpinspect-suggest-attributes-at-point rctx))
+
+(cl-defstruct (phpinspect-comp-static-attribute (:constructor phpinspect-make-comp-static-attribute))
+  "Completion strategy for static attributes")
+
+(cl-defmethod phpinspect-comp-strategy-supports
+  ((_strat phpinspect-comp-static-attribute) (_q phpinspect-completion-query)
+   (rctx phpinspect--resolvecontext))
+  (phpinspect-static-attrib-p (car (last (phpinspect--resolvecontext-subject rctx)))))
+
+(cl-defmethod phpinspect-comp-strategy-execute
+  ((_strat phpinspect-comp-static-attribute) (_q phpinspect-completion-query)
+   (rctx phpinspect--resolvecontext))
+  (phpinspect-suggest-attributes-at-point rctx 'static))
+
+(defvar phpinspect-completion-strategies (list (phpinspect-make-comp-attribute)
+                                               (phpinspect-make-comp-sigil)
+                                               (phpinspect-make-comp-static-attribute))
+  "List of completion strategies that phpinspect can use.")
+
 (cl-defmethod phpinspect-completion-query-execute ((query phpinspect-completion-query))
   "Execute QUERY.
 
@@ -106,63 +165,6 @@ Returns list of `phpinspect--completion'."
           (phpinspect--completion-list-add
            completion-list (phpinspect--make-completion candidate)))))
     completion-list))
-
-(cl-defgeneric phpinspect-comp-strategy-supports (strategy (query phpinspect-completion-query) (context phpinspect--resolvecontext))
-  "Should return non-nil if STRATEGY should be deployed for QUERY
-and CONTEXT. All strategies must implement this method.")
-
-(cl-defgeneric phpinspect-comp-strategy-execute (strategy (query phpinspect-completion-query) (context phpinspect--resolvecontext))
-  "Should return a list of objects for which `phpinspect--make-completion' is implemented.")
-
-(cl-defstruct (phpinspect-comp-sigil (:constructor phpinspect-make-comp-sigil))
-  "Completion strategy for the sigil ($) character.")
-
-(cl-defmethod phpinspect-comp-strategy-supports
-  ((strat phpinspect-comp-sigil) (q phpinspect-completion-query)
-   (rctx phpinspect--resolvecontext))
-  (and (= (phpinspect-completion-query-completion-point q)
-          (phpinspect-completion-query-point q))
-       (phpinspect-variable-p
-        (phpinspect-meta-token
-         (phpinspect-bmap-last-token-before-point
-          (phpinspect-buffer-parse-map (phpinspect-completion-query-buffer q))
-          (phpinspect-completion-query-point q))))))
-
-(cl-defmethod phpinspect-comp-strategy-execute
-  ((strat phpinspect-comp-sigil) (q phpinspect-completion-query)
-   (rctx phpinspect--resolvecontext))
-  (phpinspect-suggest-variables-at-point rctx))
-
-(cl-defstruct (phpinspect-comp-attribute (:constructor phpinspect-make-comp-attribute))
-  "Completion strategy for object attributes")
-
-(cl-defmethod phpinspect-comp-strategy-supports
-  ((strat phpinspect-comp-attribute) (q phpinspect-completion-query)
-   (rctx phpinspect--resolvecontext))
-  (phpinspect-object-attrib-p (car (last (phpinspect--resolvecontext-subject rctx)))))
-
-(cl-defmethod phpinspect-comp-strategy-execute
-  ((strat phpinspect-comp-attribute) (q phpinspect-completion-query)
-   (rctx phpinspect--resolvecontext))
-  (phpinspect-suggest-attributes-at-point rctx))
-
-(cl-defstruct (phpinspect-comp-static-attribute (:constructor phpinspect-make-comp-static-attribute))
-  "Completion strategy for static attributes")
-
-(cl-defmethod phpinspect-comp-strategy-supports
-  ((strat phpinspect-comp-static-attribute) (q phpinspect-completion-query)
-   (rctx phpinspect--resolvecontext))
-  (phpinspect-static-attrib-p (car (last (phpinspect--resolvecontext-subject rctx)))))
-
-(cl-defmethod phpinspect-comp-strategy-execute
-  ((strat phpinspect-comp-static-attribute) (q phpinspect-completion-query)
-   (rctx phpinspect--resolvecontext))
-  (phpinspect-suggest-attributes-at-point rctx 'static))
-
-(defvar phpinspect-completion-strategies (list (phpinspect-make-comp-attribute)
-                                               (phpinspect-make-comp-sigil)
-                                               (phpinspect-make-comp-static-attribute))
-  "List of completion strategies that phpinspect can use.")
 
 (cl-defmethod phpinspect--make-completion
   ((completion-candidate phpinspect--function))

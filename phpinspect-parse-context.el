@@ -25,6 +25,7 @@
 
 (require 'phpinspect-util)
 (require 'phpinspect-meta)
+(require 'phpinspect-changeset)
 (require 'phpinspect-bmap)
 
 (defvar phpinspect-parse-context nil
@@ -120,57 +121,6 @@ thrown.")
   (let ((whitespace (phpinspect-pctx-whitespace-before pctx)))
     (setf (phpinspect-pctx-whitespace-before pctx) "")
     whitespace))
-
-(define-inline phpinspect-make-changeset (meta)
-  (inline-letevals (meta)
-    (inline-quote
-     (list (phpinspect-meta-start ,meta) (phpinspect-meta-end ,meta)
-           (phpinspect-meta-parent ,meta) (phpinspect-meta-overlay ,meta)
-           (phpinspect-meta-parent-offset ,meta) ,meta))))
-
-(define-inline phpinspect-changeset-start (set)
-  (inline-quote (car ,set)))
-
-(define-inline phpinspect-changeset-end (set)
-  (inline-quote (cadr ,set)))
-
-(define-inline phpinspect-changeset-parent (set)
-  (inline-quote (caddr ,set)))
-
-(define-inline phpinspect-changeset-overlay (set)
-  (inline-quote (cadddr ,set)))
-
-(define-inline phpinspect-changeset-parent-offset (set)
-  (inline-quote (car (cddddr ,set))))
-
-(define-inline phpinspect-changeset-meta (set)
-  (inline-quote (car (nthcdr 5 ,set))))
-
-(define-inline phpinspect-meta-with-changeset (meta &rest body)
-  (declare (indent 1))
-  (inline-letevals (meta)
-    (push 'progn body)
-    (inline-quote
-     (progn
-       (when phpinspect-parse-context
-         (phpinspect-pctx-register-changeset
-          phpinspect-parse-context (phpinspect-make-changeset ,meta)))
-       ,body))))
-
-(define-inline phpinspect-changeset-revert (changeset)
-  (inline-letevals (changeset)
-    (inline-quote
-     (progn
-       (setf (phpinspect-meta-parent (phpinspect-changeset-meta ,changeset))
-             (phpinspect-changeset-parent ,changeset))
-       (setf (phpinspect-meta-overlay (phpinspect-changeset-meta ,changeset))
-             (phpinspect-changeset-overlay ,changeset))
-       (setf (phpinspect-meta-absolute-start (phpinspect-changeset-meta ,changeset))
-             (phpinspect-changeset-start ,changeset))
-       (setf (phpinspect-meta-absolute-end (phpinspect-changeset-meta ,changeset))
-             (phpinspect-changeset-end ,changeset))
-       (setf (phpinspect-meta-parent-offset (phpinspect-changeset-meta ,changeset))
-             (phpinspect-changeset-parent-offset ,changeset))))))
 
 (defun phpinspect-pctx-cancel (pctx)
   (phpinspect--log "Cancelling parse context")

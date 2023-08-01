@@ -76,7 +76,8 @@ qualified names congruent with a bareword type name. Keyed by
 bareword typenames."))
 
 (defun phpinspect-make-autoload-definition-closure (project-root fs typehash)
-  "Create a closure that can be used to `maphash' the autoload section of a composer-json."
+  "Create a closure that can be used to `maphash' the autoload
+section of a composer-json."
   (lambda (type prefixes)
     (let ((strategy))
       (cond

@@ -25,6 +25,7 @@
 
 (require 'phpinspect-project)
 (require 'phpinspect-autoload)
+(require 'phpinspect-worker)
 
 (cl-defstruct (phpinspect--cache (:constructor phpinspect--make-cache))
   (projects (make-hash-table :test 'equal :size 10)

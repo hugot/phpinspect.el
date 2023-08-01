@@ -204,7 +204,7 @@ apeared to be a little more performant than using `let'."
                  (phpinspect-splayt-node-rotate-left ,parent ,splayt)
                  (phpinspect-splayt-node-rotate-right ,parent ,splayt))
                 (t
-                 (error "Failed in determining rotation strategy. (phpinspect-splayt-node-grandparent ,node): %s, parent: %s, ,node: %s")))
+                 (error "Failed in determining rotation strategy.")))
 
              ;; Else
              (if (eq ,node (phpinspect-splayt-node-left ,parent))

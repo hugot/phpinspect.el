@@ -25,8 +25,15 @@
 
 (require 'phpinspect-splayt)
 (require 'phpinspect-meta)
+(require 'phpinspect-changeset)
 (require 'phpinspect-util)
 (require 'compat)
+
+(eval-when-compile
+  (defvar phpinspect-parse-context nil
+    "dummy for compilation")
+
+  (declare-function phpinspect-pctx-register-changeset "phpinspect-parse-context" (pctx changeset)))
 
 (cl-defstruct (phpinspect-bmap (:constructor phpinspect-make-bmap))
   (starts (make-hash-table :test #'eql
@@ -125,9 +132,9 @@
   (declare (indent defun))
   (let ((place (car place-and-bmap))
         (bmap (gensym))
-        (_ignored (gensym)))
+        (ignored (gensym)))
     `(let ((,bmap ,(cadr place-and-bmap)))
-       (maphash (lambda (,_ignored ,place)
+       (maphash (lambda (,ignored ,place)
                   ,@body
                   (when (phpinspect-meta-overlay ,place)
                     (phpinspect-splayt-traverse (,place (phpinspect-meta-children ,place))
@@ -172,6 +179,11 @@
   (and (listp overlay)
        (eq 'overlay (car overlay))))
 
+(defsubst phpinspect-bmap-overlay-at-point (bmap point)
+  (let ((overlay (phpinspect-splayt-find-largest-before (phpinspect-bmap-overlays bmap) point)))
+    (when (and overlay (phpinspect-overlay-overlaps-point overlay point))
+      overlay)))
+
 (cl-defmethod phpinspect-bmap-token-starting-at ((overlay (head overlay)) point)
   (phpinspect-bmap-token-starting-at
    (phpinspect-overlay-bmap overlay) (- point (phpinspect-overlay-delta overlay))))
@@ -192,10 +204,6 @@
         (phpinspect-bmap-tokens-ending-at overlay point)
       (gethash point (phpinspect-bmap-ends bmap)))))
 
-(defsubst phpinspect-bmap-overlay-at-point (bmap point)
-  (let ((overlay (phpinspect-splayt-find-largest-before (phpinspect-bmap-overlays bmap) point)))
-    (when (and overlay (phpinspect-overlay-overlaps-point overlay point))
-      overlay)))
 
 (defsubst phpinspect-bmap-tokens-overlapping (bmap point)
   (let ((tokens))
@@ -212,6 +220,10 @@
 (cl-defmethod phpinspect-bmap-token-meta ((overlay (head overlay)) token)
   (phpinspect-bmap-token-meta (phpinspect-overlay-bmap overlay) token))
 
+(defsubst phpinspect-probably-token-p (token)
+  (and (listp token)
+       (keywordp (car token))))
+
 (cl-defmethod phpinspect-bmap-token-meta ((bmap phpinspect-bmap) token)
   (unless (phpinspect-probably-token-p token)
     (error "Unexpected argument, expected `phpinspect-token-p'. Got invalid token %s" token))
@@ -225,10 +237,6 @@
               (phpinspect-splayt-find
                (phpinspect-bmap-overlays bmap) (phpinspect-overlay-end overlay))
               (throw 'found found?)))))))
-
-(defsubst phpinspect-probably-token-p (token)
-  (and (listp token)
-       (keywordp (car token))))
 
 (cl-defmethod phpinspect-bmap-last-token-before-point ((bmap phpinspect-bmap) point)
   "Search backward in BMAP for last token ending before POINT."
