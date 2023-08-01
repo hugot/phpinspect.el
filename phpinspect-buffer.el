@@ -46,7 +46,7 @@ emacs buffer."
   (edit-tracker (phpinspect-make-edtrack)
                 :type phpinspect-edtrack))
 
-(cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer))
+(cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer) &optional no-interrupt)
   "Parse the PHP code in the the emacs buffer that this object is
 linked with."
   (if (or (not (phpinspect-buffer-tree buffer))
@@ -55,7 +55,7 @@ linked with."
         (let* ((map (phpinspect-make-bmap))
                (buffer-map (phpinspect-buffer-map buffer))
                (ctx (phpinspect-make-pctx
-                     :interrupt-predicate #'input-pending-p
+                     :interrupt-predicate (unless no-interrupt #'input-pending-p)
                      :bmap map
                      :incremental t
                      :previous-bmap buffer-map
@@ -77,7 +77,7 @@ linked with."
   (setf (phpinspect-buffer-tree buffer) nil)
   (setf (phpinspect-buffer-map buffer) (phpinspect-make-bmap))
   (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
-  (phpinspect-buffer-parse buffer))
+  (phpinspect-buffer-parse buffer 'no-interrupt))
 
 (defsubst phpinspect-buffer-parse-map (buffer)
   (phpinspect-buffer-parse buffer)
@@ -117,5 +117,12 @@ use."
                  (phpinspect-bmap-make-location-resolver (phpinspect-buffer-map buffer)))
                token))))
 
+(defun phpinspect-display-buffer-tree ()
+  (interactive)
+  (when phpinspect-current-buffer
+    (let ((buffer phpinspect-current-buffer))
+    (pop-to-buffer (generate-new-buffer "phpinspect-buffer-tree"))
+    (insert (pp-to-string (phpinspect-buffer-tree buffer)))
+    (read-only-mode))))
 
 (provide 'phpinspect-buffer)
