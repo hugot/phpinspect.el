@@ -105,8 +105,10 @@
     (inline-quote
      (when (phpinspect-meta-parent ,meta)
        ;; Update absolute start and end
-       (setf (phpinspect-meta-absolute-start ,meta) (phpinspect-meta-start ,meta))
        (setf (phpinspect-meta-absolute-end ,meta) (phpinspect-meta-end ,meta))
+       ;; Note: start should always be updated after end, as end is derived from
+       ;; it.
+       (setf (phpinspect-meta-absolute-start ,meta) (phpinspect-meta-start ,meta))
        (setf (phpinspect-meta-parent ,meta) nil)))))
 
 (defun phpinspect-meta-shift (meta delta)
@@ -114,16 +116,76 @@
   (setf (phpinspect-meta-absolute-end meta) (+ (phpinspect-meta-end meta) delta)))
 
 (defun phpinspect-meta-right-siblings (meta)
-  (mapcar #'phpinspect-meta-token
-          (sort
-           (phpinspect-splayt-find-all-after
-            (phpinspect-meta-children (phpinspect-meta-parent meta)) (phpinspect-meta-parent-offset meta))
-           #'phpinspect-meta-sort-start)))
+  (sort
+   (phpinspect-splayt-find-all-after
+    (phpinspect-meta-children (phpinspect-meta-parent meta)) (phpinspect-meta-parent-offset meta))
+   #'phpinspect-meta-sort-start))
+
+(defun phpinspect-meta-wrap-token-pred (predicate)
+  (lambda (meta) (funcall predicate (phpinspect-meta-token meta))))
+
+(define-inline phpinspect-meta--point-offset (meta point)
+  (inline-quote
+   (- ,point (phpinspect-meta-start ,meta))))
+
+(cl-defmethod phpinspect-meta-find-left-sibling ((meta (head meta)))
+  (when (phpinspect-meta-parent meta)
+    (phpinspect-splayt-find-largest-before (phpinspect-meta-children (phpinspect-meta-parent meta))
+                                           (phpinspect-meta-parent-offset meta))))
+
+(cl-defmethod phpinspect-meta-find-overlapping-child ((meta (head meta)) (point integer))
+  (let ((child (phpinspect-splayt-find-largest-before
+                (phpinspect-meta-children meta) (phpinspect-meta--point-offset meta point))))
+    (when (and child (phpinspect-meta-overlaps-point point))
+      child)))
+
+(cl-defmethod phpinspect-meta-find-overlapping-children ((meta (head meta)) (point integer))
+  (let ((child meta)
+        children)
+    (while (and (setq child (phpinspect-meta-find-overlapping-child child point))
+                (phpinspect-meta-overlaps-point child point))
+      (push child children))
+    children))
+
+(cl-defmethod phpinspect-meta-find-child-starting-at ((meta (head meta)) (point integer))
+  (phpinspect-splayt-find (phpinspect-meta-children meta) (phpinspect-meta--point-offset meta point)))
+
+(cl-defmethod phpinspect-meta-find-child-starting-at-recursively ((meta (head meta)) (point integer))
+  (let ((child (phpinspect-meta-find-child-starting-at meta point)))
+    (if child
+        child
+      (setq child (phpinspect-meta-find-overlapping-child meta point))
+      (when child
+        (phpinspect-meta-find-child-starting-at-recursively child point)))))
+
+(cl-defmethod phpinspect-meta-find-child-before ((meta (head meta)) (point integer))
+  (phpinspect-splayt-find-largest-before
+   (phpinspect-meta-children meta) (phpinspect-meta--point-offset meta point)))
+
+(cl-defmethod phpinspect-meta-find-child-before-recursively ((meta (head meta)) (point integer))
+  (let ((child meta)
+        last)
+    (while (setq child (phpinspect-meta-find-child-before child point))
+      (setq last child))
+    last))
+
+(cl-defmethod phpinspect-meta-find-children-after ((meta (head meta)) (point integer))
+  (sort
+   (phpinspect-splayt-find-all-after
+    (phpinspect-meta-children meta) (phpinspect-meta--point-offset meta point))
+   #'phpinspect-meta-sort-start))
+
+(cl-defmethod phpinspect-meta-find-children-before ((meta (head meta)) (point integer))
+  (sort (phpinspect-splayt-find-all-before
+         (phpinspect-meta-children meta) (phpinspect-meta--point-offset meta point))
+        #'phpinspect-meta-sort-start))
 
 
 (defun phpinspect-meta-string (meta)
-  (format "[start: %d, end: %d, token: %s]"
-          (phpinspect-meta-start meta) (phpinspect-meta-end meta) (phpinspect-meta-token meta)))
+  (if meta
+      (format "[start: %d, end: %d, token: %s]"
+              (phpinspect-meta-start meta) (phpinspect-meta-end meta) (phpinspect-meta-token meta))
+    "[nil]"))
 
 
 (provide 'phpinspect-meta)

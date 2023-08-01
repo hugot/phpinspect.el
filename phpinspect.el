@@ -71,16 +71,6 @@ phpinspect")
                                            project-root)
      indexed-class)))
 
-(defun phpinspect-parse-file (file)
-  (with-temp-buffer
-    (phpinspect-insert-file-contents file)
-    (phpinspect-parse-current-buffer)))
-
-(defun phpinspect-parse-current-buffer ()
-  (phpinspect-parse-buffer-until-point
-   (current-buffer)
-   (point-max)))
-
 (defun phpinspect-parse-string-to-bmap (string)
   (with-temp-buffer
     (insert string)
@@ -90,11 +80,6 @@ phpinspect")
         (phpinspect-parse-current-buffer))
 
       (phpinspect-pctx-bmap context))))
-
-(defun phpinspect-parse-string (string)
-  (with-temp-buffer
-    (insert string)
-    (phpinspect-parse-current-buffer)))
 
 (defun phpinspect-after-change-function (start end pre-change-length)
   (when phpinspect-current-buffer

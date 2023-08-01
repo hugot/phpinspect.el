@@ -1,5 +1,45 @@
+;; test-parser.el --- Unit tests for phpinspect.el  -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2021 Free Software Foundation, Inc.
+
+;; Author: Hugo Thunnissen <devel@hugot.nl>
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;;
+
+;;; Code:
 
 (require 'phpinspect-parser)
+
+(defvar phpinspect-test-directory
+  (file-name-directory
+   (or load-file-name
+       buffer-file-name))
+  "Directory that phpinspect tests reside in.")
+
+
+(defvar phpinspect-test-php-file-directory
+  (concat
+   (file-name-directory
+    (or load-file-name
+        buffer-file-name))
+   "/fixtures")
+  "Directory with syntax trees of example PHP files.")
+
 
 (ert-deftest phpinspect-parse-bmap ()
   (let* ((ctx (phpinspect-make-pctx :incremental t))
@@ -30,3 +70,88 @@ class TestClass {
       (setq parent (phpinspect-meta-parent (car enclosing)))
       (should (phpinspect-list-p (phpinspect-meta-token parent)))
       (should (phpinspect-block-p (phpinspect-meta-token (phpinspect-meta-parent parent)))))))
+
+(ert-deftest phpinspect-parse-comma ()
+  (let* ((code "(,)")
+         (ctx (phpinspect-make-pctx :incremental t))
+         (parsed (phpinspect-with-parse-context ctx
+                   (phpinspect-parse-string code)))
+         (comma (cadadr parsed))
+         (map (phpinspect-pctx-bmap ctx))
+         (comma-meta))
+    (should (equal '(:root (:list (:comma ","))) parsed))
+    (should (equal '(:comma ",") comma))
+
+    (should (setq comma-meta (phpinspect-bmap-token-meta map comma)))
+    (should (= 1 (phpinspect-meta-width comma-meta)))))
+
+
+(ert-deftest phpinspect-parse-namespaced-class ()
+  "Test phpinspect-parse on a namespaced class"
+  (should
+   (equal (phpinspect-test-read-fixture-data "NamespacedClass")
+          (phpinspect-test-parse-fixture-code "NamespacedClass"))))
+
+(ert-deftest phpinspect-parse-block ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-data "Block")
+          (phpinspect-test-parse-fixture-code "Block"))))
+
+(ert-deftest phpinspect-parse-functions ()
+  "Test phpinspect-parse for php functions"
+  (should
+   (equal (phpinspect-test-read-fixture-data "Functions")
+          (phpinspect-test-parse-fixture-code "Functions"))))
+
+(ert-deftest phpinspect-parse-namespaced-functions ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-data "NamespacedFunctions")
+          (phpinspect-test-parse-fixture-code "NamespacedFunctions"))))
+
+(ert-deftest phpinspect-parse-variable ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-data "Variable")
+          (phpinspect-test-parse-fixture-code "Variable"))))
+
+(ert-deftest phpinspect-parse-word ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-data "Word")
+          (phpinspect-test-parse-fixture-code "Word"))))
+
+(ert-deftest phpinspect-parse-array ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-data "Array")
+          (phpinspect-test-parse-fixture-code "Array"))))
+
+
+(ert-deftest phpinspect-parse-short-function ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-data "ShortFunction")
+          (phpinspect-test-parse-fixture-code "ShortFunction"))))
+
+(ert-deftest phpinspect-parse-two-short-functions ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-data "TwoShortFunctions")
+          (phpinspect-test-parse-fixture-code "TwoShortFunctions"))))
+
+(ert-deftest phpinspect-parse-small-namespaced-class ()
+  "Test phpinspect-parse for php blocks"
+  (should
+   (equal (phpinspect-test-read-fixture-data "SmallNamespacedClass")
+          (phpinspect-test-parse-fixture-code "SmallNamespacedClass"))))
+
+;; If this test fails, the syntax tree has a breaking change in it. Regenerate the
+;; fixtures and fix anything that is broken.
+(ert-deftest phpinspect-syntax-tree-change ()
+  (let ((index (phpinspect--index-tokens
+                (phpinspect-test-parse-fixture-code "IndexClass1")))
+        (expected-result (phpinspect--index-tokens
+                          (phpinspect-test-read-fixture-data "IndexClass1"))))
+    (should (equal index expected-result))))

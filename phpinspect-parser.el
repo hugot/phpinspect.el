@@ -26,6 +26,7 @@
 ;;(require 'phpinspect-tree)
 (require 'phpinspect-edtrack)
 (require 'phpinspect-bmap)
+(require 'phpinspect-parse-context)
 
 (defvar phpinspect-parser-obarray (obarray-make)
   "An obarray containing symbols for all phpinspect (sub)parsers.")
@@ -37,68 +38,6 @@
   (define-inline phpinspect--word-end-regex ()
     (inline-quote "\\([[:blank:]]\\|[^0-9a-zA-Z_]\\)")))
 
-(defvar phpinspect-parse-context nil
-  "An instance of `phpinspect-pctx' that is used when
-parsing. Usually used in combination with
-`phpinspect-with-parse-context'")
-
-(defmacro phpinspect-with-parse-context (ctx &rest body)
-  (declare (indent 1))
-  (let ((old-ctx phpinspect-parse-context))
-    `(unwind-protect
-         (progn
-           (setq phpinspect-parse-context ,ctx)
-           ,@body)
-       (setq phpinspect-parse-context ,old-ctx))))
-
-(cl-defstruct (phpinspect-pctx (:constructor phpinspect-make-pctx))
-  "Parser Context"
-  (incremental nil)
-  (interrupt-threshold (time-convert '(2 . 1000))
-                       :documentation
-                       "After how much time `interrupt-predicate'
-should be polled. This is 2ms by default.")
-  (-start-time nil
-               :documentation "The time at which the parse started.
-This variable is for private use and not always set.")
-  (interrupt-predicate nil
-                      :documentation
-                      "A function that is called in intervals during parsing when
-set. If this function returns a non-nil value, the parse process
-is interrupted and the symbol `phpinspect-parse-interrupted' is
-thrown.")
-  (edtrack nil
-           :type phpinspect-edtrack)
-  (bmap (phpinspect-make-bmap)
-        :type phpinspect-bmap)
-  (previous-bmap nil
-                 :type phpinspect-bmap)
-  (whitespace-before ""
-                     :type string))
-
-(defsubst phpinspect-pctx-check-interrupt (pctx)
-  (unless (phpinspect-pctx--start-time pctx)
-    (setf (phpinspect-pctx--start-time pctx) (time-convert nil)))
-
-  ;; Interrupt when blocking too long while input is pending.
-  (when (and (time-less-p (phpinspect-pctx-interrupt-threshold pctx)
-                          (time-since (phpinspect-pctx--start-time pctx)))
-             (funcall (phpinspect-pctx-interrupt-predicate pctx)))
-    (throw 'phpinspect-parse-interrupted nil)))
-
-
-
-(defsubst phpinspect-pctx-register-token (pctx token start end)
-  (phpinspect-bmap-register
-   (phpinspect-pctx-bmap pctx) start end token (phpinspect-pctx-consume-whitespace pctx)))
-
-(defsubst phpinspect-pctx-register-whitespace (pctx whitespace)
-  (setf (phpinspect-pctx-whitespace-before pctx) whitespace))
-
-(defsubst phpinspect-pctx-consume-whitespace (pctx)
-  (let ((whitespace (phpinspect-pctx-whitespace-before pctx)))
-    (setf (phpinspect-pctx-whitespace-before pctx) "")
-    whitespace))
 
 (defun phpinspect-list-handlers ()
   (let ((handlers))
@@ -458,15 +397,6 @@ have any effect."
                  (setf (phpinspect-parser-incremental-func (symbol-value parser-symbol)) nil))
                phpinspect-parser-obarray))
 
-(defmacro phpinspect-pctx-save-whitespace (pctx &rest body)
-  (declare (indent 1))
-  (let ((save-sym (gensym)))
-    `(let ((,save-sym (phpinspect-pctx-whitespace-before ,pctx)))
-       (unwind-protect
-           (progn
-             (setf (phpinspect-pctx-whitespace-before ,pctx) nil)
-             ,@body)
-         (setf (phpinspect-pctx-whitespace-before ,pctx) ,save-sym)))))
 
 (defun phpinspect-make-parser-function (tree-type handler-list &optional delimiter-predicate)
   "Create a parser function using the handlers by names defined in HANDLER-LIST.
@@ -1138,6 +1068,21 @@ the properties of the class"
       (funcall (phpinspect-get-parser-func 'root)
                (current-buffer)
                point nil 'root))))
+
+(defun phpinspect-parse-current-buffer ()
+  (phpinspect-parse-buffer-until-point
+   (current-buffer)
+   (point-max)))
+
+(defun phpinspect-parse-string (string)
+  (with-temp-buffer
+    (insert string)
+    (phpinspect-parse-current-buffer)))
+
+(defun phpinspect-parse-file (file)
+  (with-temp-buffer
+    (insert-file-contents file)
+    (phpinspect-parse-current-buffer)))
 
 (provide 'phpinspect-parser)
 ;;; phpinspect-parser.el ends here

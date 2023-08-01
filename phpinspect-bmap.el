@@ -255,22 +255,23 @@ giving up. If not provided, this is 100."
          (overlay)
          (last-overlay (phpinspect-splayt-node-value (phpinspect-splayt-root-node overlays))))
 
-    (phpinspect-meta-detach-parent token-meta)
-    (phpinspect-meta-shift token-meta pos-delta)
+    (phpinspect-meta-with-changeset token-meta
+      (phpinspect-meta-detach-parent token-meta)
+      (phpinspect-meta-shift token-meta pos-delta)
 
-    (if (and last-overlay (= (- start (length whitespace-before)) (phpinspect-overlay-end last-overlay))
-             (= pos-delta (phpinspect-overlay-delta last-overlay)))
-        (progn
-          (phpinspect--log "Expanding previous overlay from (%d,%d) to (%d,%d)"
-                           (phpinspect-overlay-start last-overlay) (phpinspect-overlay-end last-overlay)
-                           (phpinspect-overlay-start last-overlay) end)
-          (setf (phpinspect-overlay-end last-overlay) end)
-          (setf (phpinspect-meta-overlay token-meta) last-overlay))
-      (phpinspect--log "Inserting new overlay at (%d,%d)" start end)
-      (setq overlay `(overlay ,start ,end ,pos-delta ,bmap-overlay ,token-meta))
-      (setf (phpinspect-meta-overlay token-meta) overlay)
-      (phpinspect-splayt-insert (phpinspect-bmap-overlays bmap) (phpinspect-overlay-start overlay) overlay))
-    (phpinspect-bmap-register bmap start end (phpinspect-meta-token token-meta) whitespace-before token-meta)))
+      (if (and last-overlay (= (- start (length whitespace-before)) (phpinspect-overlay-end last-overlay))
+               (= pos-delta (phpinspect-overlay-delta last-overlay)))
+          (progn
+            (phpinspect--log "Expanding previous overlay from (%d,%d) to (%d,%d)"
+                             (phpinspect-overlay-start last-overlay) (phpinspect-overlay-end last-overlay)
+                             (phpinspect-overlay-start last-overlay) end)
+            (setf (phpinspect-overlay-end last-overlay) end)
+            (setf (phpinspect-meta-overlay token-meta) last-overlay))
+        (phpinspect--log "Inserting new overlay at (%d,%d)" start end)
+        (setq overlay `(overlay ,start ,end ,pos-delta ,bmap-overlay ,token-meta))
+        (setf (phpinspect-meta-overlay token-meta) overlay)
+        (phpinspect-splayt-insert (phpinspect-bmap-overlays bmap) (phpinspect-overlay-start overlay) overlay))
+      (phpinspect-bmap-register bmap start end (phpinspect-meta-token token-meta) whitespace-before token-meta))))
 
 (defun phpinspect-bmap-make-location-resolver (bmap)
   (lambda (token)
