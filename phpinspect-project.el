@@ -233,9 +233,7 @@ before the search is executed."
 
   (condition-case error
       (let* ((file (phpinspect-project-get-type-filepath project type))
-             (visited-buffer (when file (find-buffer-visiting file)))
-             (new-index)
-             (class-index))
+             (visited-buffer (when file (find-buffer-visiting file))))
         (when file
           (if visited-buffer
               (with-current-buffer visited-buffer (phpinspect-index-current-buffer))

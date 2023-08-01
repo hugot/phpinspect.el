@@ -136,7 +136,7 @@
 (cl-defmethod phpinspect-meta-find-overlapping-child ((meta (head meta)) (point integer))
   (let ((child (phpinspect-splayt-find-largest-before
                 (phpinspect-meta-children meta) (phpinspect-meta--point-offset meta point))))
-    (when (and child (phpinspect-meta-overlaps-point point))
+    (when (and child (phpinspect-meta-overlaps-point child point))
       child)))
 
 (cl-defmethod phpinspect-meta-find-overlapping-children ((meta (head meta)) (point integer))

@@ -244,6 +244,7 @@ apeared to be a little more performant than using `let'."
             (,queue-sym (when ,node-sym
                           (list ,node-sym)))
             (,reverse-sym t)
+            ,current-sym
             ,size-sym
             ,stack-sym
             ,(if (symbolp place) place (gensym)))

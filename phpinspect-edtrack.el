@@ -66,7 +66,6 @@
 
 (defsubst phpinspect-edit-end (edit)
   (let ((end (or (caar edit) 0))
-        (delta 0)
         (previous-edit (cdr edit)))
     (+ end (phpinspect-edit-delta previous-edit))))
 

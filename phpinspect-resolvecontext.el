@@ -106,8 +106,7 @@
          ;; When there are no enclosing tokens, point is probably at the absolute
          ;; end of the buffer, so we find the last child before point.
          (subject (phpinspect-bmap-last-token-before-point bmap point))
-         (subject-token)
-         (siblings))
+         (subject-token))
     (phpinspect--log "Last token before point: %s, right siblings: %s, parent: %s"
                      (phpinspect-meta-string subject)
                      (mapcar #'phpinspect-meta-token (phpinspect-meta-right-siblings subject))

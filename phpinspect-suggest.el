@@ -95,7 +95,7 @@ more recent"
         (phpinspect--log "Failed to find methods for class %s :(" class))
       methods))
 
-(defun phpinspect--get-variables-for-class (buffer-classes class-name &optional static)
+(defun phpinspect--get-variables-for-class (class-name &optional static)
   (let ((class (phpinspect-get-or-create-cached-project-class
                 (phpinspect-current-project-root)
                 class-name)))
@@ -132,7 +132,6 @@ static variables and static methods."
       (when statement-type
         (let ((type (funcall type-resolver statement-type)))
           (append (phpinspect--get-variables-for-class
-                   buffer-classes
                    type
                    static)
                   (funcall method-lister type)))))))
