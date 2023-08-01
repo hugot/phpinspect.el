@@ -81,7 +81,7 @@
   (let ((edit (phpinspect-edtrack-edits track))
         (encroached)
         (pos))
-    (while (and edit (< point (phpinspect-edit-end edit)))
+    (while (and edit (<= point (phpinspect-edit-end edit)))
       (setq edit (cdr edit)))
 
     (setq pos (- point (phpinspect-edit-delta edit)))
@@ -96,7 +96,7 @@
   (let ((edit (phpinspect-edtrack-edits track))
         (encroached)
         (pos))
-    (while (and edit (< point (phpinspect-edit-original-end edit)))
+    (while (and edit (<= point (phpinspect-edit-original-end edit)))
       (setq edit (cdr edit)))
 
     (setq pos (+ point (phpinspect-edit-delta edit)))
