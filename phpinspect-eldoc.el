@@ -22,6 +22,9 @@
 ;;; Commentary:
 
 ;;; Code:
+(require 'phpinspect-util)
+(require 'phpinspect-meta)
+(require 'phpinspect-parser)
 
 (defvar phpinspect-eldoc-word-width 14
   "The maximum width of words in eldoc strings.")
@@ -120,43 +123,65 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
   ((strat phpinspect-eld-function-args) (q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
   (phpinspect--log "Executing `phpinspect-eld-function-args' strategy")
   (let* ((token-map (phpinspect-buffer-parse-map (phpinspect-eldoc-query-buffer q)))
-         (enclosing-token (cadr (phpinspect--resolvecontext-enclosing-tokens
+         (enclosing-token (car (phpinspect--resolvecontext-enclosing-metadata
                                  rctx)))
-         (statement (phpinspect-find-statement-before-point
-                     token-map (phpinspect-bmap-token-meta token-map enclosing-token)
-                     (phpinspect-eldoc-query-point q)))
+         (left-sibling )
+         (statement )
          match-result static arg-list arg-pos)
 
-    (phpinspect--log "Eldoc statement is:  %s" statement)
-    (phpinspect--log "Enclosing token was: %s" enclosing-token)
+    (cond
+     ;; Subject is a statement
+     ((and (phpinspect-list-p (car (last (phpinspect--resolvecontext-subject rctx))))
+           enclosing-token)
+
+      (setq left-sibling (phpinspect-meta-find-child-before-recursively
+                          enclosing-token (phpinspect-eldoc-query-point q)))
+      (phpinspect-meta-overlaps-point left-sibling (phpinspect-eldoc-query-point q)))
+    ;; Subject is inside an argument list
+     ((and enclosing-token
+                (phpinspect-list-p (phpinspect-meta-token enclosing-token)))
+      (setq left-sibling (phpinspect-meta-find-left-sibling enclosing-token)
+            statement (list enclosing-token))))
+
+    (phpinspect--log "Left sibling: %s" (phpinspect-meta-string left-sibling))
+    (phpinspect--log "Enclosing parent: %s" (phpinspect-meta-string (phpinspect-meta-parent enclosing-token)))
+
+
+    (while (and left-sibling
+                (not (or (phpinspect-return-p (phpinspect-meta-token left-sibling))
+                         (phpinspect-end-of-statement-p (phpinspect-meta-token left-sibling)))))
+      (push left-sibling statement)
+      (setq left-sibling (phpinspect-meta-find-left-sibling left-sibling)))
+
+    (phpinspect--log "Eldoc statement is:  %s" (mapcar #'phpinspect-meta-token statement))
+    (phpinspect--log "Enclosing token was: %s" (phpinspect-meta-token enclosing-token))
+
     (when enclosing-token
       (cond
        ;; Method call
        ((setq match-result (phpinspect--match-sequence (last statement 2)
-                             :f #'phpinspect-attrib-p
-                             :f #'phpinspect-list-p))
+                             :f (phpinspect-meta-wrap-token-pred #'phpinspect-attrib-p)
+                             :f (phpinspect-meta-wrap-token-pred #'phpinspect-list-p)))
         (phpinspect--log "Eldoc context is a method call")
 
         (setq arg-list (car (last match-result))
-              static (phpinspect-static-attrib-p (car match-result))
+              static (phpinspect-static-attrib-p (phpinspect-meta-token (car match-result)))
               arg-pos (seq-reduce
-                       (lambda (count token)
-                         (if (and (phpinspect-comma-p token)
-                                  (>= (phpinspect-eldoc-query-point q)
-                                     (phpinspect-meta-end
-                                      (phpinspect-bmap-token-meta token-map token))))
+                       (lambda (count meta)
+                         (if (phpinspect-comma-p (phpinspect-meta-token meta))
                              (+ count 1)
                            count))
-                       arg-list 0))
+                       (phpinspect-meta-find-children-before arg-list (phpinspect-eldoc-query-point q)) 0))
 
         ;; Set resolvecontext subject to the statement minus the method
         ;; name. Point is likely to be at a location inside a method call like
         ;; "$a->b->doSomething(". The resulting subject should be "$a->b".
-        (setf (phpinspect--resolvecontext-subject rctx) (butlast statement 2))
+        (setf (phpinspect--resolvecontext-subject rctx)
+              (mapcar #'phpinspect-meta-token (butlast statement 2)))
 
         (let* ((type-of-previous-statement
                 (phpinspect-resolve-type-from-context rctx))
-               (method-name-sym (phpinspect-intern-name (car (cdadar match-result))))
+               (method-name-sym (phpinspect-intern-name (cadadr (phpinspect-meta-token (car match-result)))))
                (class (phpinspect-project-get-class-create
                        (phpinspect--resolvecontext-project rctx)
                        type-of-previous-statement))

@@ -124,7 +124,7 @@ and CONTEXT. All strategies must implement this method.")
           (phpinspect-completion-query-point q))
        (phpinspect-variable-p
         (phpinspect-meta-token
-         (phpinspect-bmap-last-token-starting-before-point
+         (phpinspect-bmap-last-token-before-point
           (phpinspect-buffer-parse-map (phpinspect-completion-query-buffer q))
           (phpinspect-completion-query-point q))))))
 

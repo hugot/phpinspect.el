@@ -25,6 +25,8 @@
 
 (require 'phpinspect-splayt)
 (require 'phpinspect-meta)
+(require 'phpinspect-util)
+(require 'compat)
 
 (cl-defstruct (phpinspect-bmap (:constructor phpinspect-make-bmap))
   (starts (make-hash-table :test #'eql
@@ -40,8 +42,17 @@
                :type list)
   (overlays (phpinspect-make-splayt)
             :type phpinspect-splayt)
+  (-root-meta nil
+              :type phpinspect-meta)
   (last-token-start nil
-                     :type integer))
+                    :type integer))
+
+(define-inline phpinspect-bmap-root-meta (bmap)
+  (inline-letevals (bmap)
+    (inline-quote
+     (with-memoization (phpinspect-bmap--root-meta ,bmap)
+       (phpinspect-bmap-token-starting-at
+        ,bmap (phpinspect-bmap-last-token-start ,bmap))))))
 
 (defsubst phpinspect-make-region (start end)
   (list start end))
@@ -83,9 +94,6 @@
 
 (define-inline phpinspect-overlay-end (overlay)
   (inline-quote (caddr ,overlay)))
-
-(define-inline phpinspect-overlay-token-meta (overlay)
-  (inline-quote (car (nthcdr 5 ,overlay))))
 
 (define-inline phpinspect-overlay-overlaps-point (overlay point)
   (inline-letevals (overlay point)
@@ -134,7 +142,10 @@
          (meta (phpinspect-bmap-meta bmap))
          (last-token-start (phpinspect-bmap-last-token-start bmap))
          (existing-end (gethash end ends))
-         (token-meta (or overlay (phpinspect-make-meta nil start end whitespace-before token overlay))))
+         (token-meta (or overlay (phpinspect-make-meta nil start end whitespace-before token))))
+    (when (< end start)
+      (error "Token %s ends before it starts. Start: %s, end: %s" token start end))
+
     (unless whitespace-before
       (setq whitespace-before ""))
 
@@ -149,11 +160,8 @@
     (when (and last-token-start
                (<= start last-token-start))
       (let ((child)
-            (stack (phpinspect-bmap-token-stack bmap))
-            (right-siblings))
-
-        (while (and (car stack) (>= (phpinspect-meta-start (car stack))
-                                    start))
+            (stack (phpinspect-bmap-token-stack bmap)))
+        (while (and (car stack) (>= (phpinspect-meta-start (car stack)) start))
           (setq child (pop stack))
           (phpinspect-meta-set-parent child token-meta))
 
@@ -224,29 +232,9 @@
   (and (listp token)
        (keywordp (car token))))
 
-(cl-defmethod phpinspect-bmap-last-token-before-point ((bmap phpinspect-bmap) point &optional limit)
-  "Search backward in BMAP for last token ending before POINT.
-
-LIMIT is the maximum number of positions to check backward before
-giving up. If not provided, this is 100."
-  (unless limit (setq limit 100))
-  (let* ((ending)
-         (point-limit (- point limit)))
-    (unless (hash-table-empty-p (phpinspect-bmap-ends bmap))
-      (while (not (or (<= point 0) (<= point point-limit)
-                      (setq ending (phpinspect-bmap-tokens-ending-at bmap point))))
-        (setq point (- point 1)))
-      (car (last ending)))))
-
-(cl-defmethod phpinspect-bmap-last-token-starting-before-point ((bmap phpinspect-bmap) point &optional limit)
-  (unless limit (setq limit 100))
-  (let* ((starting)
-         (point-limit (- point limit)))
-    (unless (hash-table-empty-p (phpinspect-bmap-starts bmap))
-      (while (not (or (<= point 0) (<= point point-limit)
-                      (setq starting (phpinspect-bmap-token-starting-at bmap point))))
-        (setq point (- point 1)))
-      starting)))
+(cl-defmethod phpinspect-bmap-last-token-before-point ((bmap phpinspect-bmap) point)
+  "Search backward in BMAP for last token ending before POINT."
+  (phpinspect-meta-find-child-before-recursively (phpinspect-bmap-root-meta bmap) point))
 
 (defsubst phpinspect-bmap-overlay (bmap bmap-overlay token-meta pos-delta &optional whitespace-before)
   (let* ((overlays (phpinspect-bmap-overlays bmap))

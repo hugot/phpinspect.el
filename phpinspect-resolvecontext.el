@@ -27,6 +27,8 @@
 (require 'phpinspect-project)
 (require 'phpinspect-parser)
 (require 'phpinspect-type)
+(require 'phpinspect-meta)
+(require 'phpinspect-util)
 
 (cl-defstruct (phpinspect--resolvecontext
             (:constructor phpinspect--make-resolvecontext))
@@ -38,6 +40,10 @@
                 :type string
                 :documentation
                 "The root directory of the project we're resolving types for.")
+  (enclosing-metadata nil
+                      :type list
+                      :documentation
+                      "Metadata of tokens that enclose the subject.")
   (enclosing-tokens nil
                     :type list
                     :documentation
@@ -60,24 +66,21 @@
        (string= "return" (cadr token))))
 
 (defun phpinspect-find-statement-before-point (bmap meta point)
-  (let ((children (reverse (cdr (phpinspect-meta-token meta))))
-        child-meta
-        previous-siblings)
+  (let ((children (reverse (phpinspect-meta-find-children-before meta point)))
+        token previous-siblings)
     (catch 'return
       (dolist (child children)
-        (when (phpinspect-probably-token-p child)
-          (setq child-meta (phpinspect-bmap-token-meta bmap child))
-          (unless child-meta
-            (phpinspect--log "[ERROR] No metadata object found for token %s" child))
-          (when (< (phpinspect-meta-start child-meta) point)
-            (if (and (not previous-siblings) (phpinspect-blocklike-p child))
-                (progn
-                  (throw 'return (phpinspect-find-statement-before-point bmap child-meta point)))
-              (when (or (phpinspect-return-p child)
-                        (phpinspect-end-of-statement-p  child))
-                (throw 'return previous-siblings))
-              (push child previous-siblings)))))
-      previous-siblings)))
+        (setq token (phpinspect-meta-token child))
+
+        (when (< (phpinspect-meta-start child) point)
+          (if (and (not previous-siblings) (phpinspect-blocklike-p token))
+              (progn
+                (throw 'return (phpinspect-find-statement-before-point bmap child point)))
+            (when (or (phpinspect-return-p token)
+                      (phpinspect-end-of-statement-p token))
+              (throw 'return previous-siblings))
+            (push child previous-siblings)))))
+    previous-siblings))
 
 (defun phpinspect--get-last-statement-in-token (token)
   (setq token (cond ((phpinspect-function-p token)
@@ -107,25 +110,23 @@
          (siblings))
     (phpinspect--log "Last token before point: %s, right siblings: %s, parent: %s"
                      (phpinspect-meta-string subject)
-                     (phpinspect-meta-right-siblings subject)
+                     (mapcar #'phpinspect-meta-token (phpinspect-meta-right-siblings subject))
                      (phpinspect-meta-string (phpinspect-meta-parent subject)))
 
     (let ((next-sibling (car (phpinspect-meta-right-siblings subject))))
       ;; When the right sibling of the last ending token overlaps point, this is
       ;; our actual subject.
       (when (and next-sibling
-                 (setq next-sibling (phpinspect-bmap-token-meta bmap next-sibling))
                  (phpinspect-meta-overlaps-point next-sibling point))
         (setq subject next-sibling)))
 
     ;; Dig down through tokens that can contain statements
-    (catch 'break
-      (while (and subject
-                  (phpinspect-enclosing-token-p (phpinspect-meta-token subject))
-                  (cdr (phpinspect-meta-token subject)) 0)
-        (let ((new-subject
-               (phpinspect-bmap-token-meta
-                bmap (car (last (cdr (phpinspect-meta-token subject)))))))
+    (let (new-subject)
+      (catch 'break
+        (while (and subject
+                    (phpinspect-enclosing-token-p (phpinspect-meta-token subject))
+                    (cdr (phpinspect-meta-token subject)))
+          (setq new-subject (phpinspect-meta-find-child-before subject point))
           (if new-subject
               (setq subject new-subject)
             (throw 'break nil)))))
@@ -134,10 +135,9 @@
              (phpinspect-meta-token subject))
     (when subject
       (setq subject-token
-            (phpinspect-find-statement-before-point
-             bmap
-             (phpinspect-meta-parent subject)
-             point))
+            (mapcar #'phpinspect-meta-token
+                    (phpinspect-find-statement-before-point
+                     bmap (phpinspect-meta-parent subject) point)))
 
       (phpinspect--log "Ultimate resolvecontext subject token: %s. Parent: %s"
                        subject-token (phpinspect-meta-token
@@ -151,12 +151,13 @@
                          (or (not granny)
                              (phpinspect-function-p (phpinspect-meta-token granny))
                              (phpinspect-class-p (phpinspect-meta-token granny))))
-              (push (phpinspect-meta-token parent) enclosing-tokens))
+              (push parent enclosing-tokens))
             (setq parent (phpinspect-meta-parent parent))))))
 
     (phpinspect--make-resolvecontext
      :subject (phpinspect--get-last-statement-in-token subject-token)
-     :enclosing-tokens (nreverse enclosing-tokens)
+     :enclosing-tokens (nreverse (mapcar #'phpinspect-meta-token enclosing-tokens))
+     :enclosing-metadata (nreverse enclosing-tokens)
      :project-root (phpinspect-current-project-root))))
 
 (defun phpinspect--resolvecontext-project (rctx)
@@ -211,6 +212,12 @@ accompanied by all of its enclosing tokens."
                    (phpinspect--resolvecontext-enclosing-tokens
                     resolvecontext))
        namespace-name)))
+
+(cl-defmethod phpinspect--resolvecontext-pop-meta ((rctx phpinspect--resolvecontext))
+  "Remove the first element of enclosing token metadata and
+return it. Pops enclosing tokens to keep both in sync."
+  (pop (phpinspect--resolvecontext-enclosing-tokens rctx))
+  (pop (phpinspect--resolvecontext-enclosing-metadata rctx)))
 
 (provide 'phpinspect-resolvecontext)
 ;;; phpinspect-resolvecontext.el ends here

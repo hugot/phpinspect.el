@@ -22,7 +22,7 @@ class Thing
            (phpinspect-project-root-function (lambda () "phpinspect-test"))
            (phpinspect-eldoc-word-width 100)
            (buffer (phpinspect-make-buffer :buffer (current-buffer)))
-           second-arg-pos first-arg-pos)
+           second-arg-pos inside-nested-list-pos first-arg-pos)
       (phpinspect-ensure-worker)
       (phpinspect-purge-cache)
       (phpinspect-cache-project-class
@@ -33,6 +33,8 @@ class Thing
       (backward-char)
       (setq second-arg-pos (point))
       (backward-char 6)
+      (setq inside-nested-list-pos (point))
+      (backward-char 8)
       (setq first-arg-pos (point))
 
       (let ((result (phpinspect-eldoc-query-execute
@@ -40,6 +42,10 @@ class Thing
         (should (phpinspect-function-doc-p result))
         (should (= 1 (phpinspect-function-doc-arg-pos result)))
         (should (string= "getThis" (phpinspect--function-name (phpinspect-function-doc-fn result))))
+
+        (setq result (phpinspect-eldoc-query-execute
+                      (phpinspect-make-eldoc-query :point inside-nested-list-pos :buffer buffer)))
+        (should-not result)
 
         (setq result (phpinspect-eldoc-query-execute
                       (phpinspect-make-eldoc-query :point first-arg-pos :buffer buffer)))
