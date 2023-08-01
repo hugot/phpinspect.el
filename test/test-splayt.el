@@ -128,7 +128,9 @@
 
 
     (should (string= "four" (phpinspect-splayt-find-largest-before tree 8)))
-    (should (string= "eleven" (phpinspect-splayt-find-largest-before tree 12)))))
+    (should (string= "eleven" (phpinspect-splayt-find-largest-before tree 12)))
+    (should (string= "one" (phpinspect-splayt-find-largest-before tree 2)))
+    (should (string= "twelve" (phpinspect-splayt-find-largest-before tree 13)))))
 
 
 (ert-deftest phpinspect-splayt-find-all-after ()

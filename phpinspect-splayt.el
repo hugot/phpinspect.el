@@ -52,7 +52,6 @@
 ;; (especially parse-file.el in the benchmarks folder), your PR will be welcomed.
 ;;
 
-
 ;;; Code:
 
 (define-inline phpinspect-make-splayt-node (key value &optional left right parent temp-store)
@@ -292,6 +291,21 @@ near the top of the tee."
        (,(car place-and-splayt) (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
      ,@body))
 
+(define-inline phpinspect-splayt-node-key-less-p (node key)
+  (inline-quote (> ,key (phpinspect-splayt-node-key ,node))))
+
+(define-inline phpinspect-splayt-node-key-le-p (node key)
+  (inline-quote (>= ,key (phpinspect-splayt-node-key ,node))))
+
+(define-inline phpinspect-splayt-node-key-equal-p (node key)
+  (inline-quote (= ,key (phpinspect-splayt-node-key ,node))))
+
+(define-inline phpinspect-splayt-node-key-greater-p (node key)
+  (inline-quote (< ,key (phpinspect-splayt-node-key ,node))))
+
+(define-inline phpinspect-splayt-node-key-ge-p (node key)
+  (inline-quote (<= ,key (phpinspect-splayt-node-key ,node))))
+
 (define-inline phpinspect-splayt-find-node (splayt key)
   (inline-letevals (splayt key)
     (inline-quote
@@ -302,7 +316,7 @@ near the top of the tee."
                (progn
                  (phpinspect-splay ,splayt current)
                  (throw 'return current))
-             (if (< ,key (phpinspect-splayt-node-key current))
+             (if (phpinspect-splayt-node-key-greater-p current ,key)
                  (setq current (phpinspect-splayt-node-left current))
                (setq current (phpinspect-splayt-node-right current))))))))))
 
@@ -312,9 +326,9 @@ near the top of the tee."
      (let ((current (phpinspect-splayt-root-node ,splayt)))
        (catch 'return
          (while current
-           (if (or (and (> (phpinspect-splayt-node-key current) ,key)
+           (if (or (and (phpinspect-splayt-node-key-greater-p current ,key)
                         (not (phpinspect-splayt-node-left current)))
-                   (and (<= (phpinspect-splayt-node-key current) ,key)
+                   (and (phpinspect-splayt-node-key-le-p current ,key)
                         (not (phpinspect-splayt-node-right current))))
                (throw 'return current)
              (if (< ,key (phpinspect-splayt-node-key current))
@@ -329,31 +343,20 @@ near the top of the tee."
 
        (catch 'break
          (while current
-           (if (>= ,key  (phpinspect-splayt-node-key current))
-               (setf current (phpinspect-splayt-node-right current)
-                     smallest current)
-             (throw 'break nil))))
+           (cond
+            ((phpinspect-splayt-node-key-greater-p current ,key)
+             (when (and smallest
+                      (phpinspect-splayt-node-key-greater-p
+                       current (phpinspect-splayt-node-key smallest)))
+               (throw 'break nil))
 
-       (catch 'return
-         (while current
-           (when (= (+ ,key 1) (phpinspect-splayt-node-key current))
-             (throw 'return current))
+             (setf smallest current
+                   current (phpinspect-splayt-node-left current)))
+            ((phpinspect-splayt-node-right current)
+             (setf current (phpinspect-splayt-node-right current)))
+            (t (throw 'break nil)))))
 
-           (cond ((and (phpinspect-splayt-node-parent current)
-                       (< ,key (phpinspect-splayt-node-key (phpinspect-splayt-node-parent current)))
-                       (eq (phpinspect-splayt-node-right (phpinspect-splayt-node-parent current))
-                           current))
-                  (setf current (phpinspect-splayt-node-parent current)
-                        smallest current))
-                 ((phpinspect-splayt-node-left current)
-                  (setf current (phpinspect-splayt-node-left current))
-                  (when (< ,key (phpinspect-splayt-node-key current))
-                    (setf smallest current)))
-                 ((>= ,key (phpinspect-splayt-node-key current))
-                  (if (phpinspect-splayt-node-right current)
-                      (setf current (phpinspect-splayt-node-right current))
-                    (throw 'return smallest)))
-                 (t (throw 'return smallest)))))))))
+       smallest))))
 
 (define-inline phpinspect-splayt-find-largest-node-before (splayt key)
   (inline-letevals (splayt key)
@@ -363,32 +366,19 @@ near the top of the tee."
 
        (catch 'break
          (while current
-           (if (<= ,key  (phpinspect-splayt-node-key current))
-               (setf current (phpinspect-splayt-node-left current)
-                     largest current)
-             (throw 'break nil))))
+           (cond
+            ((and (phpinspect-splayt-node-key-less-p current ,key))
+             (when (and largest
+                        (phpinspect-splayt-node-key-less-p
+                         current (phpinspect-splayt-node-key largest)))
+               (throw 'break nil))
+             (setf largest current
+                   current (phpinspect-splayt-node-right current)))
+            ((phpinspect-splayt-node-left current)
+             (setf current (phpinspect-splayt-node-left current)))
+            (t (throw 'break nil)))))
 
-       (catch 'return
-         (while current
-           (when (= (+ ,key 1) (phpinspect-splayt-node-key current))
-             (throw 'return current))
-
-           (cond ((and (phpinspect-splayt-node-parent current)
-                       (> ,key (phpinspect-splayt-node-key (phpinspect-splayt-node-parent current)))
-                       (eq (phpinspect-splayt-node-left (phpinspect-splayt-node-parent current))
-                           current))
-                  (setf current (phpinspect-splayt-node-parent current)
-                        largest current))
-                 ((phpinspect-splayt-node-right current)
-                  (setf current (phpinspect-splayt-node-right current))
-                  (when (> ,key (phpinspect-splayt-node-key current))
-                    (setf largest current)))
-                 ((<= ,key (phpinspect-splayt-node-key current))
-                  (if (phpinspect-splayt-node-left current)
-                      (setf current (phpinspect-splayt-node-left current))
-                    (throw 'return largest)))
-                 (t (throw 'return largest)))))))))
-
+       largest))))
 
 (defsubst phpinspect-splayt-find-all-after (splayt key)
   "Find all values in SPLAYT with a key higher than KEY."
@@ -402,6 +392,22 @@ near the top of the tee."
 
       (if (and (phpinspect-splayt-node-parent first)
                (eq first (phpinspect-splayt-node-left (phpinspect-splayt-node-parent first))))
+          (setq first (phpinspect-splayt-node-parent first))
+        (setq first nil)))
+    all))
+
+(defsubst phpinspect-splayt-find-all-before (splayt key)
+  "Find all values in SPLAYT with a key higher than KEY."
+  (let ((first (phpinspect-splayt-find-largest-node-before splayt key))
+        all)
+    (while first
+      (push (phpinspect-splayt-node-value first) all)
+
+      (phpinspect-splayt-node-traverse (sibling (phpinspect-splayt-node-left first))
+        (setq all (nconc all (list sibling))))
+
+      (if (and (phpinspect-splayt-node-parent first)
+               (eq first (phpinspect-splayt-node-right (phpinspect-splayt-node-parent first))))
           (setq first (phpinspect-splayt-node-parent first))
         (setq first nil)))
     all))
