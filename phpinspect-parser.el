@@ -526,11 +526,7 @@ executing.")
 
   (let* ((func-name (phpinspect-parser-func-name name))
          (simple-name (phpinspect-parser-func-name name "simple"))
-         (incremental-name (phpinspect-parser-func-name name "incremental"))
-         (incremental-statement '(phpinspect-parse-context ,buffer ,max-point ,continue-condition ,root))
-         (simple-statement '(,buffer ,max-point ,continue-condition ,root)))
-    (push `(quote ,incremental-name) incremental-statement)
-    (push `(quote ,simple-name) simple-statement)
+         (incremental-name (phpinspect-parser-func-name name "incremental")))
 
     `(let ((parser (phpinspect-make-parser ,@parameters)))
        (defconst ,simple-name nil)
