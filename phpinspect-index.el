@@ -146,7 +146,7 @@ function (think \"new\" statements, return types etc.)."
   (let ((subtoken (seq-find (lambda (word)
                               (and (phpinspect-word-p word)
                                    (not (string-match
-                                         (concat "^" (phpinspect-handler-regexp 'class-keyword))
+                                         (concat "^" (phpinspect-handler-regexp class-keyword))
                                          (concat (cadr word) " ")))))
                             (cadr class-token))))
     (cadr subtoken)))
