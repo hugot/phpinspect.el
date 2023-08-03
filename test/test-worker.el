@@ -35,7 +35,8 @@
 
     (should (string= "one" (phpinspect-queue-dequeue queue)))
     (should (string= "two" (phpinspect-queue-dequeue queue)))
-    (should (string= "three" (phpinspect-queue-dequeue queue)))))
+    (should (string= "three" (phpinspect-queue-dequeue queue)))
+    (should-not (phpinspect-queue-dequeue queue))))
 
 (ert-deftest phpinspect-queue-subscribe ()
   (let ((be-called nil))
