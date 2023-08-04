@@ -122,7 +122,7 @@ already present in the queue."
 PAUSE-TIME must be the idle time that the thread should pause for.
 MX must be a mutex
 CONTINUE must be a condition-variable"
-  (phpinspect--log "Worker thead is paused for %d seconds" pause-time)
+  (phpinspect--log "Thread '%s' is paused for %d seconds" (thread-name (current-thread)) pause-time)
   (run-with-idle-timer
    pause-time
    nil
@@ -176,7 +176,7 @@ CONTINUE must be a condition-variable"
             ;; current buffer. Otherwise, the buffer associated with this thread
             ;; will be unkillable while the thread is running.
             (with-temp-buffer
-              (make-thread (phpinspect-worker-make-thread-function worker)))))))
+              (make-thread (phpinspect-worker-make-thread-function worker) "phpinspect-worker"))))))
 
 (cl-defmethod phpinspect-worker-start ((worker phpinspect-dynamic-worker))
   (phpinspect-worker-start (phpinspect-resolve-dynamic-worker worker)))

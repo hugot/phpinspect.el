@@ -1,3 +1,28 @@
+;;; phpinspect-queue.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2021  Free Software Foundation, Inc
+
+;; Author: Hugo Thunnissen <devel@hugot.nl>
+;; Keywords: php, languages, tools, convenience
+;; Version: 0
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;;; Code:
+
 
 (cl-defstruct (phpinspect-queue
                (:constructor phpinspect-make-queue-generated))
@@ -11,7 +36,6 @@
         "The last item in the queue")
   (subscription  nil
                  :type function
-                 :read-only t
                 :documentation
                 "A function that should be called when items are
                 enqueued."))
@@ -42,7 +66,7 @@
 (cl-defmethod phpinspect-queue-last ((queue phpinspect-queue))
   (or (phpinspect-queue--last queue) (phpinspect-queue--first queue)))
 
-(cl-defmethod phpinspect-queue-enqueue ((queue phpinspect-queue) value)
+(cl-defmethod phpinspect-queue-enqueue ((queue phpinspect-queue) value &optional no-notify)
   "Add VALUE to the end of the queue that ITEM is part of."
   (let ((last (phpinspect-queue-last queue))
         (new-item (phpinspect-make-queue-item :value value)))
@@ -51,7 +75,8 @@
       (setf (phpinspect-queue-item-next last) new-item)
       (setf (phpinspect-queue-item-previous new-item) last))
     (setf (phpinspect-queue--last queue) new-item))
-  (when (phpinspect-queue-subscription queue)
+
+  (when (and (not no-notify) (phpinspect-queue-subscription queue))
     (funcall (phpinspect-queue-subscription queue))))
 
 (cl-defmethod phpinspect-queue-dequeue ((queue phpinspect-queue))
@@ -103,3 +128,4 @@ BODY can be any form."
     (phpinspect-queue-enqueue queue value)))
 
 (provide 'phpinspect-queue)
+;;; phpinspect-queue.el ends here
