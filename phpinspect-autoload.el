@@ -27,12 +27,19 @@
 (require 'phpinspect-project)
 (require 'phpinspect-fs)
 (require 'phpinspect-util)
+(require 'phpinspect-pipeline)
 
 (cl-defstruct (phpinspect-psr0
                (:constructor phpinspect-make-psr0-generated))
   (prefix nil
           :type string
           :documentation "The namespace prefix for which the directories contain code.")
+  (autoloader nil
+              :type phpinspect-autoloader)
+  (own nil
+       :type boolean)
+  (fs nil
+      :type phpinspect-fs)
   (directories nil
              :type list
              :documentation
@@ -43,17 +50,17 @@
   (prefix nil
           :type string
           :documentation "The namespace prefix for which the directories contain code.")
+  (autoloader nil
+              :type phpinspect-autoloader)
+  (own nil
+       :type boolean)
+  (fs nil
+      :type phpinspect-fs)
   (directories nil
              :type list
              :documentation
              "The directories that this autoloader finds code in."))
 
-(cl-defstruct (phpinspect-classmap
-               (:constructor phpinspect-make-classmap-generated))
-  (directories nil
-             :type list
-             :documentation
-             "The directories that this autoloader finds code in."))
 
 (cl-defstruct (phpinspect-autoloader
                (:constructor phpinspect-make-autoloader))
@@ -75,34 +82,29 @@
 qualified names congruent with a bareword type name. Keyed by
 bareword typenames."))
 
-(defun phpinspect-make-autoload-definition-closure (project-root fs typehash)
-  "Create a closure that can be used to `maphash' the autoload
-section of a composer-json."
-  (lambda (type prefixes)
-    (let ((strategy))
-      (cond
-       ((string= "psr-0" type)
-        (maphash
-         (lambda (prefix directory-paths)
-           (when (stringp directory-paths) (setq directory-paths (list directory-paths)))
-           (setq strategy (phpinspect-make-psr0-generated :prefix prefix))
-           (dolist (path directory-paths)
-             (push (concat project-root "/" path)
-                   (phpinspect-psr0-directories strategy))))
-         prefixes))
-       ((string= "psr-4" type)
-        (maphash
-         (lambda (prefix directory-paths)
-           (when (stringp directory-paths) (setq directory-paths (list directory-paths)))
-           (setq strategy (phpinspect-make-psr4-generated :prefix prefix))
-             (dolist (path directory-paths)
-               (push (concat project-root "/" path)
-                     (phpinspect-psr4-directories strategy))))
-         prefixes))
-       (t (phpinspect--log "Unsupported autoload strategy \"%s\" encountered" type)))
+;; (define-inline phpinspect-directory-lister (dirs &optional fs)
+;;   (inline-letevals (dirs fs)
+;;     (inline-quote
+;;      (let* ((directory (pop ,dirs))
+;;             (files
+;;              (phpinspect-fs-directory-files ,fs directory))
+;;             listing)
+;;        (dolist (file files)
+;;          (if (phpinspect-fs-file-directory-p ,fs file)
+;;              (push file ,dirs)
+;;            (push file listing)))
 
-      (when strategy
-        (phpinspect-al-strategy-fill-typehash strategy fs typehash)))))
+;;        listing))))
+
+;; (phpinspect-define-pipeline-step phpinspect-directory-lister phpinspect-directory-lister)
+
+(cl-defstruct (phpinspect-cj-iter-ctx (:constructor phpinspect-make-cj-iter-ctx))
+  (autoloader nil
+              :type phpinspect-autoloader)
+  (compiled-dirs nil
+                 :type boolean)
+  (dirs nil
+        :type list))
 
 (cl-defmethod phpinspect--read-json-file (fs file)
   (with-temp-buffer
@@ -110,100 +112,161 @@ section of a composer-json."
     (goto-char 0)
     (phpinspect-json-preset (json-read))))
 
-(cl-defmethod phpinspect-autoloader-refresh ((autoloader phpinspect-autoloader))
-  "Refresh autoload definitions by reading composer.json files
-  from the project and vendor folders."
-  (let* ((project-root (phpinspect-project-root (phpinspect-autoloader-project autoloader)))
-         (fs (phpinspect-project-fs (phpinspect-autoloader-project autoloader)))
-         (vendor-dir (concat project-root "/vendor"))
-         (composer-json-path (concat project-root "/composer.json"))
-         (composer-json)
-         (project-autoload )
-         (type-name-fqn-bags (make-hash-table :test 'eq :size 3000 :rehash-size 3000))
-         (own-types (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
-         (types (make-hash-table :test 'eq :size 10000 :rehash-size 10000)))
+(define-inline phpinspect-filename-to-typename (dir filename &optional prefix)
+  (inline-quote
+   (phpinspect-intern-name
+    (replace-regexp-in-string
+     "[\\\\]+"
+     "\\\\"
+     (concat "\\"
+             (or ,prefix "")
+             (replace-regexp-in-string
+              "/" "\\\\"
+              (string-remove-suffix
+               ".php"
+               (string-remove-prefix ,dir ,filename))))))))
 
-    (when (phpinspect-fs-file-exists-p fs composer-json-path)
-      (setq composer-json (phpinspect--read-json-file fs composer-json-path))
-
-      (if (hash-table-p composer-json)
-          (setq project-autoload (gethash "autoload" composer-json))
-        (phpinspect--log "Error: Parsing %s did not return a hashmap."
-                         composer-json-path)))
-
-
-    (when project-autoload
-      (maphash (phpinspect-make-autoload-definition-closure project-root fs own-types)
-               project-autoload)
-
-      (maphash (phpinspect-make-autoload-definition-closure project-root fs types)
-               project-autoload))
+(defun phpinspect-find-composer-json-files (fs project-root)
+  (let ((cj-path (concat project-root "/composer.json"))
+        (vendor-dir (concat project-root "/vendor"))
+        files)
+    (when (phpinspect-fs-file-exists-p fs cj-path)
+      (push `(local . ,cj-path) files))
 
     (when (phpinspect-fs-file-directory-p fs vendor-dir)
       (dolist (author-dir (phpinspect-fs-directory-files fs vendor-dir))
         (when (phpinspect-fs-file-directory-p fs author-dir)
           (dolist (dependency-dir (phpinspect-fs-directory-files fs author-dir))
+            (setq cj-path (concat dependency-dir "/composer.json"))
             (when (and (phpinspect-fs-file-directory-p fs dependency-dir)
-                       (phpinspect-fs-file-exists-p fs (concat dependency-dir "/composer.json")))
-              (let* ((dependency-json (phpinspect--read-json-file
-                                       fs
-                                       (concat dependency-dir "/composer.json")))
-                     (dependency-autoload (gethash "autoload" dependency-json)))
-                (when dependency-autoload
-                  (maphash (phpinspect-make-autoload-definition-closure
-                            dependency-dir fs types)
-                           dependency-autoload))))))))
+                       (phpinspect-fs-file-exists-p fs cj-path))
+              (push `(vendor . ,cj-path) files))))))
+    files))
 
-    (maphash (lambda (type-fqn _)
-               (let* ((type-name (phpinspect-intern-name
-                                  (car (last (split-string (symbol-name type-fqn) "\\\\")))))
-                      (bag (gethash type-name type-name-fqn-bags)))
-                 (push type-fqn bag)
-                 (puthash type-name bag type-name-fqn-bags)))
-             types)
+(cl-defmethod phpinspect-al-strategy-execute ((strat phpinspect-psr4))
+  (let* ((fs (phpinspect-psr4-fs strat))
+         (al (phpinspect-psr4-autoloader strat))
+         (own (phpinspect-psr4-own strat))
+         (own-typehash (phpinspect-autoloader-own-types al))
+         (typehash (phpinspect-autoloader-types al))
+         (prefix (phpinspect-psr4-prefix strat))
+         type-fqn)
+    (dolist (dir (phpinspect-psr4-directories strat))
+      (dolist (file (phpinspect-fs-directory-files-recursively fs dir "\\.php$"))
+        (setq type-fqn (phpinspect-filename-to-typename dir file prefix))
+        (phpinspect-autoloader-put-type-bag al type-fqn)
+        (puthash type-fqn file typehash)
+        (when own
+          (puthash type-fqn file own-typehash))))))
 
-    (setf (phpinspect-autoloader-own-types autoloader) own-types)
-    (setf (phpinspect-autoloader-types autoloader) types)
-    (setf (phpinspect-autoloader-type-name-fqn-bags autoloader)
-          type-name-fqn-bags)))
+(cl-defmethod phpinspect-al-strategy-execute ((strat phpinspect-psr0))
+  (let* ((fs (phpinspect-psr0-fs strat))
+         (al (phpinspect-psr0-autoloader strat))
+         (own (phpinspect-psr0-own strat))
+         (own-typehash (phpinspect-autoloader-own-types al))
+         (typehash (phpinspect-autoloader-types al))
+         type-fqn)
+    (dolist (dir (phpinspect-psr0-directories strat))
+      (dolist (file (phpinspect-fs-directory-files-recursively fs dir "\\.php$"))
+        (setq type-fqn (phpinspect-filename-to-typename dir file))
+        (phpinspect-autoloader-put-type-bag al type-fqn)
+        (puthash type-fqn file typehash)
+        (when own
+          (puthash type-fqn file own-typehash))))))
+
+(cl-defmethod phpinspect-autoloader-put-type-bag ((al phpinspect-autoloader) (type-fqn symbol))
+  (let* ((type-name (phpinspect-intern-name
+                     (car (last (split-string (symbol-name type-fqn) "\\\\")))))
+         (bag (gethash type-name (phpinspect-autoloader-type-name-fqn-bags al))))
+    (if bag
+        (push type-fqn bag)
+      (push type-fqn bag)
+      (puthash type-name bag (phpinspect-autoloader-type-name-fqn-bags al)))))
+
+
+(phpinspect-define-pipeline-step phpinspect-al-strategy-execute phpinspect-al-strategy-execute)
+
+(cl-defmethod phpinspect-iterate-composer-jsons
+  ((al phpinspect-autoloader) file)
+  (let* ((fs (phpinspect-project-fs (phpinspect-autoloader-project al)))
+         (project-root (file-name-directory (cdr file)))
+         (json (phpinspect--read-json-file fs (cdr file)))
+         (autoload (gethash "autoload" json))
+         batch)
+    (when (hash-table-p autoload)
+      (maphash
+       (lambda (type prefixes)
+         (let ((strategy))
+           (pcase type
+             ("psr-0"
+              (maphash
+               (lambda (prefix directory-paths)
+                 (when (stringp directory-paths)
+                   (setq directory-paths (list directory-paths)))
+                 (setq strategy (phpinspect-make-psr0-generated
+                                 :autoloader al
+                                 :fs fs
+                                 :prefix prefix
+                                 :own (eq 'local (car file))))
+                 (dolist (path directory-paths)
+                   (push (file-name-concat project-root path)
+                         (phpinspect-psr0-directories strategy))))
+               prefixes))
+             ("psr-4"
+              (maphash
+               (lambda (prefix directory-paths)
+                 (when (stringp directory-paths)
+                   (setq directory-paths (list directory-paths)))
+                 (setq strategy (phpinspect-make-psr4-generated
+                                 :fs fs
+                                 :autoloader al
+                                 :prefix prefix
+                                 :own (eq 'local (car file))))
+                 (dolist (path directory-paths)
+                   (push (file-name-concat project-root path)
+                         (phpinspect-psr4-directories strategy))))
+               prefixes))
+             (_ (phpinspect--log "Unsupported autoload strategy \"%s\" encountered" type)))
+
+           (push strategy batch)))
+       autoload)
+      (phpinspect-pipeline-emit-all batch))))
+
+(phpinspect-define-pipeline-step phpinspect-iterate-composer-jsons
+                                 phpinspect-iterate-composer-jsons)
 
 (cl-defmethod phpinspect-autoloader-resolve ((autoloader phpinspect-autoloader)
                                             typename-symbol)
   (or (gethash typename-symbol (phpinspect-autoloader-own-types autoloader))
       (gethash typename-symbol (phpinspect-autoloader-types autoloader))))
 
+(cl-defmethod phpinspect-autoloader-refresh ((autoloader phpinspect-autoloader) &optional async-callback)
+  "Refresh autoload definitions by reading composer.json files
+  from the project and vendor folders."
+  (let* ((project-root (phpinspect-project-root (phpinspect-autoloader-project autoloader)))
+         (fs (phpinspect-project-fs (phpinspect-autoloader-project autoloader)))
+         result error)
+    (setf (phpinspect-autoloader-type-name-fqn-bags autoloader)
+          (make-hash-table :test 'eq :size 3000 :rehash-size 3000))
+    (setf (phpinspect-autoloader-own-types autoloader)
+          (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
+    (setf (phpinspect-autoloader-types autoloader)
+          (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
 
-(cl-defgeneric phpinspect-al-strategy-fill-typehash (strategy fs typehash)
-  "Make STRATEGY return a map with type names as keys and the
-  paths to the files they are defined in as values.")
+    (phpinspect-pipeline (phpinspect-find-composer-json-files fs project-root)
+      :async (or async-callback
+                 (lambda (_result error)
+                   (if error
+                       (message "Error during autoloader refresh: %s" error)
+                     (message (concat "Refreshed project autoloader. Found %d types within project,"
+                                      " %d types total.")
+                              (hash-table-count (phpinspect-autoloader-own-types autoloader))
+                              (hash-table-count (phpinspect-autoloader-types autoloader))))))
+      :into (phpinspect-iterate-composer-jsons :with-context autoloader)
+      :into phpinspect-al-strategy-execute)))
 
-(defsubst phpinspect-filename-to-typename (dir filename &optional prefix)
-  (phpinspect-intern-name
-   (replace-regexp-in-string
-    "[\\\\]+"
-    "\\\\"
-    (concat "\\"
-            (or prefix "")
-            (replace-regexp-in-string
-             "/" "\\\\"
-             (string-remove-suffix
-              ".php"
-              (string-remove-prefix dir filename)))))))
+(cl-defmethod phpinspect-autoloader-refresh
 
-(cl-defmethod phpinspect-al-strategy-fill-typehash ((strategy phpinspect-psr0)
-                                                    fs
-                                                    typehash)
-  (dolist (dir (phpinspect-psr0-directories strategy))
-    (dolist (file (phpinspect-fs-directory-files-recursively fs dir "\\.php$"))
-      (puthash (phpinspect-filename-to-typename dir file) file typehash))))
-
-(cl-defmethod phpinspect-al-strategy-fill-typehash ((strategy phpinspect-psr4)
-                                                    fs
-                                                    typehash)
-  (let ((prefix (phpinspect-psr4-prefix strategy)))
-    (dolist (dir (phpinspect-psr4-directories strategy))
-      (dolist (file (phpinspect-fs-directory-files-recursively fs dir "\\.php$"))
-        (puthash (phpinspect-filename-to-typename dir file prefix) file typehash)))))
 
 (provide 'phpinspect-autoload)
 ;;; phpinspect-autoload.el ends here

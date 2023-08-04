@@ -28,91 +28,73 @@
 (require 'phpinspect-fs)
 (require 'phpinspect-autoload)
 
-(ert-deftest phpinspect-psr0-fill-typehash ()
+(ert-deftest phpinspect-find-composer-json-files ()
   (let* ((fs (phpinspect-make-virtual-fs))
-         (typehash (make-hash-table :size 10 :test 'eq))
-         (autoload
-           (phpinspect-make-psr0-generated :prefix "App\\")))
-
-    (phpinspect-virtual-fs-set-file
-     fs "/home/user/projects/app/src/App/Services/SuperService.php" "")
-
-    (phpinspect-virtual-fs-set-file
-     fs "/home/user/projects/app/src/Kernel.php" "")
-
-    (phpinspect-virtual-fs-set-file
-     fs "/home/user/projects/app/src/App/Controller/Banana.php" "")
-
-    (phpinspect-virtual-fs-set-file
-     fs "/home/user/projects/app/lib/Mailer_Lib.php" "")
-
-    (setf (phpinspect-psr0-directories autoload) (list "/home/user/projects/app/src/"
-                                                       "/home/user/projects/app/lib/"))
-
-    (phpinspect-al-strategy-fill-typehash autoload fs typehash)
-
-    (should-not (hash-table-empty-p typehash))
-
-    (should (string= "/home/user/projects/app/src/App/Services/SuperService.php"
-                     (gethash (phpinspect-intern-name "\\App\\Services\\SuperService")
-                              typehash)))
-    (should (string= "/home/user/projects/app/src/Kernel.php"
-                     (gethash (phpinspect-intern-name "\\Kernel")
-                              typehash)))
-    (should (string= "/home/user/projects/app/src/App/Controller/Banana.php"
-                     (gethash (phpinspect-intern-name "\\App\\Controller\\Banana")
-                              typehash)))
-
-    (should (string= "/home/user/projects/app/lib/Mailer_Lib.php"
-                     (gethash (phpinspect-intern-name "\\Mailer_Lib")
-                              typehash)))))
-
-(ert-deftest phpinspect-psr4-fill-typehash ()
-  (let* ((fs (phpinspect-make-virtual-fs))
-         (typehash (make-hash-table :size 10 :test 'eq))
-         (autoload
-           (phpinspect-make-psr4-generated :prefix "App\\")))
-
-    (phpinspect-virtual-fs-set-file
-     fs "/home/user/projects/app/src/Services/SuperService.php" "")
-
-    (phpinspect-virtual-fs-set-file
-     fs "/home/user/projects/app/src/Kernel.php" "")
-
-    (phpinspect-virtual-fs-set-file
-     fs "/home/user/projects/app/src/Controller/Banana.php" "")
-
-    (phpinspect-virtual-fs-set-file
-     fs "/home/user/projects/app/lib/Mailer_Lib.php" "")
-
-    (setf (phpinspect-psr4-directories autoload) (list "/home/user/projects/app/src/"
-                                                       "/home/user/projects/app/lib/"))
-
-    (phpinspect-al-strategy-fill-typehash autoload fs typehash)
-
-    (should-not (hash-table-empty-p typehash))
-
-    (should (string= "/home/user/projects/app/src/Services/SuperService.php"
-                     (gethash (phpinspect-intern-name "\\App\\Services\\SuperService")
-                              typehash)))
-    (should (string= "/home/user/projects/app/src/Kernel.php"
-                     (gethash (phpinspect-intern-name "\\App\\Kernel")
-                              typehash)))
-    (should (string= "/home/user/projects/app/src/Controller/Banana.php"
-                     (gethash (phpinspect-intern-name "\\App\\Controller\\Banana")
-                              typehash)))
-
-    (should (string= "/home/user/projects/app/lib/Mailer_Lib.php"
-                     (gethash (phpinspect-intern-name "\\App\\Mailer_Lib")
-                              typehash)))))
-
-(ert-deftest phpinspect-autoloader-refresh ()
-  (let* ((fs (phpinspect-make-virtual-fs))
-         (project (phpinspect--make-project
-                   :fs fs
-                   :root "/project/root"))
          (autoloader (phpinspect-make-autoloader
-                      :project project)))
+                     :project (phpinspect--make-project :root "/root" :fs fs))))
+    (phpinspect-virtual-fs-set-file fs
+      "/root/composer.json"
+      "{ \"autoload\": { \"psr-4\": {\"WoW\\\\Dwarves\\\\\": \"src/\"}}}")
+
+    (phpinspect-virtual-fs-set-file fs
+      "/root/vendor/runescape/client/composer.json"
+      "{\"autoload\": { \"psr-0\": {\"Runescape\\\\Banana\\\\\": [\"src/\", \"lib\"]}}}")
+
+
+    (phpinspect-virtual-fs-set-file fs
+      "/root/vendor/apples/pears/composer.json"
+     "{\"autoload\": { \"psr-0\": {\"Runescape\\\\Banana\\\\\": [\"src/\", \"lib\"]}}}")
+
+    (let ((sorter (lambda (file1 file2) (string-lessp (cdr file1) (cdr file2)))))
+
+    (should (equal (sort '((vendor . "/root/vendor/apples/pears/composer.json")
+                           (vendor . "/root/vendor/runescape/client/composer.json")
+                           (local . "/root/composer.json"))
+                         sorter)
+                   (sort (phpinspect-find-composer-json-files fs "/root")
+                         sorter))))))
+
+(ert-deftest phpinspect-autoload-composer-json-iterator ()
+  (let* ((fs (phpinspect-make-virtual-fs))
+         (autoloader (phpinspect-make-autoloader
+                      :project (phpinspect--make-project :root "/root" :fs fs)))
+         result error)
+
+      (phpinspect-virtual-fs-set-file fs
+      "/root/composer.json"
+      "{ \"autoload\": { \"psr-4\": {\"WoW\\\\Dwarves\\\\\": \"src/\"}}}")
+
+    (phpinspect-virtual-fs-set-file fs
+      "/root/vendor/runescape/client/composer.json"
+      "{\"autoload\": { \"psr-0\": {\"Runescape\\\\Banana\\\\\": [\"src/\", \"lib\"]}}}")
+
+
+    (phpinspect-virtual-fs-set-file fs
+      "/root/vendor/apples/pears/composer.json"
+      "{\"autoload\": { \"psr-0\": {\"Runescape\\\\Banana\\\\\": [\"src/\", \"lib\"]},
+                        \"psr-4\": {\"Another\\\\Namespace\\\\\": [\"separate/\"]}}}")
+
+    (phpinspect-pipeline (phpinspect-find-composer-json-files fs "/root")
+      :async (lambda (res err)
+               (setq result res
+                     error err))
+      :into (phpinspect-iterate-composer-jsons :with-context autoloader))
+
+    (while (not (or result error))
+      (thread-yield))
+
+    (should-not error)
+
+    (should (= 4 (length result)))
+    (should (= 2 (length (seq-filter #'phpinspect-psr0-p result))))
+    (should (= 2 (length (seq-filter #'phpinspect-psr4-p result))))))
+
+(ert-deftest phpinspect-al-strategy-execute ()
+  (let* ((fs (phpinspect-make-virtual-fs))
+         (autoloader (phpinspect-make-autoloader
+                      :project (phpinspect--make-project :root "/project/root" :fs fs)))
+         result error)
+
     (phpinspect-virtual-fs-set-file
      fs
      "/project/root/composer.json"
@@ -144,7 +126,17 @@
      (phpinspect-virtual-fs-set-file
       fs "/project/root/vendor/not-runescape/wow/src/TestClass.php" "")
 
-    (phpinspect-autoloader-refresh autoloader)
+    (phpinspect-pipeline (phpinspect-find-composer-json-files fs "/project/root")
+      :async (lambda (res err)
+               (setq result res
+                     error err))
+      :into (phpinspect-iterate-composer-jsons :with-context autoloader)
+      :into phpinspect-al-strategy-execute)
+
+    (while (not (or result error))
+      (thread-yield))
+
+    (should-not error)
 
     (should-not (hash-table-empty-p (phpinspect-autoloader-own-types autoloader)))
     (should-not (hash-table-empty-p (phpinspect-autoloader-types autoloader)))
@@ -152,4 +144,8 @@
     (should (string= "/project/root/vendor/runescape/client/src/Runescape/Banana/App.php"
                      (phpinspect-autoloader-resolve
                       autoloader
-                      (phpinspect-intern-name "\\Runescape\\Banana\\App"))))))
+                      (phpinspect-intern-name "\\Runescape\\Banana\\App"))))
+    (should (string= "/project/root/vendor/not-runescape/wow/src/TestClass.php"
+                     (phpinspect-autoloader-resolve
+                      autoloader
+                      (phpinspect-intern-name "\\WoW\\Dwarves\\TestClass"))))))

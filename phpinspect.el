@@ -352,11 +352,15 @@ before the search is executed."
                   (phpinspect--get-or-create-global-cache)
                   (phpinspect-current-project-root)))
          (autoloader (phpinspect-project-autoload project)))
-    (phpinspect-autoloader-refresh autoloader)
-    (message (concat "Refreshed project autoloader. Found %d types within project,"
-                     " %d types total.")
-             (hash-table-count (phpinspect-autoloader-own-types autoloader))
-             (hash-table-count (phpinspect-autoloader-types autoloader)))))
+    ;; Update display so that it is clear to the user that emacs is
+    ;; responsive. Otherwise the autoloader refresh thread hogging the cpu will
+    ;; make it look like emacs is not responsive, especially when M-x uses some
+    ;; kind of completion framework, in which case the completion popup will
+    ;; appear frozen while the thread is executing.
+    (redisplay)
+
+    (phpinspect-autoloader-refresh autoloader)))
+
 
 (provide 'phpinspect)
 ;;; phpinspect.el ends here

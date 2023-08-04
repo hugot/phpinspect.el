@@ -41,9 +41,8 @@
 (defalias 'phpinspect-virtual-file-modification-time #'cadr)
 (defalias 'phpinspect-virtual-file-contents #'car)
 
-(cl-defmethod phpinspect-virtual-fs-set-file ((fs phpinspect-virtual-fs)
-                                              path
-                                              contents)
+(defun phpinspect-virtual-fs-set-file (fs path contents)
+  (declare (indent defun))
   (puthash path (phpinspect-make-virtual-file contents)
            (phpinspect-virtual-fs-files fs)))
 
