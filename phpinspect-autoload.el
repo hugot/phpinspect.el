@@ -82,22 +82,6 @@
 qualified names congruent with a bareword type name. Keyed by
 bareword typenames."))
 
-;; (define-inline phpinspect-directory-lister (dirs &optional fs)
-;;   (inline-letevals (dirs fs)
-;;     (inline-quote
-;;      (let* ((directory (pop ,dirs))
-;;             (files
-;;              (phpinspect-fs-directory-files ,fs directory))
-;;             listing)
-;;        (dolist (file files)
-;;          (if (phpinspect-fs-file-directory-p ,fs file)
-;;              (push file ,dirs)
-;;            (push file listing)))
-
-;;        listing))))
-
-;; (phpinspect-define-pipeline-step phpinspect-directory-lister phpinspect-directory-lister)
-
 (cl-defstruct (phpinspect-cj-iter-ctx (:constructor phpinspect-make-cj-iter-ctx))
   (autoloader nil
               :type phpinspect-autoloader)
@@ -264,9 +248,6 @@ bareword typenames."))
                               (hash-table-count (phpinspect-autoloader-types autoloader))))))
       :into (phpinspect-iterate-composer-jsons :with-context autoloader)
       :into phpinspect-al-strategy-execute)))
-
-(cl-defmethod phpinspect-autoloader-refresh
-
 
 (provide 'phpinspect-autoload)
 ;;; phpinspect-autoload.el ends here
