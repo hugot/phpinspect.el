@@ -83,7 +83,7 @@ can be accessed.")
     :documentation
     "The autoload object through which this project's type
 definitions can be retrieved")
-  (worker nil
+  (worker (phpinspect-make-dynamic-worker)
           :type phpinspect-worker
           :documentation
           "The worker that this project may queue tasks for")
@@ -249,6 +249,9 @@ before the search is executed."
     (with-temp-buffer
       (phpinspect-fs-insert-file-contents fs filename 'prefer-async)
       (phpinspect-index-current-buffer))))
+
+(cl-defmethod phpinspect-project-add-file-index ((project phpinspect-project) (filename string))
+  (phpinspect-project-add-index project (phpinspect-project-index-file project filename)))
 
 (provide 'phpinspect-project)
 ;;; phpinspect-project.el ends here

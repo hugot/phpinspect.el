@@ -91,9 +91,11 @@
 
 (ert-deftest phpinspect-al-strategy-execute ()
   (let* ((fs (phpinspect-make-virtual-fs))
-         (autoloader (phpinspect-make-autoloader
-                      :project (phpinspect--make-project :root "/project/root" :fs fs)))
+         (project (phpinspect--make-project :root "/project/root" :fs fs))
+         (autoloader (phpinspect-make-autoloader :project project))
          result error)
+
+    (setf (phpinspect-project-autoload project) autoloader)
 
     (phpinspect-virtual-fs-set-file
      fs
@@ -121,7 +123,12 @@
      (phpinspect-virtual-fs-set-file
       fs
       "/project/root/vendor/not-runescape/wow/composer.json"
-      "{ \"autoload\": { \"psr-4\": {\"WoW\\\\Dwarves\\\\\": \"src/\"}}}")
+      "{ \"autoload\": { \"psr-4\": {\"WoW\\\\Dwarves\\\\\": \"src/\"},
+                         \"files\": [ \"include/FilesList.php\"]}}")
+
+     (phpinspect-virtual-fs-set-file fs
+       "/project/root/vendor/not-runescape/wow/include/FilesList.php"
+       "<?php class FilesList { function list() {} }")
 
      (phpinspect-virtual-fs-set-file
       fs "/project/root/vendor/not-runescape/wow/src/TestClass.php" "")
@@ -140,6 +147,8 @@
 
     (should-not (hash-table-empty-p (phpinspect-autoloader-own-types autoloader)))
     (should-not (hash-table-empty-p (phpinspect-autoloader-types autoloader)))
+
+    (should (phpinspect-project-get-class project (phpinspect--make-type :name "\\FilesList")))
 
     (should (string= "/project/root/vendor/runescape/client/src/Runescape/Banana/App.php"
                      (phpinspect-autoloader-resolve
