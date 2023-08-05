@@ -28,6 +28,10 @@
 (define-error 'phpinspect-pipeline-incoming "Signal for incoming pipeline data")
 (define-error 'phpinspect-pipeline-error "Signal for pipeline errors")
 
+(defvar phpinspect-pipeline-pause-time 0.5
+  "Number of seconds to pause a pipeline thread when emacs receives
+user input.")
+
 (cl-defstruct (phpinspect-pipeline-end (:constructor phpinspect-make-pipeline-end))
   (value nil
          :type any)
@@ -90,7 +94,6 @@
     (when errors
       (signal 'phpinspect-pipeline-error errors))))
 
-
 (define-inline phpinspect-pipeline-emit (data)
   (inline-letevals (data)
     (inline-quote
@@ -117,7 +120,8 @@
   (inline-quote
    (if (input-pending-p)
        (let ((mx (make-mutex)))
-         (phpinspect-thread-pause 1 mx (make-condition-variable mx "phpinspect-pipeline-pause")))
+         (phpinspect-thread-pause
+          phpinspect-pipeline-pause-time mx (make-condition-variable mx "phpinspect-pipeline-pause")))
      (thread-yield))))
 
 (defun phpinspect--chain-pipeline-steps (steps start-queue end-queue ctx)
@@ -261,7 +265,6 @@
                   (t (funcall ,async nil err))))
               "phpinspect-pipeline-async")
            ,(append '(phpinspect--pipeline) (list seed-form) macro-params)))))
-
 
 (define-inline phpinspect-pipeline-receive (queue)
   (inline-letevals (queue)

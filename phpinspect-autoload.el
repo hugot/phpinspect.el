@@ -61,7 +61,6 @@
              :documentation
              "The directories that this autoloader finds code in."))
 
-
 (cl-defstruct (phpinspect-autoloader
                (:constructor phpinspect-make-autoloader))
   (project nil
@@ -167,9 +166,6 @@ bareword typenames."))
       (push type-fqn bag)
       (puthash type-name bag (phpinspect-autoloader-type-name-fqn-bags al)))))
 
-
-(phpinspect-define-pipeline-step phpinspect-al-strategy-execute phpinspect-al-strategy-execute)
-
 (cl-defmethod phpinspect-iterate-composer-jsons
   ((al phpinspect-autoloader) file)
   (let* ((fs (phpinspect-project-fs (phpinspect-autoloader-project al)))
@@ -216,13 +212,17 @@ bareword typenames."))
        autoload)
       (phpinspect-pipeline-emit-all batch))))
 
-(phpinspect-define-pipeline-step phpinspect-iterate-composer-jsons
-                                 phpinspect-iterate-composer-jsons)
 
 (cl-defmethod phpinspect-autoloader-resolve ((autoloader phpinspect-autoloader)
                                             typename-symbol)
   (or (gethash typename-symbol (phpinspect-autoloader-own-types autoloader))
       (gethash typename-symbol (phpinspect-autoloader-types autoloader))))
+
+(phpinspect-define-pipeline-step phpinspect-iterate-composer-jsons
+                                 phpinspect-iterate-composer-jsons)
+
+(phpinspect-define-pipeline-step phpinspect-al-strategy-execute
+                                 phpinspect-al-strategy-execute)
 
 (cl-defmethod phpinspect-autoloader-refresh ((autoloader phpinspect-autoloader) &optional async-callback)
   "Refresh autoload definitions by reading composer.json files
@@ -242,10 +242,11 @@ bareword typenames."))
                  (lambda (_result error)
                    (if error
                        (message "Error during autoloader refresh: %s" error)
-                     (message (concat "Refreshed project autoloader. Found %d types within project,"
-                                      " %d types total.")
-                              (hash-table-count (phpinspect-autoloader-own-types autoloader))
-                              (hash-table-count (phpinspect-autoloader-types autoloader))))))
+                     (message
+                       (concat "Refreshed project autoloader. Found %d types within project,"
+                               " %d types total.")
+                       (hash-table-count (phpinspect-autoloader-own-types autoloader))
+                       (hash-table-count (phpinspect-autoloader-types autoloader))))))
       :into (phpinspect-iterate-composer-jsons :with-context autoloader)
       :into phpinspect-al-strategy-execute)))
 

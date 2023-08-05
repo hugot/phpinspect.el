@@ -187,5 +187,19 @@ context for completion."
 	     (json-key-type 'string))
      ,@body))
 
+(defun phpinspect-thread-pause (pause-time mx continue)
+  "Pause current thread using MX and CONTINUE for PAUSE-TIME idle seconds.
+
+PAUSE-TIME must be the idle time that the thread should pause for.
+MX must be a mutex
+CONTINUE must be a condition-variable"
+  (phpinspect--log "Thread '%s' is paused for %d seconds" (thread-name (current-thread)) pause-time)
+  (run-with-idle-timer
+   pause-time
+   nil
+   (lambda () (with-mutex mx (condition-notify continue))))
+  (with-mutex mx (condition-wait continue))
+  (phpinspect--log "Thread '%s' continuing execution" (thread-name (current-thread))))
+
 (provide 'phpinspect-util)
 ;;; phpinspect-util.el ends here

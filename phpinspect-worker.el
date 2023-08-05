@@ -24,6 +24,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'phpinspect-util)
 (require 'phpinspect-project)
 (require 'phpinspect-index)
 (require 'phpinspect-class)
@@ -115,21 +116,6 @@ already present in the queue."
 (cl-defmethod phpinspect-worker-enqueue ((worker phpinspect-dynamic-worker) task)
   (phpinspect-worker-enqueue (phpinspect-resolve-dynamic-worker worker)
                              task))
-
-(defun phpinspect-thread-pause (pause-time mx continue)
-  "Pause current thread using MX and CONTINUE for PAUSE-TIME idle seconds.
-
-PAUSE-TIME must be the idle time that the thread should pause for.
-MX must be a mutex
-CONTINUE must be a condition-variable"
-  (phpinspect--log "Thread '%s' is paused for %d seconds" (thread-name (current-thread)) pause-time)
-  (run-with-idle-timer
-   pause-time
-   nil
-   (lambda () (with-mutex mx (condition-notify continue))))
-  (with-mutex mx (condition-wait continue))
-  (phpinspect--log "Index thread continuing"))
-
 (cl-defgeneric phpinspect-worker-make-thread-function (worker)
   "Create a function that can be used to start WORKER's thread.")
 
