@@ -1,5 +1,6 @@
 (require 'ert)
 (require 'phpinspect-edtrack)
+(require 'phpinspect-meta)
 
 (ert-deftest phpinspect-edit-end ()
   (let ((edit (list (cons 10 3) (cons 6 5) (cons 4 -2))))
@@ -126,3 +127,15 @@
     (phpinspect-edtrack-register-edit track 10 10 1)
 
     (should (equal (list (cons 10 -1) (cons 10 1)) (phpinspect-edtrack-edits track)))))
+
+(ert-deftest phpinspect-edtrack-undo ()
+  (let ((track (phpinspect-make-edtrack)))
+    (phpinspect-edtrack-register-edit track 10 10 10)
+    (phpinspect-edtrack-register-edit track 10 10 10)
+    (phpinspect-edtrack-register-edit track 10 30 0)
+
+    (should (= 30 (phpinspect-edtrack-original-position-at-point track 30)))
+    (should (= 20 (phpinspect-edtrack-original-position-at-point track 20)))
+    (should (= 15 (phpinspect-edtrack-original-position-at-point track 15)))
+    (should (= 35 (phpinspect-edtrack-original-position-at-point track 35)))
+    (should (= 10 (phpinspect-edtrack-original-position-at-point track 10)))))

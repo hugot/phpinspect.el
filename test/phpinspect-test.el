@@ -543,6 +543,7 @@ class Thing
 (load-file (concat phpinspect-test-directory "/test-parser.el"))
 (load-file (concat phpinspect-test-directory "/test-parse-context.el"))
 (load-file (concat phpinspect-test-directory "/test-splayt.el"))
+(load-file (concat phpinspect-test-directory "/test-pipeline.el"))
 
 
 (provide 'phpinspect-test)

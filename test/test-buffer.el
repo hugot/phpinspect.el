@@ -63,7 +63,7 @@
 
 (cl-defstruct (phpinspect-document (:constructor phpinspect-make-document))
   (buffer (get-buffer-create
-                  (generate-new-buffer-name " **phpinspect-document** shadow buffer") t)
+                  (generate-new-buffer-name "**phpinspect-document** shadow buffer") t)
                  :type buffer
                  :documentation
                  "A hidden buffer with a reference version of the document."))
@@ -80,6 +80,16 @@
   (with-current-buffer (phpinspect-document-buffer document)
     (erase-buffer)
     (insert contents)))
+
+(defmacro phpinspect-document-setq-local (document &rest assignments)
+  (declare (indent 1))
+  `(with-current-buffer (phpinspect-document-buffer ,document)
+     (setq-local ,@assignments)))
+
+(defmacro phpinspect-with-document-buffer (document &rest body)
+  (declare (indent 1))
+  `(with-current-buffer (phpinspect-document-buffer ,document)
+     ,@body))
 
 (cl-defmethod phpinspect-document-contents ((document phpinspect-document))
   (with-current-buffer (phpinspect-document-buffer document)
@@ -206,3 +216,72 @@ class AccountStatisticsController {
           (should  class)
           (should (= class-location (phpinspect-meta-start class)))
           (should (phpinspect-class-p (phpinspect-meta-token class)))))))))
+
+
+(ert-deftest phpinspect-buffer-parse-incrementally-multiedit ()
+  (let* ((document (phpinspect-make-document))
+         (buffer (phpinspect-make-buffer
+                  :buffer (phpinspect-document-buffer document)))
+         parsed parsed-after current-tree)
+
+    (phpinspect-document-set-contents
+     document
+     "<?php
+
+
+namespace XXX;
+
+use ZZZ\\zzz;
+
+
+
+
+
+class YYY {
+
+    function Foo() {
+        if(bar()) {
+            return $baz->bip->bop(bar($bim), $bom)
+        }
+    }
+}")
+
+    (phpinspect-document-setq-local document
+      phpinspect-current-buffer buffer)
+    (phpinspect-with-document-buffer document
+      (setq buffer-undo-list nil)
+      (add-hook 'after-change-functions #'phpinspect-after-change-function))
+
+    (setq parsed (phpinspect-buffer-parse buffer 'no-interrupt))
+
+    ;; Delete lines before class
+    (phpinspect-with-document-buffer document
+      (goto-char 40)
+      (kill-line)
+      (kill-line)
+      (kill-line))
+
+    (setq parsed-after (phpinspect-buffer-parse buffer 'no-interrupt))
+
+    (should (equal parsed parsed-after))
+
+    ;; Delete namespace declaration
+    (phpinspect-with-document-buffer document
+      (goto-char 9)
+      (kill-line))
+
+    (setq parsed-after (phpinspect-buffer-parse buffer 'no-interrupt))
+    (setq current-tree (phpinspect-with-document-buffer document
+                         (goto-char (point-min))
+                         (phpinspect-parse-buffer-until-point (current-buffer) (point-max))))
+
+    (should (equal current-tree parsed-after))
+
+    ;;Bring back the namespace declaration
+    (phpinspect-with-document-buffer document
+      (undo-start)
+      (undo-more 1))
+
+    (setq parsed-after (phpinspect-buffer-parse buffer 'no-interrupt))
+
+    (should (equal parsed parsed-after))))

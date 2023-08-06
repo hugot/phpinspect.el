@@ -44,27 +44,31 @@
   (cons (car (phpinspect-edtrack-taint-pool track))
         (cl-copy-list (cdr (phpinspect-edtrack-taint-pool track)))))
 
-(gv-define-setter phpinspect-taint-iterator-current (current iter) `(setcar ,iter ,current))
+(define-inline phpinspect-taint-iterator-current (iter)
+  (inline-quote (car ,iter)))
 
-(defsubst phpinspect-taint-iterator-current (iter)
-  (car iter))
+(define-inline phpinspect-taint-iterator-follow (iter pos)
+  (inline-letevals (iter pos)
+    (inline-quote
+     (or (while (and (phpinspect-taint-iterator-current ,iter)
+                     (> ,pos (phpinspect-taint-end
+                              (phpinspect-taint-iterator-current ,iter))))
+           (setf (phpinspect-taint-iterator-current ,iter) (pop (cdr ,iter))))
+         (phpinspect-taint-iterator-current ,iter)))))
 
-(defsubst phpinspect-taint-iterator-follow (iter pos)
-  (or (while (and (phpinspect-taint-iterator-current iter)
-                  (> pos (phpinspect-taint-end
-                          (phpinspect-taint-iterator-current iter))))
-        (setf (phpinspect-taint-iterator-current iter) (pop (cdr iter))))
-      (phpinspect-taint-iterator-current iter)))
+(define-inline phpinspect-taint-iterator-token-is-tainted-p (iter meta)
+  (inline-letevals (iter meta)
+    (inline-quote
+     (and (phpinspect-taint-iterator-follow ,iter (phpinspect-meta-start ,meta))
+          (phpinspect-taint-overlaps-meta
+           (phpinspect-taint-iterator-current ,iter) ,meta)))))
 
-(defsubst phpinspect-taint-iterator-token-is-tainted-p (iter meta)
-  (and (phpinspect-taint-iterator-follow iter (phpinspect-meta-start meta))
-       (phpinspect-taint-overlaps-meta
-        (phpinspect-taint-iterator-current iter) meta)))
-
-(defsubst phpinspect-taint-iterator-region-is-tainted-p (iter start end)
-  (and (phpinspect-taint-iterator-follow iter start)
-       (phpinspect-taint-overlaps-region
-        (phpinspect-taint-iterator-current iter) start end)))
+(define-inline phpinspect-taint-iterator-region-is-tainted-p (iter start end)
+  (inline-letevals (iter start end)
+    (inline-quote
+     (and (phpinspect-taint-iterator-follow ,iter ,start)
+          (phpinspect-taint-overlaps-region
+           (phpinspect-taint-iterator-current ,iter) ,start ,end)))))
 
 (defsubst phpinspect-edit-original-end (edit)
   (or (caar edit) 0))
