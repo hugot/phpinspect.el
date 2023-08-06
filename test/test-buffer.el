@@ -167,55 +167,55 @@ class AccountStatisticsController {
 
       (let* ((bmap (phpinspect-buffer-parse-map buffer))
              (class-location 67)
-             (class (phpinspect-bmap-token-starting-at bmap class-location))
+             (class (phpinspect-bmap-token-starting-at bmap class-location)))
 
-        (should class)
-        (should (phpinspect-class-p (phpinspect-meta-token class)))
-        (should (= class-location (phpinspect-meta-start class))))
-
-      (goto-char 65)
-      (let ((edit-string "use Symfony\\Component\\HttpFoundation\\JsonResponse;\n")
-            bmap class tokens-enclosing use-statement)
-        (insert edit-string)
-
-        (setq bmap (phpinspect-buffer-parse-map buffer)
-              class (phpinspect-bmap-token-starting-at bmap (+ 67 (length edit-string))))
-
-        (setq class-location (+ class-location (length edit-string)))
         (should class)
         (should (phpinspect-class-p (phpinspect-meta-token class)))
         (should (= class-location (phpinspect-meta-start class)))
 
-        (setq tokens-enclosing (phpinspect-bmap-tokens-overlapping bmap class-location))
-        (setq class (seq-find (lambda (meta) (phpinspect-class-p (phpinspect-meta-token meta)))
-                              tokens-enclosing))
-        (should  class)
-        (should (= class-location (phpinspect-meta-start class)))
-        (should (phpinspect-class-p (phpinspect-meta-token class)))
-
-        (setq use-statement (phpinspect-bmap-token-starting-at bmap 65))
-        (should use-statement)
-        (should (phpinspect-use-p (phpinspect-meta-token use-statement)))
-        (should (seq-find #'phpinspect-use-p (seq-find #'phpinspect-namespace-p (phpinspect-buffer-tree buffer))))
-
-        (let ((second-use))
-          (goto-char 65)
-          (setq edit-string "use Another\\Use\\Statement;\n")
+        (goto-char 65)
+        (let ((edit-string "use Symfony\\Component\\HttpFoundation\\JsonResponse;\n")
+              bmap class tokens-enclosing use-statement)
           (insert edit-string)
 
-          (setq class-location (+ class-location (length edit-string)))
           (setq bmap (phpinspect-buffer-parse-map buffer)
-                class (phpinspect-bmap-token-starting-at bmap class-location))
+                class (phpinspect-bmap-token-starting-at bmap (+ 67 (length edit-string))))
 
+          (setq class-location (+ class-location (length edit-string)))
           (should class)
+          (should (phpinspect-class-p (phpinspect-meta-token class)))
+          (should (= class-location (phpinspect-meta-start class)))
 
-          (setq second-use (phpinspect-bmap-token-starting-at bmap 65))
-          (should second-use)
-
-          (setq class (phpinspect-bmap-token-starting-at bmap class-location))
+          (setq tokens-enclosing (phpinspect-bmap-tokens-overlapping bmap class-location))
+          (setq class (seq-find (lambda (meta) (phpinspect-class-p (phpinspect-meta-token meta)))
+                                tokens-enclosing))
           (should  class)
           (should (= class-location (phpinspect-meta-start class)))
-          (should (phpinspect-class-p (phpinspect-meta-token class)))))))))
+          (should (phpinspect-class-p (phpinspect-meta-token class)))
+
+          (setq use-statement (phpinspect-bmap-token-starting-at bmap 65))
+          (should use-statement)
+          (should (phpinspect-use-p (phpinspect-meta-token use-statement)))
+          (should (seq-find #'phpinspect-use-p (seq-find #'phpinspect-namespace-p (phpinspect-buffer-tree buffer))))
+
+          (let ((second-use))
+            (goto-char 65)
+            (setq edit-string "use Another\\Use\\Statement;\n")
+            (insert edit-string)
+
+            (setq class-location (+ class-location (length edit-string)))
+            (setq bmap (phpinspect-buffer-parse-map buffer)
+                  class (phpinspect-bmap-token-starting-at bmap class-location))
+
+            (should class)
+
+            (setq second-use (phpinspect-bmap-token-starting-at bmap 65))
+            (should second-use)
+
+            (setq class (phpinspect-bmap-token-starting-at bmap class-location))
+            (should  class)
+            (should (= class-location (phpinspect-meta-start class)))
+            (should (phpinspect-class-p (phpinspect-meta-token class)))))))))
 
 
 (ert-deftest phpinspect-buffer-parse-incrementally-multiedit ()
