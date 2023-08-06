@@ -154,9 +154,11 @@ indexed by the absolute paths of the files they're watching."))
    (phpinspect--class-variables class)))
 
 (cl-defmethod phpinspect-project-add-index
-  ((project phpinspect-project) (index (head phpinspect--root-index)))
+  ((project phpinspect-project) (index (head phpinspect--root-index)) &optional index-imports)
+  (when index-imports
+    (phpinspect-project-enqueue-imports project (alist-get 'imports (cdr index))))
   (dolist (indexed-class (alist-get 'classes (cdr index)))
-    (phpinspect-project-add-class project (cdr indexed-class))))
+    (phpinspect-project-add-class project (cdr indexed-class) index-imports)))
 
 (cl-defmethod phpinspect-project-enqueue-imports
   ((project phpinspect-project) imports)
@@ -166,13 +168,17 @@ indexed by the absolute paths of the files they're watching."))
       (phpinspect-project-enqueue-if-not-present project (cdr import)))))
 
 (cl-defmethod phpinspect-project-add-class
-  ((project phpinspect-project) (indexed-class (head phpinspect--indexed-class)))
+  ((project phpinspect-project) (indexed-class (head phpinspect--indexed-class)) &optional index-imports)
   (let* ((class-name (phpinspect--type-name-symbol
                       (alist-get 'class-name (cdr indexed-class))))
          (class (gethash class-name
                          (phpinspect-project-class-index project))))
     (unless class
       (setq class (phpinspect--make-class-generated :project project)))
+
+    (when index-imports
+      (phpinspect-project-enqueue-imports
+       project (alist-get 'imports (cdr indexed-class))))
 
     (phpinspect--class-set-index class indexed-class)
     (puthash class-name class (phpinspect-project-class-index project))

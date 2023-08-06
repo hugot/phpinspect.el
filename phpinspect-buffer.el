@@ -43,12 +43,15 @@ emacs buffer."
         "Parsed token tree that resulted from last parse")
   (map nil
        :type phpinspect-bmap)
+  (project nil
+           :type phpinspect-project)
   (edit-tracker (phpinspect-make-edtrack)
                 :type phpinspect-edtrack))
 
-(cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer) &optional no-interrupt)
+(cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer) &optional no-interrupt no-index)
   "Parse the PHP code in the the emacs buffer that this object is
 linked with."
+  (let ((tree))
   (if (or (not (phpinspect-buffer-tree buffer))
           (phpinspect-edtrack-taint-pool (phpinspect-buffer-edit-tracker buffer)))
       (with-current-buffer (phpinspect-buffer-buffer buffer)
@@ -67,10 +70,19 @@ linked with."
               (setf (phpinspect-buffer-tree buffer) parsed)
               (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
 
-              ;; return
-              parsed))))
+              ;; set return value
+              (setq tree parsed)
+
+              (unless (or no-index
+                          (not (phpinspect-buffer-project buffer)))
+                (phpinspect-project-add-index
+                 (phpinspect-buffer-project buffer)
+                 (phpinspect--index-tokens tree nil (phpinspect-buffer-location-resolver buffer))
+                 'index-imports))))))
     ;; Else: Just return last parse result
-    (phpinspect-buffer-tree buffer)))
+    (setq tree (phpinspect-buffer-tree buffer)))
+
+  tree))
 
 
 (cl-defmethod phpinspect-buffer-reparse ((buffer phpinspect-buffer))

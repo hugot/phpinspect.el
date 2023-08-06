@@ -70,6 +70,8 @@
 
 (cl-defstruct (phpinspect-autoloader
                (:constructor phpinspect-make-autoloader))
+  (refresh-thread nil
+                  :type thread)
   (project nil
            :type phpinspect-project
            :documentation "The project that this autoloader can find files for")
@@ -229,7 +231,18 @@ bareword typenames."))
 
 
 (cl-defmethod phpinspect-autoloader-resolve ((autoloader phpinspect-autoloader)
-                                            typename-symbol)
+                                             typename-symbol)
+  ;; Wait for pending refresh if not running in main thread.
+  (unless (eq main-thread (current-thread))
+    (when (and (phpinspect-autoloader-refresh-thread autoloader)
+               (thread-live-p (phpinspect-autoloader-refresh-thread autoloader)))
+      (phpinspect--log
+       "Pausing thread %s to await autoload refresh completion"
+       (thread-name (current-thread)))
+      (thread-join (phpinspect-autoloader-refresh-thread autoloader))
+      (phpinspect--log "Autoload refresh completed, continuing waiting thread %s"
+                       (thread-name (current-thread)))))
+
   (or (gethash typename-symbol (phpinspect-autoloader-own-types autoloader))
       (gethash typename-symbol (phpinspect-autoloader-types autoloader))))
 
@@ -252,18 +265,19 @@ bareword typenames."))
     (setf (phpinspect-autoloader-types autoloader)
           (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
 
-    (phpinspect-pipeline (phpinspect-find-composer-json-files fs project-root)
-      :async (or async-callback
-                 (lambda (_result error)
-                   (if error
-                       (message "Error during autoloader refresh: %s" error)
-                     (message
-                       (concat "Refreshed project autoloader. Found %d types within project,"
-                               " %d types total.")
-                       (hash-table-count (phpinspect-autoloader-own-types autoloader))
-                       (hash-table-count (phpinspect-autoloader-types autoloader))))))
-      :into (phpinspect-iterate-composer-jsons :with-context autoloader)
-      :into phpinspect-al-strategy-execute)))
+    (setf (phpinspect-autoloader-refresh-thread autoloader)
+          (phpinspect-pipeline (phpinspect-find-composer-json-files fs project-root)
+            :async (or async-callback
+                       (lambda (_result error)
+                         (if error
+                             (message "Error during autoloader refresh: %s" error)
+                           (message
+                            (concat "Refreshed project autoloader. Found %d types within project,"
+                                    " %d types total.")
+                            (hash-table-count (phpinspect-autoloader-own-types autoloader))
+                            (hash-table-count (phpinspect-autoloader-types autoloader))))))
+            :into (phpinspect-iterate-composer-jsons :with-context autoloader)
+            :into phpinspect-al-strategy-execute))))
 
 (provide 'phpinspect-autoload)
 ;;; phpinspect-autoload.el ends here

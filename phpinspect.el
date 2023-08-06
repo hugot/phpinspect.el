@@ -88,7 +88,12 @@ phpinspect")
 
 (defun phpinspect--init-mode ()
   "Initialize the phpinspect minor mode for the current buffer."
-  (setq phpinspect-current-buffer (phpinspect-make-buffer :buffer (current-buffer)))
+  (setq phpinspect-current-buffer
+        (phpinspect-make-buffer
+         :buffer (current-buffer)
+         :project (phpinspect--cache-get-project-create
+                   (phpinspect--get-or-create-global-cache)
+                   (phpinspect--find-project-root))))
   (add-hook 'after-change-functions #'phpinspect-after-change-function)
   (make-local-variable 'company-backends)
   (add-to-list 'company-backends #'phpinspect-company-backend)
@@ -116,24 +121,7 @@ Assuming that files are only changed from within Emacs, this
 keeps the cache valid.  If changes are made outside of Emacs,
 users will have to use \\[phpinspect-purge-cache]."
   (when (and (boundp 'phpinspect-mode) phpinspect-mode)
-    (setq phpinspect--buffer-index
-          (phpinspect--index-tokens
-           (phpinspect-buffer-reparse phpinspect-current-buffer)))
-    (let ((imports (alist-get 'imports phpinspect--buffer-index))
-          (project (phpinspect--cache-get-project-create
-                    (phpinspect--get-or-create-global-cache)
-                    (phpinspect-current-project-root))))
-
-      (dolist (class (alist-get 'classes phpinspect--buffer-index))
-        (when class
-          (phpinspect-project-add-class project (cdr class))
-
-          (let ((imports (alist-get 'imports (cdr class))))
-            (when imports
-              (phpinspect-project-enqueue-imports project imports)))))
-
-      (when imports (phpinspect-project-enqueue-imports project imports)))))
-
+    (phpinspect-buffer-reparse phpinspect-current-buffer)))
 
 (defun phpinspect--disable-mode ()
   "Clean up the buffer environment for the mode to be disabled."
