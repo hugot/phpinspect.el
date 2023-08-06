@@ -133,6 +133,12 @@
     (phpinspect-splayt-find-largest-before (phpinspect-meta-children (phpinspect-meta-parent meta))
                                            (phpinspect-meta-parent-offset meta))))
 
+(cl-defmethod phpinspect-meta-find-right-sibling ((meta (head meta)))
+  (when (phpinspect-meta-parent meta)
+    (phpinspect-splayt-find-smallest-after (phpinspect-meta-children (phpinspect-meta-parent meta))
+                                           (phpinspect-meta-parent-offset meta))))
+
+
 (cl-defmethod phpinspect-meta-find-overlapping-child ((meta (head meta)) (point integer))
   (let ((child (phpinspect-splayt-find-largest-before
                 (phpinspect-meta-children meta) (phpinspect-meta--point-offset meta point))))
@@ -162,6 +168,10 @@
   (phpinspect-splayt-find-largest-before
    (phpinspect-meta-children meta) (phpinspect-meta--point-offset meta point)))
 
+(cl-defmethod phpinspect-meta-find-child-after ((meta (head meta)) (point integer))
+  (phpinspect-splayt-find-smallest-after
+   (phpinspect-meta-children meta) (phpinspect-meta--point-offset meta point)))
+
 (cl-defmethod phpinspect-meta-find-child-before-recursively ((meta (head meta)) (point integer))
   (let ((child meta)
         last)
@@ -179,6 +189,18 @@
   (sort (phpinspect-splayt-find-all-before
          (phpinspect-meta-children meta) (phpinspect-meta--point-offset meta point))
         #'phpinspect-meta-sort-start))
+
+(cl-defmethod phpinspect-meta-find-first-child-matching ((meta (head meta)) predicate)
+  (catch 'return
+    (phpinspect-splayt-traverse-lr (child (phpinspect-meta-children meta))
+      (when (funcall predicate child)
+        (throw 'return child)))))
+
+(cl-defmethod phpinspect-meta-last-child ((meta (head meta)))
+  (phpinspect-meta-find-child-before meta (phpinspect-meta-end meta)))
+
+(cl-defmethod phpinspect-meta-first-child ((meta (head meta)))
+  (phpinspect-meta-find-child-after meta (- (phpinspect-meta-start meta) 1)))
 
 
 (defun phpinspect-meta-string (meta)

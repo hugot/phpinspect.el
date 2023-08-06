@@ -101,6 +101,23 @@
 
       (should (equal expected result)))))
 
+(ert-deftest phpinspect-splayt-traverse-lr ()
+  (let ((tree (phpinspect-make-splayt)))
+    (phpinspect-splayt-insert tree 9 "nine")
+    (phpinspect-splayt-insert tree 3 "three")
+    (phpinspect-splayt-insert tree 11 "eleven")
+    (phpinspect-splayt-insert tree 8 "eight")
+    (phpinspect-splayt-insert tree 12 "twelve")
+    (phpinspect-splayt-insert tree 4 "four")
+    (phpinspect-splayt-insert tree 1 "one")
+
+    (let ((expected '("one" "three"  "four" "eight" "nine" "eleven" "twelve"))
+          result)
+      (phpinspect-splayt-traverse-lr (item tree)
+        (setq result (nconc result (list item))))
+
+      (should (equal expected result)))))
+
 (ert-deftest phpinspect-splayt-find-smallest-after ()
   (let ((tree (phpinspect-make-splayt)))
     (phpinspect-splayt-insert tree 9 "nine")

@@ -93,6 +93,9 @@ apeared to be a little more performant than using `let'."
 (define-inline phpinspect-splayt-root-node (splayt)
   (inline-quote (car ,splayt)))
 
+(define-inline phpinspect-splayt-empty-p (splayt)
+  (inline-quote (not (phpinspect-splayt-root-node ,splayt))))
+
 (define-inline phpinspect-splayt-node-rotate-right (node &optional splayt)
   (inline-letevals (node splayt)
     (inline-quote
@@ -216,7 +219,7 @@ apeared to be a little more performant than using `let'."
 (define-inline phpinspect-splayt-insert-node (splayt node)
   (inline-letevals (splayt node (parent (inline-quote (phpinspect-splayt-node-temp-store ,node))))
     (inline-quote
-     (if (not (phpinspect-splayt-root-node ,splayt))
+     (if (phpinspect-splayt-empty-p ,splayt)
          (setf (phpinspect-splayt-root-node ,splayt) ,node)
        (progn
          (setf ,parent (phpinspect-splayt-find-insertion-node ,splayt (phpinspect-splayt-node-key ,node)))
@@ -289,6 +292,33 @@ main benefit: the most accessed interval of keys is likely to be
 near the top of the tee."
   (declare (indent 1))
   `(phpinspect-splayt-node-traverse
+       (,(car place-and-splayt) (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
+     ,@body))
+
+(defmacro phpinspect-splayt-node-traverse-lr (place-and-node &rest body)
+  (declare (indent 1))
+  (let ((place (car place-and-node))
+        (current (gensym))
+        (stack (gensym)))
+    `(let* ((,current ,(cadr place-and-node))
+            ,stack
+            ,@(if (symbolp place) (list place)))
+       (while (or ,stack ,current)
+         (if ,current
+             (progn
+               (push ,current ,stack)
+               (setq ,current (phpinspect-splayt-node-left ,current)))
+           (setq ,current (pop ,stack))
+           (setf ,place (phpinspect-splayt-node-value ,current))
+           ,@body
+           (setq ,current (phpinspect-splayt-node-right ,current)))))))
+
+(defmacro phpinspect-splayt-traverse-lr (place-and-splayt &rest body)
+  "Traverse splay tree in cadr of PLACE-AND-SPLAYT depth-first from left to right, executing BODY.
+
+The car of PLACE-AND-SPLAYT is assigned the value of each node."
+  (declare (indent 1))
+  `(phpinspect-splayt-node-traverse-lr
        (,(car place-and-splayt) (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
      ,@body))
 
