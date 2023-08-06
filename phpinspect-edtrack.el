@@ -130,29 +130,7 @@
     (let ((delta ;; The delta of this edit.
            (- (- end start) pre-change-length))
           new-edit)
-      (if (and (= (phpinspect-edtrack-last-edit-start track) start)
-               ;; Confirm that this is indeed a growing edit and not an edit
-               ;; starting at the same place by chance
-               (or (and (> delta 0) (> (cdr (phpinspect-edtrack-last-edit track)) 0)
-                        (> delta (cdr (phpinspect-edtrack-last-edit track))))
-                   (and (< delta 0) (< (cdr (phpinspect-edtrack-last-edit track)) 0)
-                        (< delta (cdr (phpinspect-edtrack-last-edit track))))))
-          ;; `after-change-functions' can be called in succession with the same
-          ;; start point for a continuously growing edited region. For example,
-          ;; when typing without interruptions, subsequent calls can be:
-          ;; [start: 1243, end: 1244, pre-change-length: 0]
-          ;; [start: 1243, end: 1245, pre-change-length: 0]
-          ;; [start: 1243, end: 1246, pre-change-length: 0]
-          ;; [start: 1243, end: 1247, pre-change-length: 0]
-          ;;
-          ;; The code below accounts for this scenario by altering the last
-          ;; registered edit when subsequent calls have the same start point.
-          (progn
-            (setq new-edit (phpinspect-edtrack-last-edit track))
-            (phpinspect--log "Edtrack: updating growing edit: [%s]" new-edit)
-            (setcdr new-edit delta))
-        ;; Else
-        (setq new-edit (cons
+      (setq new-edit (cons
                         ;; The end location of the edited region, before being
                         ;; edited, with the delta edits that happened at preceding
                         ;; points in the buffer subtratted. This corresponds with
@@ -167,10 +145,7 @@
               (setcar edit-before new-edit))
           (if (phpinspect-edtrack-edits track)
               (push new-edit (cdr (last (phpinspect-edtrack-edits track))))
-            (push new-edit (phpinspect-edtrack-edits track)))))
-
-    (setf (phpinspect-edtrack-last-edit track) new-edit)
-    (setf (phpinspect-edtrack-last-edit-start track) start))))
+            (push new-edit (phpinspect-edtrack-edits track)))))))
 
 (defsubst phpinspect-taint-start (taint)
   (car taint))

@@ -113,14 +113,6 @@
     (phpinspect-edtrack-register-edit track 15 0 1)
     (should (equal (list (cons 10 16)) (phpinspect-edtrack-taint-pool track)))))
 
-(ert-deftest phpinspect-edtrack-register-growing-edit ()
-  (let ((track (phpinspect-make-edtrack)))
-    (phpinspect-edtrack-register-edit track 10 11 0)
-    (phpinspect-edtrack-register-edit track 10 12 0)
-    (phpinspect-edtrack-register-edit track 10 13 0)
-
-    (should (equal (list (cons 10 3)) (phpinspect-edtrack-edits track)))))
-
 (ert-deftest phpinspect-edtrack-register-multi-edits-same-start ()
   (let ((track (phpinspect-make-edtrack)))
     (phpinspect-edtrack-register-edit track 10 11 0)
