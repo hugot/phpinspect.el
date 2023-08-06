@@ -85,22 +85,19 @@ level of START-FILE in stead of `default-directory`."
 
 (phpinspect--declare-log-group 'bam)
 
-(define-inline phpinspect--log (&rest args)
+(defmacro phpinspect--log (&rest args)
   (let ((log-group (alist-get (or load-file-name buffer-file-name) phpinspect-log-groups nil nil #'string=)))
-    (push 'list args)
-    (inline-quote
-     (when (and phpinspect--debug
+    `(when (and phpinspect--debug
                 (or (not phpinspect-enabled-log-groups)
                     ,(when log-group
-                       (inline-quote
-                        (member (quote ,log-group) phpinspect-enabled-log-groups)))))
+                       `(member (quote ,log-group) phpinspect-enabled-log-groups))))
        (with-current-buffer (get-buffer-create "**phpinspect-logs**")
          (unless window-point-insertion-type
            (set (make-local-variable 'window-point-insertion-type) t))
          (goto-char (buffer-end 1))
          (insert (concat "[" (format-time-string "%H:%M:%S") "]: "
                          ,(if log-group (concat "(" (symbol-name log-group) ") ") "")
-                         (apply #'format ,args) "\n")))))))
+                         (format ,@args) "\n"))))))
 
 (defun phpinspect-filter-logs (group-name)
   (interactive (list (completing-read "Log group: "

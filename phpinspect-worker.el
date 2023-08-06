@@ -29,6 +29,7 @@
 (require 'phpinspect-index)
 (require 'phpinspect-class)
 (require 'phpinspect-queue)
+(require 'phpinspect-pipeline)
 
 (defvar phpinspect-worker nil
   "Contains the phpinspect worker that is used by all projects.")
@@ -124,24 +125,26 @@ already present in the queue."
     (while (phpinspect-worker-continue-running worker)
       ;; This error is used to wake up the thread when new tasks are added to the
       ;; queue.
-      (ignore-error 'phpinspect-wakeup-thread
-        (let* ((task (phpinspect-queue-dequeue (phpinspect-worker-queue worker)))
-               (mx (make-mutex))
-               (continue (make-condition-variable mx)))
-          (if task
-              ;; Execute task if it belongs to a project that has not been
-              ;; purged (meaning that it is still actively used).
-              (unless (phpinspect-project-purged (phpinspect-task-project task))
-                (phpinspect-task-execute task worker))
-            ;; else: join with the main thread until wakeup is signaled
-            (thread-join main-thread))
+      (condition-case err
+          (ignore-error 'phpinspect-wakeup-thread
+            (let* ((task (phpinspect-queue-dequeue (phpinspect-worker-queue worker)))
+                   (mx (make-mutex))
+                   (continue (make-condition-variable mx)))
+              (if task
+                  ;; Execute task if it belongs to a project that has not been
+                  ;; purged (meaning that it is still actively used).
+                  (unless (phpinspect-project-purged (phpinspect-task-project task))
+                    (phpinspect-task-execute task worker))
+                ;; else: join with the main thread until wakeup is signaled
+                (thread-join main-thread))
 
-          ;; Pause for a second after indexing something, to allow user input to
-          ;; interrupt the thread.
-          (unless (or (not (input-pending-p))
-                      (phpinspect-worker-skip-next-pause worker))
-            (phpinspect-thread-pause 1 mx continue))
-          (setf (phpinspect-worker-skip-next-pause worker) nil))))
+              ;; Pause for a second after indexing something, to allow user input to
+              ;; interrupt the thread.
+              (unless (or (not (input-pending-p))
+                          (phpinspect-worker-skip-next-pause worker))
+                (phpinspect-thread-pause 1 mx continue))
+              (setf (phpinspect-worker-skip-next-pause worker) nil)))
+        (t (message "Phpinspect worker thread errored :%s" err))))
     (phpinspect--log "Worker thread exiting")
     (message "phpinspect worker thread exited")))
 
@@ -236,6 +239,7 @@ already present in the queue."
 (cl-defmethod phpinspect-task-project ((task phpinspect-index-task))
   (phpinspect-index-task-project task))
 
+
 (cl-defmethod phpinspect-task= ((task1 phpinspect-index-task) (task2 phpinspect-index-task))
   (and (eq (phpinspect-index-task-project task1)
            (phpinspect-index-task-project task2))
@@ -265,7 +269,33 @@ already present in the queue."
              (when root-index
                (phpinspect-project-add-index project root-index)))))))
 
-;;; PARSE BUFFER TASK
+;;; INDEX FILE TASK
+(cl-defstruct (phpinspect-index-dir-task (:constructor phpinspect-make-index-dir-task))
+  "A task for the indexation of files"
+  (project nil
+           :type phpinspect-project)
+  (dir nil
+       :type string))
+
+(cl-defmethod phpinspect-task=
+  ((task1 phpinspect-index-dir-task) (task2 phpinspect-index-dir-task))
+  (and (eq (phpinspect-index-dir-task-project task1)
+           (phpinspect-index-dir-task-project task2))
+       (string= (phpinspect-index-dir-task-dir task1)
+                (phpinspect-index-dir-task-dir task2))))
+
+(cl-defmethod phpinspect-task-project ((task phpinspect-index-dir-task))
+  (phpinspect-index-dir-task-project task))
+
+(cl-defmethod phpinspect-task-execute ((task phpinspect-index-dir-task)
+                                       (_worker phpinspect-worker))
+  (phpinspect--log "Entering..")
+  (let* ((project (phpinspect-index-dir-task-project task))
+         (fs (phpinspect-project-fs project))
+         (dir (phpinspect-index-dir-task-dir task)))
+    (phpinspect--log "Indexing directory %s" dir)
+    (phpinspect-pipeline (phpinspect-fs-directory-files-recursively fs dir "\\.php$")
+      :into (phpinspect-project-add-file-index :with-context project))))
 
 (provide 'phpinspect-worker)
 ;;; phpinspect-worker.el ends here

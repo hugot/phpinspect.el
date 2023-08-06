@@ -144,8 +144,22 @@ and CONTEXT. All strategies must implement this method.")
    (rctx phpinspect--resolvecontext))
   (phpinspect-suggest-attributes-at-point rctx 'static))
 
+(cl-defstruct (phpinspect-comp-word (:constructor phpinspect-make-comp-word))
+  "Comletion strategy for bare words")
+
+(cl-defmethod phpinspect-comp-strategy-supports
+  ((_strat phpinspect-comp-word) (_q phpinspect-completion-query)
+   (rctx phpinspect--resolvecontext))
+  (phpinspect-word-p (car (last (phpinspect--resolvecontext-subject rctx)))))
+
+(cl-defmethod phpinspect-comp-strategy-execute
+  ((_strat phpinspect-comp-word) (_q phpinspect-completion-query)
+   (rctx phpinspect--resolvecontext))
+  (phpinspect-suggest-functions rctx))
+
 (defvar phpinspect-completion-strategies (list (phpinspect-make-comp-attribute)
                                                (phpinspect-make-comp-sigil)
+                                               (phpinspect-make-comp-word)
                                                (phpinspect-make-comp-static-attribute))
   "List of completion strategies that phpinspect can use.")
 
@@ -197,5 +211,6 @@ Returns list of `phpinspect--completion'."
                         (or (phpinspect--variable-type completion-candidate)
                             phpinspect--null-type)))
    :kind 'variable))
+
 
 (provide 'phpinspect-completion)

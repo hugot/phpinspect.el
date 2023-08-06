@@ -181,3 +181,53 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
 
       (should (alist-get 'location index1-class))
       (should (alist-get 'location index1-class)))))
+
+(ert-deftest phpinspect-index-functions ()
+  (let* ((code "<?php
+use Example\\Thing;
+
+function test_func(): array {}
+
+function example(): Thing {}")
+         (tokens (phpinspect-parse-string code))
+         (index (phpinspect--index-tokens tokens))
+         functions)
+
+    (should (setq functions (alist-get 'functions index)))
+    (should (= 2 (length functions)))
+    (should (string= "test_func" (phpinspect--function-name (cadr functions))))
+    (should (string= "example" (phpinspect--function-name (car functions))))
+
+    (should (phpinspect--type= (phpinspect--make-type :name "\\array")
+                               (phpinspect--function-return-type (cadr functions))))
+    (should (phpinspect--type= (phpinspect--make-type :name "\\Example\\Thing")
+                               (phpinspect--function-return-type (car functions))))))
+
+(ert-deftest phpinspect-index-functions-in-namespace ()
+  (let* ((code "<?php
+namespace Local;
+
+use Example\\Thing;
+
+function test_func(): array {}
+
+function example(Firewall $wall): Thing {}")
+         (tokens (phpinspect-parse-string code))
+         (index (phpinspect--index-tokens tokens))
+         functions)
+
+    (should (setq functions (alist-get 'functions index)))
+    (should (= 2 (length functions)))
+    (should (string= "Local\\test_func" (phpinspect--function-name (cadr functions))))
+    (should (string= "Local\\example" (phpinspect--function-name (car functions))))
+
+    (should (phpinspect--type= (phpinspect--make-type :name "\\array")
+                               (phpinspect--function-return-type (cadr functions))))
+    (should (phpinspect--type= (phpinspect--make-type :name "\\Example\\Thing")
+                               (phpinspect--function-return-type (car functions))))
+    (should (= 3 (length (alist-get 'used-types index))))
+    (should (member "Firewall" (alist-get 'used-types index)))
+    (should (member "array" (alist-get 'used-types index)))
+    (should (member "Thing" (alist-get 'used-types index)))
+
+    (should (alist-get 'used-types index))))

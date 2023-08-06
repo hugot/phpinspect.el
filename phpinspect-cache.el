@@ -68,7 +68,8 @@ then returned."
                              (phpinspect--cache-projects cache)))
       (let ((autoloader (phpinspect-make-autoloader :project project)))
         (setf (phpinspect-project-autoload project) autoloader)
-        (phpinspect-autoloader-refresh autoloader)))
+        (phpinspect-autoloader-refresh autoloader)
+        (phpinspect-project-enqueue-include-dirs project)))
     project))
 
 (provide 'phpinspect-cache)

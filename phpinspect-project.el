@@ -46,11 +46,16 @@ serious performance hits. Enable at your own risk (:")
   phpinspect--buffer-project)
 
 (cl-defstruct (phpinspect-project (:constructor phpinspect--make-project))
-  (class-index (make-hash-table :test 'eq :size 100 :rehash-size 40)
+  (class-index (make-hash-table :test 'eq :size 100 :rehash-size 1.5)
                :type hash-table
                :documentation
                "A `hash-table` that contains all of the currently
 indexed classes in the project")
+  (function-index (make-hash-table :test 'eq :size 100 :rehash-size 2.0)
+                  :type hash-table
+                  :documentation
+                  "A hash able that contains all of the currently indexed functions
+in the project")
   (fs nil
       :type phpinspect-fs
       :documentation
@@ -115,9 +120,11 @@ indexed by the absolute paths of the files they're watching."))
                 (not (or (phpinspect--class-initial-index class))))
         (when (not class)
           (setq class (phpinspect-project-create-class project type)))
-        (phpinspect--log "Adding unpresent class %s to index queue" type)
-        (phpinspect-worker-enqueue (phpinspect-project-worker project)
-                                   (phpinspect-make-index-task project type))))))
+        (unless (or (phpinspect--type= phpinspect--null-type type)
+                    (phpinspect--type-is-native type))
+          (phpinspect--log "Adding unpresent class %s to index queue" type)
+          (phpinspect-worker-enqueue (phpinspect-project-worker project)
+                                     (phpinspect-make-index-task project type)))))))
 
 (cl-defmethod phpinspect-project-add-class-attribute-types-to-index-queue
   ((project phpinspect-project) (class phpinspect--class))
@@ -135,8 +142,29 @@ indexed by the absolute paths of the files they're watching."))
   ((project phpinspect-project) (index (head phpinspect--root-index)) &optional index-imports)
   (when index-imports
     (phpinspect-project-enqueue-imports project (alist-get 'imports (cdr index))))
+
   (dolist (indexed-class (alist-get 'classes (cdr index)))
-    (phpinspect-project-add-class project (cdr indexed-class) index-imports)))
+    (phpinspect-project-add-class project (cdr indexed-class) index-imports))
+
+  (dolist (func (alist-get 'functions (cdr index)))
+    (phpinspect-project-set-function project func)))
+
+(cl-defmethod phpinspect-project-set-function
+  ((project phpinspect-project) (func phpinspect--function))
+  (puthash (phpinspect--function-name-symbol func) func
+           (phpinspect-project-function-index project)))
+
+(cl-defmethod phpinspect-project-get-function
+  ((project phpinspect-project) (name symbol))
+  (gethash name (phpinspect-project-function-index project)))
+
+(cl-defmethod phpinspect-project-get-functions ((project phpinspect-project))
+  (let ((funcs))
+    (maphash
+     (lambda (_name func) (push func funcs))
+     (phpinspect-project-function-index project))
+
+    funcs))
 
 (cl-defmethod phpinspect-project-enqueue-imports
   ((project phpinspect-project) imports)
@@ -236,6 +264,46 @@ before the search is executed."
 
 (cl-defmethod phpinspect-project-add-file-index ((project phpinspect-project) (filename string))
   (phpinspect-project-add-index project (phpinspect-project-index-file project filename)))
+
+(defun phpinspect-project-enqueue-include-dirs (project)
+  (interactive (list (phpinspect--cache-get-project-create
+                      (phpinspect--get-or-create-global-cache)
+                      (phpinspect-current-project-root))))
+  (let ((dirs (alist-get 'include-dirs
+                         (alist-get (phpinspect-project-root project)
+                                    phpinspect-projects
+                                    nil nil #'string=))))
+    (dolist (dir dirs)
+      (message "enqueueing dir %s" dir)
+      (phpinspect-worker-enqueue
+       (phpinspect-project-worker project)
+       (phpinspect-make-index-dir-task :dir dir :project project)))))
+
+(defgroup phpinspect '((phpinspect-projects custom-variable))
+  "PHPInspect Configuration")
+
+(defcustom phpinspect-projects nil
+  "PHPInspect Projects."
+  :type '(alist :key-type string
+                :value-type (alist :key-type symbol
+                                   :options ((include-dirs (repeat string))))))
+
+(defun phpinspect-project-add-include-dir (dir)
+  "Configure DIR as an include dir for the current project."
+  (interactive (list (read-directory-name "Include Directory: ")))
+  (custom-set-variables '(phpinspect-projects))
+  (let ((existing
+         (alist-get (phpinspect-current-project-root) phpinspect-projects nil #'string=)))
+    (if existing
+        (push dir (alist-get 'include-dirs existing))
+      (push `(,(phpinspect-current-project-root) . ((include-dirs . (,dir)))) phpinspect-projects)))
+
+  (customize-save-variable 'phpinspect-projects phpinspect-projects)
+
+  (phpinspect-project-enqueue-include-dirs (phpinspect--cache-get-project-create
+                                            (phpinspect--get-or-create-global-cache)
+                                            (phpinspect-current-project-root))))
+
 
 (provide 'phpinspect-project)
 ;;; phpinspect-project.el ends here

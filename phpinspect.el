@@ -85,6 +85,7 @@
 
 (defun phpinspect--init-mode ()
   "Initialize the phpinspect minor mode for the current buffer."
+  (phpinspect-ensure-worker)
   (setq phpinspect-current-buffer
         (phpinspect-make-buffer
          :buffer (current-buffer)
@@ -103,7 +104,6 @@
   (eldoc-add-command 'c-electric-paren)
   (eldoc-add-command 'c-electric-backspace)
 
-  (phpinspect-ensure-worker)
   (phpinspect--after-save-action)
 
   (add-hook 'after-save-hook #'phpinspect--after-save-action nil 'local))
@@ -219,9 +219,12 @@ Example configuration:
           ((looking-back "::[A-Za-z_0-9-]*" nil)
            (let ((match (match-string 0)))
              (substring match 2 (length match))))
-          ((looking-back "\\$[A-Za-z_0-9-]*" nil)
+          ((looking-back "\\$[A-Za-z_0-9-]" nil)
            (let ((match (match-string 0)))
-             (substring match 1 (length match))))))
+             (substring match 1 (length match))))
+          ((looking-back "[A-Za-z_0-9-]+" nil t)
+           (message "Matched string %s" (match-string 0))
+           (match-string 0))))
    ((eq command 'post-completion)
     (when (eq 'function (phpinspect--completion-kind
                          (phpinspect--completion-list-get-metadata
@@ -338,7 +341,8 @@ before the search is executed."
     ;; appear frozen while the thread is executing.
     (redisplay)
 
-    (phpinspect-autoloader-refresh autoloader)))
+    (phpinspect-autoloader-refresh autoloader)
+    (phpinspect-project-enqueue-include-dirs project)))
 
 
 (provide 'phpinspect)

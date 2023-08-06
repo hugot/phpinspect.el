@@ -172,10 +172,10 @@ NAMESPACE may be nil, or a string with a namespace FQN."
 (defun phpinspect--make-type-resolver (types &optional token-tree namespace)
   "Little wrapper closure to pass around and resolve types with."
   (let* ((inside-class
-          (if token-tree (or (phpinspect--find-innermost-incomplete-class token-tree)
-                             (phpinspect--find-class-token token-tree))))
-         (inside-class-name (if inside-class (phpinspect--get-class-name-from-token
-                                              inside-class))))
+          (and token-tree (or (phpinspect--find-innermost-incomplete-class token-tree)
+                              (phpinspect--find-class-token token-tree))))
+         (inside-class-name
+          (and inside-class (phpinspect--get-class-name-from-token inside-class))))
     (lambda (type)
       (phpinspect--type-resolve
        types

@@ -59,7 +59,7 @@ of TYPE, if available."
   (or (not type)
       (phpinspect--type= type phpinspect--object-type)))
 
-(defun phpinspect--index-function-from-scope (type-resolver scope comment-before &optional add-used-types)
+(defun phpinspect--index-function-from-scope (type-resolver scope comment-before &optional add-used-types namespace)
   "Index a function inside SCOPE token using phpdoc metadata in COMMENT-BEFORE.
 
 If ADD-USED-TYPES is set, it must be a function and will be
@@ -104,7 +104,7 @@ function (think \"new\" statements, return types etc.)."
 
     (phpinspect--make-function
      :scope `(,(car scope))
-     :name (cadadr (cdr declaration))
+     :name (concat (if namespace (concat namespace "\\") "") (cadadr (cdr declaration)))
      :return-type (or type phpinspect--null-type)
      :arguments (phpinspect--index-function-arg-list
                  type-resolver
@@ -384,25 +384,54 @@ NAMESPACE will be assumed the root namespace if not provided"
   (mapcar #'phpinspect--use-to-type uses))
 
 (defun phpinspect--index-namespace (namespace type-resolver-factory location-resolver)
-  (phpinspect--index-classes-in-tokens
-   (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p namespace))
-   namespace
-   type-resolver-factory location-resolver (cadadr namespace)))
+  (let* (used-types
+         (index
+          `((classes . ,(phpinspect--index-classes-in-tokens
+                         (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p namespace))
+                         namespace
+                         type-resolver-factory location-resolver (cadadr namespace)))
+            (functions . ,(phpinspect--index-functions-in-tokens
+                           namespace
+                           type-resolver-factory
+                           (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p namespace))
+                           (cadadr namespace)
+                           (lambda (types) (setq used-types (nconc used-types types))))))))
+
+    (push `(used-types . ,used-types) index)))
 
 (defun phpinspect--index-namespaces
     (namespaces type-resolver-factory location-resolver &optional indexed)
   (if namespaces
-      (progn
-        (push (phpinspect--index-namespace (pop namespaces)
-                                           type-resolver-factory
-                                           location-resolver)
-              indexed)
-        (phpinspect--index-namespaces namespaces type-resolver-factory
-                                      location-resolver indexed))
-    (apply #'append (nreverse indexed))))
+      (let ((namespace-index
+             (phpinspect--index-namespace
+              (pop namespaces) type-resolver-factory location-resolver)))
 
-(defun phpinspect--index-functions (&rest _args)
-  "TODO: implement function indexation. This is a stub function.")
+        (if indexed
+            (progn
+              (nconc (alist-get 'used-types indexed)
+                     (alist-get 'used-types namespace-index))
+              (nconc (alist-get 'classes indexed)
+                     (alist-get 'classes namespace-index))
+              (nconc (alist-get 'functions indexed)
+                     (alist-get 'functions namespace-index)))
+          (setq indexed namespace-index))
+        (phpinspect--index-namespaces
+         namespaces type-resolver-factory location-resolver indexed))
+    indexed))
+
+(defun phpinspect--index-functions-in-tokens (tokens type-resolver-factory &optional imports namespace add-used-types)
+  "TODO: implement function indexation. This is a stub function."
+  (let ((type-resolver (funcall type-resolver-factory imports nil namespace))
+        comment-before functions)
+    (dolist (token tokens)
+      (cond ((phpinspect-comment-p token)
+             (setq comment-before token))
+            ((phpinspect-function-p token)
+             (push (phpinspect--index-function-from-scope
+                    type-resolver `(:public ,token) comment-before add-used-types
+                    namespace)
+                   functions))))
+    functions))
 
 (defun phpinspect--find-used-types-in-tokens (tokens)
   "Find usage of the \"new\" keyword in TOKENS.
@@ -438,27 +467,35 @@ Return value is a list of the types that are \"newed\"."
 
 (defun phpinspect--index-tokens (tokens &optional type-resolver-factory location-resolver)
   "Index TOKENS as returned by `phpinspect--parse-current-buffer`."
-  (unless type-resolver-factory
-    (setq type-resolver-factory #'phpinspect--make-type-resolver))
+  (or
+   (condition-case err
+       (progn
+         (unless type-resolver-factory
+           (setq type-resolver-factory #'phpinspect--make-type-resolver))
 
-  (unless location-resolver
-    (setq location-resolver (lambda (_) (list 0 0))))
+         (unless location-resolver
+           (setq location-resolver (lambda (_) (list 0 0))))
 
-  (let ((imports (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p tokens))))
-    `(phpinspect--root-index
-      (imports . ,imports)
-      ,(append
-        (append '(classes)
-                (phpinspect--index-namespaces (seq-filter #'phpinspect-namespace-p tokens)
-                                              type-resolver-factory
-                                              location-resolver)
-                (phpinspect--index-classes-in-tokens
-                 imports tokens type-resolver-factory location-resolver)))
-      ,(append '(used-types)
-               (phpinspect--find-used-types-in-tokens tokens))
-      (functions))
-    ;; TODO: Implement function indexation
-    ))
+         (let* ((imports (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p tokens)))
+                (namespace-index
+                 (phpinspect--index-namespaces (seq-filter #'phpinspect-namespace-p tokens)
+                                               type-resolver-factory
+                                               location-resolver)))
+           `(phpinspect--root-index
+             (imports . ,imports)
+             (classes ,@(append
+                         (alist-get 'classes namespace-index)
+                         (phpinspect--index-classes-in-tokens
+                          imports tokens type-resolver-factory location-resolver)))
+             (used-types ,@(append
+                            (alist-get 'used-types namespace-index)
+                            (phpinspect--find-used-types-in-tokens tokens)))
+             (functions . ,(append
+                            (alist-get 'functions namespace-index)
+                            (phpinspect--index-functions-in-tokens
+                             tokens type-resolver-factory imports))))))
+     (t (phpinspect--log "phpinspect--index-tokens failed: %s" err) nil))
+   '(phpinspect--root-index)))
 
 (defun phpinspect-get-or-create-cached-project-class (project-root class-fqn)
   (when project-root

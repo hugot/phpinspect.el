@@ -178,7 +178,26 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                              (phpinspect--class-get-static-method class method-name-sym)
                            (phpinspect--class-get-method class method-name-sym)))))
           (when method
-            (phpinspect-make-function-doc :fn method :arg-pos arg-pos))))))))
+            (phpinspect-make-function-doc :fn method :arg-pos arg-pos))))
+       ((setq match-result (phpinspect--match-sequence (last statement 2)
+                             :f (phpinspect-meta-wrap-token-pred #'phpinspect-word-p)
+                             :f (phpinspect-meta-wrap-token-pred #'phpinspect-list-p)))
+        (phpinspect--log "Eldoc context is a function call")
+
+        (setq arg-list (car (last match-result))
+              arg-pos (seq-reduce
+                       (lambda (count meta)
+                         (if (phpinspect-comma-p (phpinspect-meta-token meta))
+                             (+ count 1)
+                           count))
+                       (phpinspect-meta-find-children-before arg-list (phpinspect-eldoc-query-point q)) 0))
+
+        (let ((func (phpinspect-project-get-function
+                     (phpinspect--resolvecontext-project rctx)
+                     (phpinspect-intern-name (cadr (phpinspect-meta-token (car match-result)))))))
+          (phpinspect--log "Got past that")
+          (when func
+            (phpinspect-make-function-doc :fn func :arg-pos arg-pos))))))))
 
 (cl-defmethod phpinspect-eldoc-string ((var phpinspect--variable))
   (concat (truncate-string-to-width
