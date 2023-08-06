@@ -31,9 +31,6 @@
       (phpinspect-pipeline-emit
        (format "It's not %s, but GNU/%s" input input)))
 
-    (phpinspect-define-pipeline-step correct-the-record correct-the-record)
-
-
     (phpinspect-pipeline (list "Linux" "Emacs")
       :into correct-the-record
       :async (lambda (res err)
@@ -48,14 +45,12 @@
     (should-not error)))
 
 (ert-deftest phpinspect-pipeline-error ()
-  (defun aaaaaah-it-broke (input)
+  (defun aah-it-broke (input)
     (signal 'it-brokey input))
-
-  (phpinspect-define-pipeline-step it-brokey aaaaaah-it-broke)
 
   (let (result error)
     (phpinspect-pipeline (list "Holy smokey")
-      :into it-brokey
+      :into aah-it-broke
       :async (lambda (res err)
                (setq result res
                      error err)))
@@ -65,5 +60,5 @@
 
     (should error)
     (should (equal '(phpinspect-pipeline-error
-                     "Thread phpinspect-pipeline-it-brokey signaled error: (it-brokey . Holy smokey)")
+                     "Thread phpinspect-pipeline-aah-it-broke signaled error: (it-brokey . Holy smokey)")
                    error))))

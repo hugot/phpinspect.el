@@ -158,8 +158,6 @@ bareword typenames."))
         (when own
           (puthash type-fqn file own-typehash))))))
 
-(phpinspect-define-pipeline-step phpinspect-project-add-file-index phpinspect-project-add-file-index)
-
 (cl-defmethod phpinspect-al-strategy-execute ((strat phpinspect-files))
   (phpinspect--log "indexing files list: %s" (phpinspect-files-list strat))
   (let* ((project (phpinspect-autoloader-project (phpinspect-files-autoloader strat))))
@@ -246,18 +244,11 @@ bareword typenames."))
   (or (gethash typename-symbol (phpinspect-autoloader-own-types autoloader))
       (gethash typename-symbol (phpinspect-autoloader-types autoloader))))
 
-(phpinspect-define-pipeline-step phpinspect-iterate-composer-jsons
-                                 phpinspect-iterate-composer-jsons)
-
-(phpinspect-define-pipeline-step phpinspect-al-strategy-execute
-                                 phpinspect-al-strategy-execute)
-
 (cl-defmethod phpinspect-autoloader-refresh ((autoloader phpinspect-autoloader) &optional async-callback)
   "Refresh autoload definitions by reading composer.json files
   from the project and vendor folders."
   (let* ((project-root (phpinspect-project-root (phpinspect-autoloader-project autoloader)))
-         (fs (phpinspect-project-fs (phpinspect-autoloader-project autoloader)))
-         result error)
+         (fs (phpinspect-project-fs (phpinspect-autoloader-project autoloader))))
     (setf (phpinspect-autoloader-type-name-fqn-bags autoloader)
           (make-hash-table :test 'eq :size 3000 :rehash-size 3000))
     (setf (phpinspect-autoloader-own-types autoloader)
