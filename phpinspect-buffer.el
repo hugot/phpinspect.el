@@ -117,12 +117,15 @@ use."
                  (phpinspect-bmap-make-location-resolver (phpinspect-buffer-map buffer)))
                token))))
 
+(cl-defmethod phpinspect-buffer-root-meta ((buffer phpinspect-buffer))
+  (phpinspect-bmap-root-meta (phpinspect-buffer-map buffer)))
+
 (defun phpinspect-display-buffer-tree ()
   (interactive)
   (when phpinspect-current-buffer
     (let ((buffer phpinspect-current-buffer))
-    (pop-to-buffer (generate-new-buffer "phpinspect-buffer-tree"))
-    (insert (pp-to-string (phpinspect-buffer-tree buffer)))
-    (read-only-mode))))
+      (pop-to-buffer (generate-new-buffer "phpinspect-buffer-tree"))
+      (insert (pp-to-string (phpinspect-buffer-parse buffer 'no-interrupt)))
+      (read-only-mode))))
 
 (provide 'phpinspect-buffer)

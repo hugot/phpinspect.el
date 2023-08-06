@@ -33,7 +33,9 @@
   (defvar phpinspect-parse-context nil
     "dummy for compilation")
 
-  (declare-function phpinspect-pctx-register-changeset "phpinspect-parse-context" (pctx changeset)))
+  (declare-function phpinspect-pctx-register-changeset "phpinspect-parse-context" (pctx changeset))
+
+  (phpinspect--declare-log-group 'bmap))
 
 (cl-defstruct (phpinspect-bmap (:constructor phpinspect-make-bmap))
   (starts (make-hash-table :test #'eql

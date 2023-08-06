@@ -23,6 +23,11 @@
 
 ;;; Code:
 
+(require 'phpinspect-util)
+
+(eval-when-compile
+  (phpinspect--declare-log-group 'edtrack))
+
 (cl-defstruct (phpinspect-edtrack (:constructor phpinspect-make-edtrack))
   (edits nil
          :type list)

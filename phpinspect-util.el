@@ -30,6 +30,59 @@ PHP. Used to optimize string comparison.")
 (defvar phpinspect--debug nil
   "Enable debug logs for phpinspect by setting this variable to true")
 
+(defun phpinspect-toggle-logging ()
+  (interactive)
+  (if (setq phpinspect--debug (not phpinspect--debug))
+      (message "Enabled phpinspect logging.")
+    (message "Disabled phpinspect logging.")))
+
+(defvar phpinspect-log-groups nil)
+(defvar phpinspect-enabled-log-groups nil)
+
+(defvar-local phpinspect--current-log-group nil)
+
+(define-inline phpinspect--declare-log-group (group)
+  (unless (and (inline-const-p group) (symbolp (inline-const-val group)))
+    (inline-error "Log group name should be a symbol"))
+
+  (inline-quote
+   (progn
+     (add-to-list 'phpinspect-log-groups (cons (or load-file-name buffer-file-name) ,group) nil #'equal))))
+
+(defun phpinspect-log-group-enabled-p (group)
+  (seq-find (lambda (cons)
+              (eq group (cdr cons)))
+            phpinspect-enabled-log-groups))
+
+(phpinspect--declare-log-group 'bam)
+
+(define-inline phpinspect--log (&rest args)
+  (let ((log-group (alist-get (or load-file-name buffer-file-name) phpinspect-log-groups nil nil #'string=)))
+    (push 'list args)
+    (inline-quote
+     (when (and phpinspect--debug
+                (or (not phpinspect-enabled-log-groups)
+                    ,(when log-group
+                       (inline-quote
+                        (member (quote ,log-group) phpinspect-enabled-log-groups)))))
+       (with-current-buffer (get-buffer-create "**phpinspect-logs**")
+         (unless window-point-insertion-type
+           (set (make-local-variable 'window-point-insertion-type) t))
+         (goto-char (buffer-end 1))
+         (insert (concat "[" (format-time-string "%H:%M:%S") "]: "
+                         ,(if log-group (concat "(" (symbol-name log-group) ") ") "")
+                         (apply #'format ,args) "\n")))))))
+
+(defun phpinspect-filter-logs (group-name)
+  (interactive (list (completing-read "Log group: "
+                                      (mapcar (lambda (g) (symbol-name (cdr g)))
+                                              phpinspect-log-groups) nil t)))
+  (add-to-list 'phpinspect-enabled-log-groups (intern group-name)))
+
+(defun phpinspect-unfilter-logs ()
+  (interactive)
+  (setq phpinspect-enabled-log-groups nil))
+
 (defsubst phpinspect-intern-name (name)
   (intern name phpinspect-name-obarray))
 
@@ -45,21 +98,6 @@ PHP. Used to optimize string comparison.")
         (setq wrap-value t))
       (push item new-plist))
     (nreverse new-plist)))
-
-(defun phpinspect-toggle-logging ()
-  (interactive)
-  (if (setq phpinspect--debug (not phpinspect--debug))
-      (message "Enabled phpinspect logging.")
-    (message "Disabled phpinspect logging.")))
-
-(defsubst phpinspect--log (&rest args)
-  (when phpinspect--debug
-    (with-current-buffer (get-buffer-create "**phpinspect-logs**")
-      (unless window-point-insertion-type
-        (set (make-local-variable 'window-point-insertion-type) t))
-      (goto-char (buffer-end 1))
-      (insert (concat "[" (format-time-string "%H:%M:%S") "]: "
-                      (apply #'format args) "\n")))))
 
 (cl-defstruct (phpinspect--pattern
                (:constructor phpinspect--make-pattern-generated))
