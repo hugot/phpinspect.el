@@ -314,9 +314,10 @@ near the top of the tee."
            (setq ,current (phpinspect-splayt-node-right ,current)))))))
 
 (defmacro phpinspect-splayt-traverse-lr (place-and-splayt &rest body)
-  "Traverse splay tree in cadr of PLACE-AND-SPLAYT depth-first from left to right, executing BODY.
+  "Traverse splay tree depth-first from left to right,executing BODY.
 
-The car of PLACE-AND-SPLAYT is assigned the value of each node."
+The car of PLACE-AND-SPLAYT is assigned the value of each node.
+The cadr of PLACE-AND-SPLAYT is expected to be a splay tree."
   (declare (indent 1))
   `(phpinspect-splayt-node-traverse-lr
        (,(car place-and-splayt) (phpinspect-splayt-root-node ,(cadr place-and-splayt)))

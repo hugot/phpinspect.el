@@ -76,24 +76,12 @@
             (phpinspect--class-get-method-list class))))))
 
 (defun phpinspect--get-methods-for-class
-    (resolvecontext buffer-classes class &optional static)
-  "Extract all possible methods for a class from `buffer-classes` and the class index.
-`buffer-classes` will be preferred because their data should be
-more recent"
-  (let ((methods (phpinspect-get-cached-project-class-methods
-                  (phpinspect--resolvecontext-project-root
-                   resolvecontext)
-                  class
-                  static))
-        (buffer-index (alist-get class buffer-classes nil nil #'phpinspect--type=)))
-      (phpinspect--log "Getting methods for class (%s)" class)
-      (when buffer-index
-          (dolist (method (alist-get (if static 'static-methods 'methods)
-                                     buffer-index))
-            (push method methods)))
-      (unless methods
-        (phpinspect--log "Failed to find methods for class %s :(" class))
-      methods))
+    (resolvecontext class &optional static)
+  "Find all known cached methods for CLASS."
+  (or (phpinspect-get-cached-project-class-methods
+       (phpinspect--resolvecontext-project-root resolvecontext)
+       class static)
+      (progn (phpinspect--log "Failed to find methods for class %s :(" class) nil)))
 
 (defun phpinspect--get-variables-for-class (class-name &optional static)
   (let ((class (phpinspect-get-or-create-cached-project-class
@@ -104,9 +92,9 @@ more recent"
           (append (phpinspect--class-get-static-variables class) (phpinspect--class-get-constants class))
         (phpinspect--class-get-variables class)))))
 
-(defun phpinspect--make-method-lister (resolvecontext buffer-classes &optional static)
+(defun phpinspect--make-method-lister (resolvecontext &optional static)
   (lambda (fqn)
-    (phpinspect--get-methods-for-class resolvecontext buffer-classes fqn static)))
+    (phpinspect--get-methods-for-class resolvecontext fqn static)))
 
 (defun phpinspect-suggest-attributes-at-point
     (resolvecontext &optional static)
@@ -118,13 +106,10 @@ resolved to provide completion candidates.
 
 If STATIC is non-nil, candidates are provided for constants,
 static variables and static methods."
-  (let* ((buffer-index phpinspect--buffer-index)
-         (buffer-classes (alist-get 'classes (cdr buffer-index)))
-         (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
+  (let* ((type-resolver (phpinspect--make-type-resolver-for-resolvecontext
                          resolvecontext))
          (method-lister (phpinspect--make-method-lister
                          resolvecontext
-                         buffer-classes
                          static)))
     (let ((statement-type (phpinspect-resolve-type-from-context
                            resolvecontext

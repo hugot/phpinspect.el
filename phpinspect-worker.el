@@ -63,7 +63,7 @@ manage phpinspect's worker thread centrally in a dynamic
 variable, while also making the behaviour of objects that depend
 on the worker independent of dynamic variables during testing.")
 
-(cl-defmethod phpinspect-resolve-dynamic-worker ((worker phpinspect-dynamic-worker))
+(cl-defmethod phpinspect-resolve-dynamic-worker ((_worker phpinspect-dynamic-worker))
   phpinspect-worker)
 
 (defsubst phpinspect-make-dynamic-worker ()
@@ -206,7 +206,7 @@ already present in the queue."
 (cl-defgeneric phpinspect-task-execute (task worker)
   "Execute TASK for WORKER.")
 
-(cl-defmethod phpinspect-task= (task1 task2)
+(cl-defmethod phpinspect-task= (_task1 _task2)
   "Whether or not TASK1 and TASK2 are set to execute the exact same action."
   nil)
 

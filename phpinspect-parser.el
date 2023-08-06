@@ -387,7 +387,8 @@ token is \";\", which marks the end of a statement in PHP."
 
 
 (defun phpinspect-make-incremental-parser-function (name tree-type handlers &optional delimiter-predicate)
-  "Like `phpinspect-make-parser-function', but returned function is able to reuse an already parsed tree."
+  "Like `phpinspect-make-parser-function', but returned function
+is able to reuse an already parsed tree."
 (let ((delimiter-predicate (if (symbolp delimiter-predicate)
                                  `(quote ,delimiter-predicate)
                                delimiter-predicate)))
@@ -504,7 +505,8 @@ executing.")
              (phpinspect-parser-delimiter-predicate parser)))))
 
 (cl-defmethod phpinspect-parser-compile-incremental ((parser phpinspect-parser))
-  "Like `phpinspect-parser-compile', but for an incremental version of the parser function."
+  "Like `phpinspect-parser-compile', but for an incremental
+version of the parser function."
   (or (phpinspect-parser-incremental-func parser)
       (setf (phpinspect-parser-incremental-func parser)
             (phpinspect-make-incremental-parser-function

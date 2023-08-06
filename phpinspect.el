@@ -51,19 +51,16 @@
   "The result of the last successfull parse + index action
   executed by phpinspect for the current buffer")
 
-(defvar phpinspect-cache ()
-  "In-memory nested key-value store used for caching by
-phpinspect")
-
 (defvar phpinspect-insert-file-contents-function #'insert-file-contents-literally
   "Function that phpinspect uses to insert file contents into a buffer.")
 
 (defvar phpinspect-type-filepath-function #'phpinspect-get-class-filepath
   "Function that phpinspect uses to find the filepath of a class by its FQN.")
 
-(defvar phpinspect-project-root-file-list
-  '("composer.json" "composer.lock" ".git" ".svn" ".hg")
-  "List of files that could indicate a project root directory.")
+(define-inline phpinspect-type-filepath (fqn)
+  "Call `phpinspect-type-filepath-function' with FQN as argument."
+  (inline-quote
+   (funcall phpinspect-type-filepath-function ,fqn)))
 
 (defsubst phpinspect-cache-project-class (project-root indexed-class)
   (when project-root
@@ -93,7 +90,7 @@ phpinspect")
          :buffer (current-buffer)
          :project (phpinspect--cache-get-project-create
                    (phpinspect--get-or-create-global-cache)
-                   (phpinspect--find-project-root))))
+                   (phpinspect-current-project-root))))
   (add-hook 'after-change-functions #'phpinspect-after-change-function)
   (make-local-variable 'company-backends)
   (add-to-list 'company-backends #'phpinspect-company-backend)
@@ -205,20 +202,24 @@ Example configuration:
     :completion-point (phpinspect--determine-completion-point)
     :point (point))))
 
+(eval-when-compile
+  (declare-function company-begin-backend "company.el"))
+
 (defun phpinspect-company-backend (command &optional arg &rest _ignored)
   "A company backend for PHP."
   (interactive (list 'interactive))
+  (require 'company)
   (cond
    ((eq command 'interactive)
     (company-begin-backend 'company-phpinspect-backend))
    ((eq command 'prefix)
-    (cond ((looking-back "->[A-Za-z_0-9-]*")
+    (cond ((looking-back "->[A-Za-z_0-9-]*" nil)
            (let ((match (match-string 0)))
              (substring match 2 (length match))))
-          ((looking-back "::[A-Za-z_0-9-]*")
+          ((looking-back "::[A-Za-z_0-9-]*" nil)
            (let ((match (match-string 0)))
              (substring match 2 (length match))))
-          ((looking-back "\\$[A-Za-z_0-9-]*")
+          ((looking-back "\\$[A-Za-z_0-9-]*" nil)
            (let ((match (match-string 0)))
              (substring match 1 (length match))))))
    ((eq command 'post-completion)
@@ -254,12 +255,6 @@ Example configuration:
    ((eq command 'meta)
     (phpinspect--completion-meta
               (phpinspect--completion-list-get-metadata phpinspect--last-completion-list arg)))))
-
-(defun phpinspect--get-or-create-global-cache ()
-  "Get `phpinspect-cache'.
-If its value is nil, it is created and then returned."
-  (or phpinspect-cache
-      (setq phpinspect-cache (phpinspect--make-cache))))
 
 (defun phpinspect-purge-cache ()
   "Assign a fresh, empty cache object to `phpinspect-cache'.
@@ -318,10 +313,6 @@ located in \"vendor\" folder."
                       :name
                       (completing-read "Class: " (phpinspect-get-all-fqns 'own)))))
   (find-file (phpinspect-type-filepath fqn)))
-
-(defsubst phpinspect-type-filepath (fqn)
-  "Call `phpinspect-type-filepath-function' with FQN as argument."
-  (funcall phpinspect-type-filepath-function fqn))
 
 (defun phpinspect-get-class-filepath (class &optional index-new)
   "Retrieve filepath to CLASS definition file.

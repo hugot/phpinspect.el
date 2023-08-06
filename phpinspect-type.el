@@ -40,7 +40,8 @@
   (contains nil
             :type phpinspect--type
             :documentation
-            "When the type is a collection, this attribute is set to the type that the collection is expected to contain")
+            "When the type is a collection, this attribute is set to the type
+that the collection is expected to contain")
   (fully-qualified nil
                    :type bool
                    :documentation

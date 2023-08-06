@@ -36,36 +36,14 @@ serious performance hits. Enable at your own risk (:")
 (defvar phpinspect-project-root-function #'phpinspect--find-project-root
   "Function that phpinspect uses to find the root directory of a project.")
 
+(defvar-local phpinspect--buffer-project nil
+  "The root directory of the PHP project that this buffer belongs to")
+
 (defsubst phpinspect-current-project-root ()
   "Call `phpinspect-project-root-function' with ARGS as arguments."
   (unless (and (boundp 'phpinspect--buffer-project) phpinspect--buffer-project)
     (set (make-local-variable 'phpinspect--buffer-project) (funcall phpinspect-project-root-function)))
   phpinspect--buffer-project)
-
-(defun phpinspect--find-project-root (&optional start-file)
-  "(Attempt to) Find the root directory of the visited PHP project.
-If a found project root has a parent directory called \"vendor\",
-the search continues upwards. See also
-`phpinspect--locate-dominating-project-file'.
-
-If START-FILE is provided, searching starts at the directory
-level of START-FILE in stead of `default-directory`."
-  (let ((project-file (phpinspect--locate-dominating-project-file
-                       (or start-file default-directory))))
-    (phpinspect--log "Checking for project root at  %s" project-file)
-    (when project-file
-      (let* ((directory (file-name-directory project-file))
-             (directory-slugs (split-string (expand-file-name directory) "/")))
-        (if (not (member "vendor" directory-slugs))
-            (expand-file-name directory)
-          ;; else. Only continue if the parent directory is not "/"
-          (let ((parent-without-vendor
-                 (string-join (seq-take-while (lambda (s) (not (string= s "vendor" )))
-                                              directory-slugs)
-                              "/")))
-            (when (not (or (string= parent-without-vendor "/")
-                           (string= parent-without-vendor "")))
-              (phpinspect--find-project-root parent-without-vendor))))))))
 
 (cl-defstruct (phpinspect-project (:constructor phpinspect--make-project))
   (class-index (make-hash-table :test 'eq :size 100 :rehash-size 40)

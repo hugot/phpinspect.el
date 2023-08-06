@@ -26,6 +26,7 @@
 (require 'phpinspect-parser)
 (require 'phpinspect-bmap)
 (require 'phpinspect-edtrack)
+(require 'phpinspect-index)
 
 (defvar-local phpinspect-current-buffer nil
   "An instance of `phpinspect-buffer' local to the active

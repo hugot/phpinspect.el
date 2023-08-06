@@ -29,6 +29,7 @@
 (require 'phpinspect-index)
 (require 'phpinspect-autoload)
 (require 'phpinspect-buffer)
+(require 'phpinspect-cache)
 
 (defun phpinspect-insert-at-point (point data)
   (save-excursion

@@ -54,7 +54,8 @@
     (nreverse arg-index)))
 
 (defsubst phpinspect--should-prefer-return-annotation (type)
-  "When the return annotation should be preferred over typehint of TYPE, if available."
+  "Returns non-nil if return annotation should supersede typehint
+of TYPE, if available."
   (or (not type)
       (phpinspect--type= type phpinspect--object-type)))
 
@@ -349,7 +350,7 @@ Accounts for namespaces that are defined with '{}' blocks."
     (cdr namespace)))
 
 (defun phpinspect--index-classes-in-tokens
-    (imports tokens type-resolver-factory location-resolver &optional namespace indexed)
+    (imports tokens type-resolver-factory location-resolver &optional namespace)
   "Index the class tokens among TOKENS.
 
 NAMESPACE will be assumed the root namespace if not provided"
@@ -386,7 +387,7 @@ NAMESPACE will be assumed the root namespace if not provided"
   (phpinspect--index-classes-in-tokens
    (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p namespace))
    namespace
-   type-resolver-factory location-resolver (cadadr namespace) nil))
+   type-resolver-factory location-resolver (cadadr namespace)))
 
 (defun phpinspect--index-namespaces
     (namespaces type-resolver-factory location-resolver &optional indexed)

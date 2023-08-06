@@ -27,6 +27,35 @@
   "An obarray containing symbols for all encountered names in
 PHP. Used to optimize string comparison.")
 
+(defvar phpinspect-project-root-file-list
+  '("composer.json" "composer.lock" ".git" ".svn" ".hg")
+  "List of files that could indicate a project root directory.")
+
+(defun phpinspect--find-project-root (&optional start-file)
+  "(Attempt to) Find the root directory of the visited PHP project.
+If a found project root has a parent directory called \"vendor\",
+the search continues upwards. See also
+`phpinspect--locate-dominating-project-file'.
+
+If START-FILE is provided, searching starts at the directory
+level of START-FILE in stead of `default-directory`."
+  (let ((project-file (phpinspect--locate-dominating-project-file
+                       (or start-file default-directory))))
+    (phpinspect--log "Checking for project root at  %s" project-file)
+    (when project-file
+      (let* ((directory (file-name-directory project-file))
+             (directory-slugs (split-string (expand-file-name directory) "/")))
+        (if (not (member "vendor" directory-slugs))
+            (expand-file-name directory)
+          ;; else. Only continue if the parent directory is not "/"
+          (let ((parent-without-vendor
+                 (string-join (seq-take-while (lambda (s) (not (string= s "vendor" )))
+                                              directory-slugs)
+                              "/")))
+            (when (not (or (string= parent-without-vendor "/")
+                           (string= parent-without-vendor "")))
+              (phpinspect--find-project-root parent-without-vendor))))))))
+
 (defvar phpinspect--debug nil
   "Enable debug logs for phpinspect by setting this variable to true")
 

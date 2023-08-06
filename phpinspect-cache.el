@@ -27,6 +27,17 @@
 (require 'phpinspect-autoload)
 (require 'phpinspect-worker)
 
+(defvar phpinspect-cache nil
+  "An object used to store and access metadata of PHP projects.")
+
+(defun phpinspect--get-or-create-global-cache ()
+  "Get `phpinspect-cache'.
+If its value is nil, it is created and then returned."
+  (or phpinspect-cache
+      (setq phpinspect-cache (phpinspect--make-cache))))
+
+
+
 (cl-defstruct (phpinspect--cache (:constructor phpinspect--make-cache))
   (projects (make-hash-table :test 'equal :size 10)
             :type hash-table
