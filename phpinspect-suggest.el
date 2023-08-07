@@ -31,8 +31,7 @@
 (require 'phpinspect-class)
 
 (defun phpinspect-suggest-functions (rctx)
-  (let* ((project (phpinspect--resolvecontext-project rctx))
-         (word (cadr (car (last (phpinspect--resolvecontext-subject rctx))))))
+  (let* ((project (phpinspect--resolvecontext-project rctx)))
     (phpinspect-project-get-functions project)))
 
 (defun phpinspect-suggest-variables-at-point (resolvecontext)

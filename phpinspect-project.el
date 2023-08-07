@@ -279,14 +279,12 @@ before the search is executed."
        (phpinspect-project-worker project)
        (phpinspect-make-index-dir-task :dir dir :project project)))))
 
-(defgroup phpinspect '((phpinspect-projects custom-variable))
-  "PHPInspect Configuration")
-
 (defcustom phpinspect-projects nil
   "PHPInspect Projects."
   :type '(alist :key-type string
                 :value-type (alist :key-type symbol
-                                   :options ((include-dirs (repeat string))))))
+                                   :options ((include-dirs (repeat string)))))
+  :group 'phpinspect)
 
 (defun phpinspect-project-add-include-dir (dir)
   "Configure DIR as an include dir for the current project."

@@ -120,7 +120,7 @@ buffer position to insert the use statement at."
       ""))
 
 (defun phpinspect-add-use-statements-for-missing-types (types buffer imports project parent-token)
-  (let (namespace)
+  (let (namespace namespace-name)
     (dolist (type types)
       (setq namespace (phpinspect-meta-find-parent-matching-token
                        parent-token #'phpinspect-namespace-p)
@@ -159,7 +159,7 @@ that there are import (\"use\") statements for them."
                  (used-types (alist-get 'used-types class))
                  (class-name (alist-get 'class-name class))
                  (region (alist-get 'location class))
-                 token-meta namespace)
+                 token-meta)
             (message "Region: %s" region)
             (message "index: %s" index)
             (setq token-meta (phpinspect-meta-find-parent-matching-token

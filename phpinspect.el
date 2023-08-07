@@ -134,6 +134,12 @@ users will have to use \\[phpinspect-purge-cache]."
       (phpinspect--init-mode)
     (phpinspect--disable-mode)))
 
+(defgroup phpinspect '((phpinspect-projects custom-variable))
+  "PHPInspect, PHP code intelligence and completion"
+  :group 'programming
+  :group 'php
+  :link '(function-link phpinspect-mode))
+
 (define-minor-mode phpinspect-mode
   "A minor mode for intelligent completion for and interaction
 with PHP files.
@@ -189,7 +195,7 @@ Example configuration:
   (add-hook 'php-mode-hook #'my-php-personal-hook)
 
 ;; End example configuration."
-    :after-hook (phpinspect--mode-function))
+  :after-hook (phpinspect--mode-function))
 
 (defun phpinspect--buffer-index (buffer)
   (with-current-buffer buffer phpinspect--buffer-index))
