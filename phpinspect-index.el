@@ -81,11 +81,15 @@ function (think \"new\" statements, return types etc.)."
       (phpinspect--log "found return annotation %s in %s when type is %s"
                        return-annotation-type comment-before type)
 
-      (when (string-suffix-p "[]" return-annotation-type)
-        (setq is-collection t)
-        (setq return-annotation-type (string-trim-right return-annotation-type "\\[\\]")))
+      (unless (stringp return-annotation-type)
+        (phpinspect--log "Discarding invalid return annotation type %s" return-annotation-type)
+        (setq return-annotation-type nil))
 
       (when return-annotation-type
+        (when (string-suffix-p "[]" return-annotation-type)
+          (setq is-collection t)
+          (setq return-annotation-type (string-trim-right return-annotation-type "\\[\\]")))
+
         (cond ((phpinspect--should-prefer-return-annotation type)
                (setq type (funcall type-resolver
                                    (phpinspect--make-type :name return-annotation-type))))
@@ -487,14 +491,22 @@ Return value is a list of the types that are \"newed\"."
                          (alist-get 'classes namespace-index)
                          (phpinspect--index-classes-in-tokens
                           imports tokens type-resolver-factory location-resolver)))
-             (used-types ,@(append
-                            (alist-get 'used-types namespace-index)
-                            (phpinspect--find-used-types-in-tokens tokens)))
+             (used-types ,@(mapcar #'phpinspect-intern-name
+                                   (seq-uniq
+                                    (append
+                                     (alist-get 'used-types namespace-index)
+                                     (phpinspect--find-used-types-in-tokens tokens))
+                                    #'string=)))
              (functions . ,(append
                             (alist-get 'functions namespace-index)
                             (phpinspect--index-functions-in-tokens
                              tokens type-resolver-factory imports))))))
-     (t (phpinspect--log "phpinspect--index-tokens failed: %s" err) nil))
+     (t
+      (phpinspect--log "phpinspect--index-tokens failed: %s. Enable debug-on-error for backtrace." err)
+      (when debug-on-error
+        (require 'backtrace)
+        (backtrace))
+      nil))
    '(phpinspect--root-index)))
 
 (defun phpinspect-get-or-create-cached-project-class (project-root class-fqn)

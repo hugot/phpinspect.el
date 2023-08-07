@@ -92,7 +92,6 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                      (setq result (phpinspect-make-function-doc :fn method))))))
           result)))))
 
-
 (cl-defstruct (phpinspect-eld-function-args (:constructor phpinspect-make-eld-function-args))
   "Eldoc strategy for function arguments.")
 
@@ -136,8 +135,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
 
 
     (while (and left-sibling
-                (not (or (phpinspect-return-p (phpinspect-meta-token left-sibling))
-                         (phpinspect-end-of-statement-p (phpinspect-meta-token left-sibling)))))
+                (not (phpinspect-statement-introduction-p (phpinspect-meta-token left-sibling))))
       (push left-sibling statement)
       (setq left-sibling (phpinspect-meta-find-left-sibling left-sibling)))
 

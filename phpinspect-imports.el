@@ -113,6 +113,28 @@ buffer position to insert the use statement at."
 (defalias 'phpinspect-fix-uses-interactive #'phpinspect-fix-imports
   "Alias for backwards compatibility")
 
+(defun phpinspect-namespace-name (namespace)
+  (or (and (phpinspect-namespace-p namespace)
+           (phpinspect-word-p (cadr namespace))
+           (cadadr namespace))
+      ""))
+
+(defun phpinspect-add-use-statements-for-missing-types (types buffer imports project parent-token)
+  (let (namespace)
+    (dolist (type types)
+      (setq namespace (phpinspect-meta-find-parent-matching-token
+                       parent-token #'phpinspect-namespace-p)
+            namespace-name (phpinspect-namespace-name namespace))
+      ;; Add use statements for types that aren't imported or already referenced
+      ;; with a fully qualified name.
+      (unless (or (or (alist-get type imports))
+                  (gethash (phpinspect-intern-name
+                            (concat namespace-name "\\" (symbol-name type)))
+                           (phpinspect-autoloader-types
+                            (phpinspect-project-autoload project))))
+        (phpinspect-add-use-interactive type buffer project namespace)
+        (phpinspect-buffer-parse buffer 'no-interrupt)))))
+
 (defun phpinspect-fix-imports ()
   "Find types that are used in the current buffer and make sure
 that there are import (\"use\") statements for them."
@@ -126,7 +148,12 @@ that there are import (\"use\") statements for them."
              (imports (alist-get 'imports index))
              (project (phpinspect--cache-get-project-create
                        (phpinspect--get-or-create-global-cache)
-                       (phpinspect-current-project-root))))
+                       (phpinspect-current-project-root)))
+             (used-types (alist-get 'used-types index)))
+
+        (phpinspect-add-use-statements-for-missing-types
+         used-types buffer imports project (phpinspect-buffer-root-meta buffer))
+
         (dolist (class classes)
           (let* ((class-imports (alist-get 'imports class))
                  (used-types (alist-get 'used-types class))
@@ -143,23 +170,7 @@ that there are import (\"use\") statements for them."
             (unless token-meta
               (error "Unable to find token for class %s" class-name))
 
-
-
-            (dolist (type used-types)
-              (setq namespace (phpinspect-meta-find-parent-matching-token
-                             token-meta #'phpinspect-namespace-p))
-                ;; Add use statements for types that aren't imported.
-                (unless (or (or (alist-get type class-imports)
-                                (alist-get type imports))
-                            (gethash (phpinspect-intern-name
-                                      (concat (phpinspect-namespace-part-of-typename
-                                               (phpinspect--type-name (alist-get 'class-name class)))
-                                              "\\"
-                                              (symbol-name type)))
-                                     (phpinspect-autoloader-types
-                                      (phpinspect-project-autoload project))))
-                  (phpinspect-add-use-interactive
-                   type buffer project namespace)
-                  (phpinspect-buffer-parse buffer 'no-interrupt))))))))
+            (phpinspect-add-use-statements-for-missing-types
+             used-types buffer (append imports class-imports) project token-meta))))))
 
 (provide 'phpinspect-imports)

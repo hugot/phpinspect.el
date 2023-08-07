@@ -76,6 +76,7 @@ linked with."
 
               (unless (or no-index
                           (not (phpinspect-buffer-project buffer)))
+                (phpinspect--log "Adding buffer index to project")
                 (phpinspect-project-add-index
                  (phpinspect-buffer-project buffer)
                  (phpinspect--index-tokens tree nil (phpinspect-buffer-location-resolver buffer))
@@ -140,5 +141,14 @@ use."
       (pop-to-buffer (generate-new-buffer "phpinspect-buffer-tree"))
       (insert (pp-to-string (phpinspect-buffer-parse buffer 'no-interrupt)))
       (read-only-mode))))
+
+(defun phpinspect-display-buffer-index ()
+  (interactive)
+  (when phpinspect-current-buffer
+    (let ((buffer phpinspect-current-buffer))
+      (pop-to-buffer (generate-new-buffer "phpinspect-buffer-tree"))
+      (insert (pp-to-string (phpinspect--index-tokens (phpinspect-buffer-parse buffer 'no-interrupt))))
+      (read-only-mode))))
+
 
 (provide 'phpinspect-buffer)

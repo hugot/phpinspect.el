@@ -36,6 +36,13 @@
         :type phpinspect-token
         :documentation "The token that is assigned from"))
 
+(define-inline phpinspect-statement-introduction-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (or (phpinspect-return-p ,token)
+         (phpinspect-end-of-statement-p ,token)
+         (phpinspect-function-p ,token)))))
+
 (defsubst phpinspect-block-or-list-p (token)
   (or (phpinspect-block-p token)
       (phpinspect-list-p token)))
@@ -227,12 +234,13 @@ $variable = $variable->method();"
                                                      :name (cadr first-token))))
 
                            ;; No bare word, assume we're dealing with a variable.
-                           (phpinspect-get-variable-type-in-block
-                            resolvecontext
-                            (cadr first-token)
-                            php-block
-                            type-resolver
-                            function-arg-list))))
+                           (when (phpinspect-variable-p first-token)
+                             (phpinspect-get-variable-type-in-block
+                              resolvecontext
+                              (cadr first-token)
+                              php-block
+                              type-resolver
+                              function-arg-list)))))
 
         (phpinspect--log "Statement: %s" statement)
         (phpinspect--log "Starting attribute type: %s" previous-attribute-type)
@@ -371,7 +379,7 @@ determine whether a token delimits a statement."
   (let ((sublists)
         (current-sublist))
     (dolist (thing tokens)
-      (if (or (phpinspect-end-of-statement-p thing)
+      (if (or (phpinspect-statement-introduction-p thing)
               (when predicate (funcall predicate thing)))
           (when current-sublist
             (when (phpinspect-block-p thing)

@@ -55,6 +55,7 @@
   (push enclosing-token (phpinspect--resolvecontext-enclosing-tokens
                          resolvecontext)))
 
+
 (defsubst phpinspect-blocklike-p (token)
   (or (phpinspect-block-p token)
       (phpinspect-function-p token)
@@ -76,8 +77,7 @@
           (if (and (not previous-siblings) (phpinspect-blocklike-p token))
               (progn
                 (throw 'return (phpinspect-find-statement-before-point bmap child point)))
-            (when (or (phpinspect-return-p token)
-                      (phpinspect-end-of-statement-p token))
+            (when (phpinspect-statement-introduction-p token)
               (throw 'return previous-siblings))
             (push child previous-siblings)))))
     previous-siblings))
