@@ -150,7 +150,7 @@ already present in the queue."
               ;; interrupt the thread.
               (unless (or (not (input-pending-p))
                           (phpinspect-worker-skip-next-pause worker))
-                (phpinspect-thread-pause phpinspect-worker-pauseo-time mx continue))
+                (phpinspect-thread-pause phpinspect-worker-pause-time mx continue))
               (setf (phpinspect-worker-skip-next-pause worker) nil)))
         (t (message "Phpinspect worker thread errored :%s" err))))
     (phpinspect--log "Worker thread exiting")
