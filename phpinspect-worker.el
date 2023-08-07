@@ -31,6 +31,14 @@
 (require 'phpinspect-queue)
 (require 'phpinspect-pipeline)
 
+(defcustom phpinspect-worker-pause-time 1
+  "Number of seconds that `phpinspect-worker' should pause when
+user input is detected. A higher value means better
+responsiveness, at the cost of slower code indexation. On modern
+hardware this probably doesn't need to be tweaked."
+  :type 'number
+  :group 'phpinspect)
+
 (defvar phpinspect-worker nil
   "Contains the phpinspect worker that is used by all projects.")
 
@@ -142,7 +150,7 @@ already present in the queue."
               ;; interrupt the thread.
               (unless (or (not (input-pending-p))
                           (phpinspect-worker-skip-next-pause worker))
-                (phpinspect-thread-pause 1 mx continue))
+                (phpinspect-thread-pause phpinspect-worker-pauseo-time mx continue))
               (setf (phpinspect-worker-skip-next-pause worker) nil)))
         (t (message "Phpinspect worker thread errored :%s" err))))
     (phpinspect--log "Worker thread exiting")

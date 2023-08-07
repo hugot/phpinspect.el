@@ -142,6 +142,8 @@ Reparses the entire buffer without token reuse."
   "A minor mode for intelligent completion for and interaction
 with PHP files.
 
+See also: \\[customize-group] RET phpinspect RET .
+
 To initially index a project, use M-x `phpinspect-index-current-project'
 in a buffer of one of the project files. Project root is detected with
 `phpinspect-project-root-file-list'.
