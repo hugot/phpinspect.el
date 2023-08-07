@@ -1,2 +1,3 @@
 *.elc
 /benchmarks/profile.txt
+/.cask
