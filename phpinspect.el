@@ -115,12 +115,7 @@
 (defun phpinspect--after-save-action ()
   "This is intended to be run every time a phpinspect buffer is saved.
 
-It indexes the entire buffer and updates
-`phpinspect--buffer-index'.  The buffer index is merged into the
-project-wide index (stored in `phpinspect-cache') afterwards.
-Assuming that files are only changed from within Emacs, this
-keeps the cache valid.  If changes are made outside of Emacs,
-users will have to use \\[phpinspect-purge-cache]."
+Reparses the entire buffer without token reuse."
   (when (and (boundp 'phpinspect-mode) phpinspect-mode)
     (phpinspect-buffer-reparse phpinspect-current-buffer)))
 
@@ -128,7 +123,6 @@ users will have to use \\[phpinspect-purge-cache]."
   "Clean up the buffer environment for the mode to be disabled."
   (setq phpinspect-current-buffer nil)
   (kill-local-variable 'phpinspect--buffer-project)
-  (kill-local-variable 'phpinspect--buffer-index)
   (kill-local-variable 'company-backends)
   (kill-local-variable 'eldoc-documentation-function)
   (kill-local-variable 'eldoc-message-commands))
@@ -152,8 +146,13 @@ To initially index a project, use M-x `phpinspect-index-current-project'
 in a buffer of one of the project files. Project root is detected with
 `phpinspect-project-root-file-list'.
 
-For completion see the company-mode backend:
-`phpinspect-company-backend'.
+For completion see `phpinspect-complete-at-point' which is
+automatically added to `completion-at-point-functions' when
+phpinspect-mode is activated.
+
+For company users, there is also
+`phpinspect-company-backend'. This is automatically added to
+`company-backends' when company is detected.
 
 For eldoc see `phpinspect-eldoc-function'.
 
@@ -165,7 +164,35 @@ To automatically add missing use statements for used classes to a
 visited file, use `phpinspect-fix-imports'
 (bound to \\[phpinspect-fix-imports]].)
 
-Example configuration:
+By default, phpinspect looks for a composer.json file that can be
+used to get autoload information for the classes that are present
+in your project. It is also possible to index an entire directory
+by adding it as an include dir. To do this, use
+\\[phpinspect-project-add-include-dir]. Include directories can
+be edited at all times using \\[customize-group] RET phpinspect.
+
+Example configuration if you already have a completion
+UI (Company, Corfu) setup that can take advantage of completion
+at point (capf) functions:
+
+(defun my-php-personal-hook ()
+  ;; Shortcut to add use statements for classes you use.
+  (define-key php-mode-map (kbd \"C-c u\") 'phpinspect-fix-imports)
+
+  ;; Shortcuts to quickly search/open files of PHP classes.
+  ;; You can make these local to php-mode, but making them global
+  ;; like this makes them work in other modes/filetypes as well, which
+  ;; can be handy when jumping between templates, config files and PHP code.
+  (global-set-key (kbd \"C-c a\") 'phpinspect-find-class-file)
+  (global-set-key (kbd \"C-c c\") 'phpinspect-find-own-class-file)
+
+  ;; Enable phpinspect-mode
+  (phpinspect-mode))
+
+(add-hook 'php-mode-hook #'my-php-personal-hook)
+
+
+Example configuration for `company-mode':
 
   (defun my-php-personal-hook ()
     ;; Assuming you already have company-mode enabled, these settings
@@ -200,9 +227,6 @@ Example configuration:
 
 ;; End example configuration."
   :after-hook (phpinspect--mode-function))
-
-(defun phpinspect--buffer-index (buffer)
-  (with-current-buffer buffer phpinspect--buffer-index))
 
 (defun phpinspect--suggest-at-point ()
   (phpinspect--log "Entering suggest at point. Point: %d" (point))
