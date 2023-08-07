@@ -47,10 +47,15 @@ candidate. Candidates can be indexed functions and variables.")
 (cl-defstruct (phpinspect--completion-list
                (:constructor phpinspect--make-completion-list))
   "Contains all data for a completion at point"
+  (completion-start nil
+                    :type integer)
+  (completion-end nil
+                  :type integer)
   (completions (obarray-make)
                :type obarray
                :documentation
-               "A list of completion strings"))
+               "A list of completion strings")
+  (has-candidates nil))
 
 (cl-defgeneric phpinspect--completion-list-add
     (comp-list completion)
@@ -58,6 +63,7 @@ candidate. Candidates can be indexed functions and variables.")
 
 (cl-defmethod phpinspect--completion-list-add
   ((comp-list phpinspect--completion-list) (completion phpinspect--completion))
+  (setf (phpinspect--completion-list-has-candidates comp-list) t)
   (unless (intern-soft (phpinspect--completion-value completion)
                       (phpinspect--completion-list-completions comp-list))
     (set (intern (phpinspect--completion-value completion)
@@ -102,29 +108,50 @@ and CONTEXT. All strategies must implement this method.")
 (cl-defstruct (phpinspect-comp-sigil (:constructor phpinspect-make-comp-sigil))
   "Completion strategy for the sigil ($) character.")
 
+(defun phpinspect-completion-subject-at-point (buffer point predicate)
+  (let ((subject (phpinspect-bmap-last-token-before-point
+                  (phpinspect-buffer-parse-map buffer) point)))
+    (and subject
+         (funcall predicate (phpinspect-meta-token subject))
+         (>= (phpinspect-meta-end subject) point)
+         subject)))
+
 (cl-defmethod phpinspect-comp-strategy-supports
   ((_strat phpinspect-comp-sigil) (q phpinspect-completion-query)
    (_rctx phpinspect--resolvecontext))
-  (and (= (phpinspect-completion-query-completion-point q)
-          (phpinspect-completion-query-point q))
-       (phpinspect-variable-p
-        (phpinspect-meta-token
-         (phpinspect-bmap-last-token-before-point
-          (phpinspect-buffer-parse-map (phpinspect-completion-query-buffer q))
-          (phpinspect-completion-query-point q))))))
+  (when-let ((subject (phpinspect-completion-subject-at-point
+                       (phpinspect-completion-query-buffer q)
+                       (phpinspect-completion-query-point q)
+                       #'phpinspect-variable-p)))
+    (list (+ (phpinspect-meta-start subject) 1) (phpinspect-meta-end subject))))
+
 
 (cl-defmethod phpinspect-comp-strategy-execute
   ((_strat phpinspect-comp-sigil) (_q phpinspect-completion-query)
    (rctx phpinspect--resolvecontext))
   (phpinspect-suggest-variables-at-point rctx))
 
+(define-inline phpinspect-attrib-start (attrib-meta)
+  "The start position of the name of the attribute that is being referenced.
+
+ATTRIB-META must be an instance of phpinspect-meta (see `phpinspect-make-meta'),
+belonging to a token that conforms with `phpinspect-attrib-p'"
+  (inline-letevals (attrib-meta)
+    (inline-quote
+     (- (phpinspect-meta-end ,attrib-meta)
+        (length (cadadr (phpinspect-meta-token ,attrib-meta)))))))
+
 (cl-defstruct (phpinspect-comp-attribute (:constructor phpinspect-make-comp-attribute))
   "Completion strategy for object attributes")
 
 (cl-defmethod phpinspect-comp-strategy-supports
-  ((_strat phpinspect-comp-attribute) (_q phpinspect-completion-query)
-   (rctx phpinspect--resolvecontext))
-  (phpinspect-object-attrib-p (car (last (phpinspect--resolvecontext-subject rctx)))))
+  ((_strat phpinspect-comp-attribute) (q phpinspect-completion-query)
+   (_rctx phpinspect--resolvecontext))
+  (when-let ((subject (phpinspect-completion-subject-at-point
+                       (phpinspect-completion-query-buffer q)
+                       (phpinspect-completion-query-point q)
+                       #'phpinspect-object-attrib-p)))
+    (list (phpinspect-attrib-start subject) (phpinspect-meta-end subject))))
 
 (cl-defmethod phpinspect-comp-strategy-execute
   ((_strat phpinspect-comp-attribute) (_q phpinspect-completion-query)
@@ -135,9 +162,13 @@ and CONTEXT. All strategies must implement this method.")
   "Completion strategy for static attributes")
 
 (cl-defmethod phpinspect-comp-strategy-supports
-  ((_strat phpinspect-comp-static-attribute) (_q phpinspect-completion-query)
-   (rctx phpinspect--resolvecontext))
-  (phpinspect-static-attrib-p (car (last (phpinspect--resolvecontext-subject rctx)))))
+  ((_strat phpinspect-comp-static-attribute) (q phpinspect-completion-query)
+   (_rctx phpinspect--resolvecontext))
+  (when-let ((subject (phpinspect-completion-subject-at-point
+                       (phpinspect-completion-query-buffer q)
+                       (phpinspect-completion-query-point q)
+                       #'phpinspect-static-attrib-p)))
+    (list (phpinspect-attrib-start subject) (phpinspect-meta-end subject))))
 
 (cl-defmethod phpinspect-comp-strategy-execute
   ((_strat phpinspect-comp-static-attribute) (_q phpinspect-completion-query)
@@ -148,9 +179,13 @@ and CONTEXT. All strategies must implement this method.")
   "Comletion strategy for bare words")
 
 (cl-defmethod phpinspect-comp-strategy-supports
-  ((_strat phpinspect-comp-word) (_q phpinspect-completion-query)
-   (rctx phpinspect--resolvecontext))
-  (phpinspect-word-p (car (last (phpinspect--resolvecontext-subject rctx)))))
+  ((_strat phpinspect-comp-word) (q phpinspect-completion-query)
+   (_rctx phpinspect--resolvecontext))
+  (when-let ((subject (phpinspect-completion-subject-at-point
+                       (phpinspect-completion-query-buffer q)
+                       (phpinspect-completion-query-point q)
+                       #'phpinspect-word-p)))
+    (list (phpinspect-meta-start subject) (phpinspect-meta-end subject))))
 
 (cl-defmethod phpinspect-comp-strategy-execute
   ((_strat phpinspect-comp-word) (_q phpinspect-completion-query)
@@ -163,6 +198,12 @@ and CONTEXT. All strategies must implement this method.")
                                                (phpinspect-make-comp-static-attribute))
   "List of completion strategies that phpinspect can use.")
 
+(defun phpinspect--get-completion-query ()
+  (phpinspect-make-completion-query
+   :buffer phpinspect-current-buffer
+   :completion-point (phpinspect--determine-completion-point)
+   :point (point)))
+
 (cl-defmethod phpinspect-completion-query-execute ((query phpinspect-completion-query))
   "Execute QUERY.
 
@@ -173,12 +214,17 @@ Returns list of `phpinspect--completion'."
          (rctx (phpinspect-get-resolvecontext buffer-map point))
          (completion-list (phpinspect--make-completion-list)))
     (dolist (strategy phpinspect-completion-strategies)
-      (when (phpinspect-comp-strategy-supports strategy query rctx)
+      (when-let (region (phpinspect-comp-strategy-supports strategy query rctx))
+        (setf (phpinspect--completion-list-completion-start completion-list)
+              (car region)
+              (phpinspect--completion-list-completion-end completion-list)
+              (cadr region))
+
         (phpinspect--log "Found matching completion strategy. Executing...")
         (dolist (candidate (phpinspect-comp-strategy-execute strategy query rctx))
           (phpinspect--completion-list-add
            completion-list (phpinspect--make-completion candidate)))))
-    completion-list))
+    (setq phpinspect--last-completion-list completion-list)))
 
 (cl-defmethod phpinspect--make-completion
   ((completion-candidate phpinspect--function))
@@ -186,8 +232,7 @@ Returns list of `phpinspect--completion'."
   (phpinspect--construct-completion
    :value (phpinspect--function-name completion-candidate)
    :meta (concat "(" (mapconcat (lambda (arg)
-                                  (concat (phpinspect--format-type-name (cadr arg)) " "
-                                          "$" (if (> (length (car arg)) 8)
+                                  (concat "$" (if (> (length (car arg)) 8)
                                                   (truncate-string-to-width (car arg) 8 nil)
                                                 (car arg))))
                                 (phpinspect--function-arguments completion-candidate)
@@ -211,6 +256,45 @@ Returns list of `phpinspect--completion'."
                         (or (phpinspect--variable-type completion-candidate)
                             phpinspect--null-type)))
    :kind 'variable))
+
+(define-inline phpinspect--prefix-for-completion (completion)
+  (inline-letevals (completion)
+    (inline-quote
+     (pcase (phpinspect--completion-kind ,completion)
+       ('function "<f> ")
+       ('variable "<va> ")))))
+
+
+(defun phpinspect-complete-at-point ()
+  (let ((comp-list (phpinspect-completion-query-execute (phpinspect--get-completion-query)))
+        strings)
+    (obarray-map (lambda (sym) (push (symbol-name sym) strings)) (phpinspect--completion-list-completions comp-list))
+    (and (phpinspect--completion-list-has-candidates comp-list)
+         (list (phpinspect--completion-list-completion-start comp-list)
+               (phpinspect--completion-list-completion-end comp-list)
+               strings
+               :affixation-function
+               (lambda (completions)
+                 (let (affixated completion)
+                   (dolist (comp completions)
+                     (setq completion (phpinspect--completion-list-get-metadata comp-list comp))
+                     (push (list comp (phpinspect--prefix-for-completion completion)
+                                 (phpinspect--completion-meta completion))
+                           affixated))
+                   (nreverse affixated)))
+               :exit-function
+               (lambda (comp-name state)
+                 (when (and (eq 'finished state)
+                            (eq 'function (phpinspect--completion-kind
+                                           (phpinspect--completion-list-get-metadata
+                                            phpinspect--last-completion-list
+                                            comp-name))))
+                   (insert "(")))
+               :company-kind (lambda (comp-name)
+                               (phpinspect--completion-kind
+                                (phpinspect--completion-list-get-metadata
+                                 phpinspect--last-completion-list
+                                 comp-name)))))))
 
 
 (provide 'phpinspect-completion)

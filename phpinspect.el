@@ -93,8 +93,12 @@
                    (phpinspect--get-or-create-global-cache)
                    (phpinspect-current-project-root))))
   (add-hook 'after-change-functions #'phpinspect-after-change-function)
-  (make-local-variable 'company-backends)
-  (add-to-list 'company-backends #'phpinspect-company-backend)
+
+  (when (featurep 'company)
+    (make-local-variable 'company-backends)
+    (add-to-list 'company-backends #'phpinspect-company-backend))
+
+  (add-hook 'completion-at-point-functions #'phpinspect-complete-at-point nil 'local)
 
 
   (set (make-local-variable 'eldoc-documentation-function)
