@@ -255,7 +255,6 @@ Example configuration for `company-mode':
            (let ((match (match-string 0)))
              (substring match 1 (length match))))
           ((looking-back "[A-Za-z_0-9-]+" nil t)
-           (message "Matched string %s" (match-string 0))
            (match-string 0))))
    ((eq command 'post-completion)
     (when (eq 'function (phpinspect--completion-kind
