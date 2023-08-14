@@ -214,16 +214,18 @@ linked with."
 
           (dolist (class new-declarations)
             (unless (memq (cdr class) indexed)
-              (pcase-let* ((`(,imports ,namespace-name) (phpinspect-get-token-index-context namespaces buffer-imports (cdr class)))
-                           (`(,class-name) (phpinspect--index-class-declaration
+              (let (imports namespace-name class-name class-obj)
+                (pcase-setq `(,imports ,namespace-name) (phpinspect-get-token-index-context namespaces buffer-imports (cdr class))
+                            `(,class-name) (phpinspect--index-class-declaration
                                             (car class)
                                             (phpinspect--make-type-resolver
                                              (phpinspect--uses-to-types imports)
                                              (phpinspect-class-block (phpinspect-meta-token (cdr class)))
                                              namespace-name)))
-                           (class-obj (phpinspect-project-get-class-create project class-name 'no-enqueue)))
-                (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token (cdr class)) class-obj)
-                (phpinspect--class-update-declaration class-obj (car class) imports namespace-name)))))
+                (when class-name
+                  (setq  class-obj (phpinspect-project-get-class-create project class-name 'no-enqueue))
+                  (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token (cdr class)) class-obj)
+                  (phpinspect--class-update-declaration class-obj (car class) imports namespace-name))))))
       ;; Else: Index all classes
       (setf (phpinspect-buffer-classes buffer) (phpinspect-make-toc classes))
       (phpinspect-splayt-traverse (class classes)
@@ -235,9 +237,11 @@ linked with."
                                        (phpinspect--uses-to-types imports)
                                        (phpinspect-class-block (phpinspect-meta-token class))
                                        namespace-name)))
-                     (class-obj (phpinspect-project-get-class-create project class-name 'no-enqueue)))
-          (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token class) class-obj)
-          (phpinspect--class-update-declaration class-obj (phpinspect-meta-token declaration) imports namespace-name))))))
+                     (class-obj))
+          (when class-name
+            (setq class-obj (phpinspect-project-get-class-create project class-name 'no-enqueue))
+            (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token class) class-obj)
+            (phpinspect--class-update-declaration class-obj (phpinspect-meta-token declaration) imports namespace-name)))))))
 
 (cl-defmethod phpinspect-buffer-index-functions ((buffer phpinspect-buffer) (functions (head phpinspect-splayt)))
   (let ((classes (phpinspect-buffer-classes buffer))
@@ -455,6 +459,14 @@ use."
 
 (cl-defmethod phpinspect-buffer-root-meta ((buffer phpinspect-buffer))
   (phpinspect-bmap-root-meta (phpinspect-buffer-map buffer)))
+
+(defun phpinspect-display-buffer-tree ()
+  (interactive)
+  (when phpinspect-current-buffer
+    (let ((buffer phpinspect-current-buffer))
+      (pop-to-buffer (generate-new-buffer "phpinspect-buffer-tree"))
+      (insert (pp-to-string (phpinspect-buffer-parse buffer 'no-interrupt)))
+      (read-only-mode))))
 
 (defun phpinspect-display-buffer-index ()
   (interactive)
