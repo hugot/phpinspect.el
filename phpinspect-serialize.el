@@ -37,6 +37,7 @@
 (cl-defmethod phpinspect--serialize-function ((func phpinspect--function))
   `(phpinspect--make-function
     :name ,(phpinspect--function-name func)
+    :token (quote ,(phpinspect--function-token func))
     :scope (quote ,(phpinspect--function-scope func))
     :arguments ,(append '(list)
                         (mapcar (lambda (arg)
@@ -53,10 +54,11 @@
                                         (phpinspect--variable-type var)))
                               :scope (quote ,(phpinspect--variable-scope var))))
 
-
 (cl-defmethod phpinspect--serialize-indexed-class ((class (head phpinspect--indexed-class)))
   ``(phpinspect--indexed-class
+     (complete . ,,(alist-get 'complete class))
      (class-name . ,,(phpinspect--serialize-type (alist-get 'class-name class)))
+     (declaration . ,(quote ,(alist-get 'declaration class)))
      (imports . ,,(append '(list)
                           (mapcar #'phpinspect--serialize-import
                                   (alist-get 'imports class))))

@@ -163,3 +163,12 @@
 
     (should (equal (sort '("eight" "nine" "eleven" "twelve") #'string-lessp)
                    (sort (phpinspect-splayt-find-all-after tree 7) #'string-lessp)))))
+
+(ert-deftest phpinspect-splayt-to-list ()
+  (let ((tree (phpinspect-make-splayt)))
+    (phpinspect-splayt-insert tree 3 "three")
+    (phpinspect-splayt-insert tree 1 "one")
+    (phpinspect-splayt-insert tree 2 "two")
+
+
+    (should (equal '("one" "two" "three") (phpinspect-splayt-to-list tree)))))

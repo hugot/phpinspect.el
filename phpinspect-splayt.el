@@ -88,10 +88,10 @@ apeared to be a little more performant than using `let'."
 
 (define-inline phpinspect-make-splayt (&optional root-node)
   (inline-quote
-   (cons ,root-node nil)))
+   (cons 'phpinspect-splayt ,root-node)))
 
 (define-inline phpinspect-splayt-root-node (splayt)
-  (inline-quote (car ,splayt)))
+  (inline-quote (cdr ,splayt)))
 
 (define-inline phpinspect-splayt-empty-p (splayt)
   (inline-quote (not (phpinspect-splayt-root-node ,splayt))))
@@ -165,10 +165,6 @@ apeared to be a little more performant than using `let'."
        ;; Update root node of tree when necessary
        (when (and ,splayt (eq ,node (phpinspect-splayt-root-node ,splayt)))
          (setf (phpinspect-splayt-root-node ,splayt) (phpinspect-splayt-node-parent ,node)))))))
-
-(define-inline phpinspect-splayt-insert (splayt key value)
-  (inline-quote
-   (phpinspect-splayt-insert-node ,splayt (phpinspect-make-splayt-node ,key ,value))))
 
 (define-inline phpinspect-splayt-node-grandparent (node)
   (inline-quote (phpinspect-splayt-node-parent (phpinspect-splayt-node-parent ,node))))
@@ -261,7 +257,7 @@ apeared to be a little more performant than using `let'."
 
            (if ,reverse-sym
                (push ,current-sym ,stack-sym)
-             (setf ,place (phpinspect-splayt-node-value ,current-sym))
+             (setf ,place ,current-sym)
              ,@body)
 
            (when (phpinspect-splayt-node-right ,current-sym)
@@ -275,7 +271,7 @@ apeared to be a little more performant than using `let'."
          (when ,reverse-sym
            (while ,stack-sym
              (setq ,current-sym (pop ,stack-sym))
-             (setf ,place (phpinspect-splayt-node-value ,current-sym))
+             (setf ,place ,current-sym)
              ,@body))
 
          (setq ,reverse-sym (not ,reverse-sym)))
@@ -291,9 +287,15 @@ Traversal is breadth-first to take advantage of the splay trees
 main benefit: the most accessed interval of keys is likely to be
 near the top of the tee."
   (declare (indent 1))
-  `(phpinspect-splayt-node-traverse
-       (,(car place-and-splayt) (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
-     ,@body))
+ (let* ((current (gensym))
+         (code `(phpinspect-splayt-node-traverse
+                    (,current (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
+                  (setf ,(car place-and-splayt) (phpinspect-splayt-node-value ,current))
+                  ,@body)))
+    (if (symbolp (car place-and-splayt))
+        `(let (,(car place-and-splayt))
+           ,code)
+      code)))
 
 (defmacro phpinspect-splayt-node-traverse-lr (place-and-node &rest body)
   (declare (indent 1))
@@ -309,7 +311,7 @@ near the top of the tee."
                (push ,current ,stack)
                (setq ,current (phpinspect-splayt-node-left ,current)))
            (setq ,current (pop ,stack))
-           (setf ,place (phpinspect-splayt-node-value ,current))
+           (setf ,place ,current)
            ,@body
            (setq ,current (phpinspect-splayt-node-right ,current)))))))
 
@@ -319,9 +321,16 @@ near the top of the tee."
 The car of PLACE-AND-SPLAYT is assigned the value of each node.
 The cadr of PLACE-AND-SPLAYT is expected to be a splay tree."
   (declare (indent 1))
-  `(phpinspect-splayt-node-traverse-lr
-       (,(car place-and-splayt) (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
-     ,@body))
+  (let* ((current (gensym))
+         (code `(phpinspect-splayt-node-traverse-lr
+                    (,current (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
+                  (setf ,(car place-and-splayt) (phpinspect-splayt-node-value ,current))
+                  ,@body)))
+    (if (symbolp (car place-and-splayt))
+        `(let (,(car place-and-splayt))
+           ,code)
+      code)))
+
 
 (define-inline phpinspect-splayt-node-key-less-p (node key)
   (inline-quote (> ,key (phpinspect-splayt-node-key ,node))))
@@ -412,54 +421,89 @@ The cadr of PLACE-AND-SPLAYT is expected to be a splay tree."
 
        largest))))
 
-(defsubst phpinspect-splayt-find-all-after (splayt key)
+(defun phpinspect-splayt-find-all-after (splayt key)
   "Find all values in SPLAYT with a key higher than KEY."
-  (let ((first (phpinspect-splayt-find-smallest-node-after splayt key))
-        all)
+  (let* ((first (phpinspect-splayt-find-smallest-node-after splayt key))
+         (all (cons nil nil))
+         (all-rear all))
     (while first
-      (push (phpinspect-splayt-node-value first) all)
+      (setq all-rear (setcdr all-rear (cons (phpinspect-splayt-node-value first) nil)))
 
       (phpinspect-splayt-node-traverse (sibling (phpinspect-splayt-node-right first))
-        (setq all (nconc all (list sibling))))
+        (setq all-rear (setcdr all-rear (cons (phpinspect-splayt-node-value sibling) nil))))
 
       (if (and (phpinspect-splayt-node-parent first)
                (eq first (phpinspect-splayt-node-left (phpinspect-splayt-node-parent first))))
           (setq first (phpinspect-splayt-node-parent first))
         (setq first nil)))
-    all))
+    (cdr all)))
 
-(defsubst phpinspect-splayt-find-all-before (splayt key)
+(defun phpinspect-splayt-find-all-between (splayt key-min key-max)
+  (let* ((first (phpinspect-splayt-find-smallest-node-after splayt key-min))
+         (all (cons nil nil))
+         (all-rear all))
+    (catch 'return
+      (while first
+        (setq all-rear (setcdr all-rear (cons (phpinspect-splayt-node-value first) nil)))
+
+        (phpinspect-splayt-node-traverse-lr (sibling (phpinspect-splayt-node-right first))
+          (when (>= (phpinspect-splayt-node-key sibling) key-max)
+            (throw 'return all))
+          (setq all-rear (setcdr all-rear (cons (phpinspect-splayt-node-value sibling) nil))))
+
+        (if (and (phpinspect-splayt-node-parent first)
+                 (eq first (phpinspect-splayt-node-left (phpinspect-splayt-node-parent first))))
+            (setq first (phpinspect-splayt-node-parent first))
+          (setq first nil)))
+      (cdr all))))
+
+(defun phpinspect-splayt-find-all-before (splayt key)
   "Find all values in SPLAYT with a key higher than KEY."
-  (let ((first (phpinspect-splayt-find-largest-node-before splayt key))
-        all)
+  (let* ((first (phpinspect-splayt-find-largest-node-before splayt key))
+         (all (cons nil nil))
+         (all-rear all))
     (while first
-      (push (phpinspect-splayt-node-value first) all)
+      (setq all-rear (setcdr all-rear (cons (phpinspect-splayt-node-value first) nil)))
 
       (phpinspect-splayt-node-traverse (sibling (phpinspect-splayt-node-left first))
-        (setq all (nconc all (list sibling))))
+        (setq all-rear (setcdr all-rear (cons (phpinspect-splayt-node-value sibling) nil))))
 
       (if (and (phpinspect-splayt-node-parent first)
                (eq first (phpinspect-splayt-node-right (phpinspect-splayt-node-parent first))))
           (setq first (phpinspect-splayt-node-parent first))
         (setq first nil)))
-    all))
+    (cdr all)))
 
-(define-inline phpinspect-splayt-find-smallest-after (splayt key)
+(defun phpinspect-splayt-to-list (tree)
+  "Convert TREE to an ordered list."
+  (let* ((list (cons nil nil))
+         (rear list))
+    (phpinspect-splayt-traverse-lr (val tree)
+      (setq rear (setcdr rear (cons val nil))))
+
+    (cdr list)))
+
+(cl-defmethod seq-do (func (tree (head phpinspect-splayt)))
+  (phpinspect-splayt-traverse-lr (val tree)
+    (funcall func val)))
+
+(defun phpinspect-splayt-find-smallest-after (splayt key)
   "Find value of node with smallest key that is higher than KEY in SPLAYT."
-  (inline-quote
+  (phpinspect-splayt-node-value
+   (phpinspect-splay
+    splayt (phpinspect-splayt-find-smallest-node-after splayt key))))
+
+(defun phpinspect-splayt-find-largest-before (splayt key)
+  "Find value of node with smallest key that is higher than KEY in SPLAYT."
    (phpinspect-splayt-node-value
     (phpinspect-splay
-     ,splayt (phpinspect-splayt-find-smallest-node-after ,splayt ,key)))))
+     splayt (phpinspect-splayt-find-largest-node-before splayt key))))
 
-(define-inline phpinspect-splayt-find-largest-before (splayt key)
-  "Find value of node with smallest key that is higher than KEY in SPLAYT."
-  (inline-quote
-   (phpinspect-splayt-node-value
-    (phpinspect-splay
-     ,splayt (phpinspect-splayt-find-largest-node-before ,splayt ,key)))))
-
-
-(defsubst phpinspect-splayt-find (splayt key)
+(defun phpinspect-splayt-find (splayt key)
   (phpinspect-splayt-node-value (phpinspect-splayt-find-node splayt key)))
+
+(defun phpinspect-splayt-insert (tree key value)
+  "Insert KEY as VALUE into TREE."
+  (phpinspect-splayt-insert-node tree (phpinspect-make-splayt-node key value)))
 
 (provide 'phpinspect-splayt)

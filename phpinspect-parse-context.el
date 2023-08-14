@@ -36,6 +36,7 @@ parsing. Usually used in combination with
 (cl-defstruct (phpinspect-pctx (:constructor phpinspect-make-pctx))
   "Parser Context"
   (incremental nil)
+  (meta-iterator nil)
   (interrupt-threshold (time-convert '(2 . 1000))
                        :documentation
                        "After how much time `interrupt-predicate'

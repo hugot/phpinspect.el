@@ -206,6 +206,15 @@ NAMESPACE may be nil, or a string with a namespace FQN."
                :type symbol
                :documentation
                "A symbol associated with the name of the function")
+  (token nil
+         :type phpinspect-function-p
+         :documentation
+         "The tokens with which this function was declared.")
+  (-inherited nil
+                 :type boolean
+                 :documentation
+                 "Whether this function has been incorporated into a class as
+method of an extended class.")
   (scope nil
          :type phpinspect-scope
          :documentation

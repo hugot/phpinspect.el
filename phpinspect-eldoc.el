@@ -123,8 +123,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
            enclosing-token)
 
       (setq left-sibling (phpinspect-meta-find-child-before-recursively
-                          enclosing-token (phpinspect-eldoc-query-point q)))
-      (phpinspect-meta-overlaps-point left-sibling (phpinspect-eldoc-query-point q)))
+                          enclosing-token (phpinspect-eldoc-query-point q))))
     ;; Subject is inside an argument list
      ((and enclosing-token
                 (phpinspect-list-p (phpinspect-meta-token enclosing-token)))
@@ -250,6 +249,7 @@ also `phpinspect-eldoc-query-execute'.")
          (point (phpinspect-eldoc-query-point query))
          (buffer-map (phpinspect-buffer-parse-map buffer))
          (rctx (phpinspect-get-resolvecontext buffer-map point)))
+    (phpinspect-buffer-update-project-index buffer)
     (catch 'matched
       (dolist (strategy phpinspect-eldoc-strategies)
         (when (phpinspect-eld-strategy-supports strategy query rctx)

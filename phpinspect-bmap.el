@@ -28,6 +28,7 @@
 (require 'phpinspect-changeset)
 (require 'phpinspect-util)
 (require 'compat)
+(require 'phpinspect-token-predicates)
 
 (eval-when-compile
   (defvar phpinspect-parse-context nil
@@ -39,18 +40,36 @@
 
 (cl-defstruct (phpinspect-bmap (:constructor phpinspect-make-bmap))
   (starts (make-hash-table :test #'eql
-                           :size (floor (/ (point-max) 4))
+                           :size (floor (/ (point-max) 2))
                            :rehash-size 1.5))
   (ends (make-hash-table :test #'eql
-                           :size (floor (/ (point-max) 4))
+                           :size (floor (/ (point-max) 2))
                            :rehash-size 1.5))
   (meta (make-hash-table :test #'eq
-                           :size (floor (/ (point-max) 4))
+                           :size (floor (/ (point-max) 2))
                            :rehash-size 1.5))
   (token-stack nil
                :type list)
   (overlays (phpinspect-make-splayt)
             :type phpinspect-splayt)
+  (declarations (phpinspect-make-splayt)
+                :type phpinspect-splayt
+                :documentation "The declaration tokens encountered.")
+  (imports (phpinspect-make-splayt)
+           :type phpinspect-splayt
+           :documentation "The import statements encountered.")
+  (functions (phpinspect-make-splayt)
+             :type phpinspect-splayt
+             :documentation "The function definitions encountered.")
+  (classes (phpinspect-make-splayt)
+           :type phpinspect-splayt
+           :documentation "The classes encountered.")
+  (class-variables (phpinspect-make-splayt)
+                   :type phpinspect-splayt
+                   :documentation "The class attribute variables encountered")
+  (namespaces (phpinspect-make-splayt)
+              :type phpinspect-splayt
+              :documentation "The namespaces encountered")
   (-root-meta nil
               :type phpinspect-meta)
   (last-token-start nil
@@ -158,7 +177,28 @@
 
     (puthash start token-meta starts)
 
-    (if existing-end
+    (cond
+     ((phpinspect-use-p (phpinspect-meta-token token-meta))
+      (phpinspect-splayt-insert
+       (phpinspect-bmap-imports bmap) (phpinspect-meta-start token-meta) token-meta))
+     ((phpinspect-class-p (phpinspect-meta-token token-meta))
+      (phpinspect-splayt-insert
+       (phpinspect-bmap-classes bmap) (phpinspect-meta-start token-meta) token-meta))
+     ((phpinspect-declaration-p (phpinspect-meta-token token-meta))
+      (phpinspect-splayt-insert
+       (phpinspect-bmap-declarations bmap) (phpinspect-meta-start token-meta) token-meta))
+     ((phpinspect-function-p (phpinspect-meta-token token-meta))
+      (phpinspect-splayt-insert
+       (phpinspect-bmap-functions bmap) (phpinspect-meta-start token-meta) token-meta))
+     ((phpinspect-namespace-p (phpinspect-meta-token token-meta))
+      (phpinspect-splayt-insert
+       (phpinspect-bmap-namespaces bmap) (phpinspect-meta-start token-meta) token-meta))
+     ((or (phpinspect-const-p (phpinspect-meta-token token-meta))
+          (phpinspect-class-variable-p (phpinspect-meta-token token-meta)))
+      (phpinspect-splayt-insert
+       (phpinspect-bmap-class-variables bmap) (phpinspect-meta-start token-meta) token-meta)))
+
+     (if existing-end
         (push token existing-end)
       (puthash end (list token-meta) ends))
 
@@ -222,10 +262,6 @@
 (cl-defmethod phpinspect-bmap-token-meta ((overlay (head overlay)) token)
   (phpinspect-bmap-token-meta (phpinspect-overlay-bmap overlay) token))
 
-(defsubst phpinspect-probably-token-p (token)
-  (and (listp token)
-       (keywordp (car token))))
-
 (cl-defmethod phpinspect-bmap-token-meta ((bmap phpinspect-bmap) token)
   (unless (phpinspect-probably-token-p token)
     (error "Unexpected argument, expected `phpinspect-token-p'. Got invalid token %s" token))
@@ -248,7 +284,7 @@
   (let* ((overlays (phpinspect-bmap-overlays bmap))
          (start (+ (phpinspect-meta-start token-meta) pos-delta))
          (end (+ (phpinspect-meta-end token-meta) pos-delta))
-         (overlay)
+         overlay
          (last-overlay (phpinspect-splayt-node-value (phpinspect-splayt-root-node overlays))))
 
     (phpinspect-meta-with-changeset token-meta

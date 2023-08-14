@@ -30,6 +30,7 @@
 (require 'phpinspect-autoload)
 (require 'phpinspect-buffer)
 (require 'phpinspect-cache)
+(require 'phpinspect-util)
 
 (defun phpinspect-insert-at-point (point data)
   (save-excursion
@@ -112,12 +113,6 @@ buffer position to insert the use statement at."
 
 (defalias 'phpinspect-fix-uses-interactive #'phpinspect-fix-imports
   "Alias for backwards compatibility")
-
-(defun phpinspect-namespace-name (namespace)
-  (or (and (phpinspect-namespace-p namespace)
-           (phpinspect-word-p (cadr namespace))
-           (cadadr namespace))
-      ""))
 
 (defun phpinspect-add-use-statements-for-missing-types (types buffer imports project parent-token)
   (let (namespace namespace-name)

@@ -213,6 +213,8 @@ Returns list of `phpinspect--completion'."
          (buffer-map (phpinspect-buffer-parse-map buffer))
          (rctx (phpinspect-get-resolvecontext buffer-map point))
          (completion-list (phpinspect--make-completion-list)))
+    (phpinspect-buffer-update-project-index buffer)
+
     (dolist (strategy phpinspect-completion-strategies)
       (when-let (region (phpinspect-comp-strategy-supports strategy query rctx))
         (setf (phpinspect--completion-list-completion-start completion-list)

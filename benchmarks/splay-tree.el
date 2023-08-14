@@ -14,7 +14,19 @@
   (garbage-collect)
   (benchmark
    1 '(dotimes (i 10000)
-        (phpinspect-splayt-find tree i))))
+        (phpinspect-splayt-find tree i)))
+
+  (message "Splay tree 10000 items traversal:")
+  (garbage-collect)
+  (benchmark
+   1 '(phpinspect-splayt-traverse (i tree)
+        nil))
+
+  (message "Splay tree 10000 items LR traversal:")
+  (garbage-collect)
+  (benchmark
+   1 '(phpinspect-splayt-traverse-lr (i tree)
+        nil)))
 
 
 (let (map)
@@ -30,4 +42,9 @@
   (garbage-collect)
   (benchmark
    1 '(dotimes (i 10000)
-        (gethash i map))))
+        (gethash i map)))
+
+  (message "Hashtable 10000 iterations:")
+  (garbage-collect)
+  (benchmark
+   1 '(maphash (lambda (k v) nil) map)))

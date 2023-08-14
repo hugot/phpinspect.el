@@ -52,17 +52,40 @@
 (define-inline phpinspect-meta-whitespace-before (meta)
   (inline-quote (car (cddddr ,meta))))
 
-(defun phpinspect-meta-start (meta)
-  (if (phpinspect-meta-parent meta)
-      (+ (phpinspect-meta-start (phpinspect-meta-parent meta))
-         (phpinspect-meta-parent-offset meta))
-    (phpinspect-meta-absolute-start meta)))
+(define-inline phpinspect-meta-parent-start (meta)
+  "Calculate parent start position iteratively based on parent offsets."
+  (inline-letevals (meta)
+    (inline-quote
+     (let ((start (or (phpinspect-meta-parent-offset ,meta) 0))
+           (current ,meta))
+       (while (phpinspect-meta-parent current)
+         (setq current (phpinspect-meta-parent current)
+               start (+ start (or (phpinspect-meta-parent-offset current) 0))))
 
-(defun phpinspect-meta-end (meta)
-  (+ (phpinspect-meta-start meta) (phpinspect-meta-width meta)))
+       (+ (phpinspect-meta-absolute-start current) start)))))
 
-(defsubst phpinspect-meta-width (meta)
-  (- (phpinspect-meta-absolute-end meta) (phpinspect-meta-absolute-start meta)))
+(define-inline phpinspect-meta-start (meta)
+  "Calculate the start position of META."
+  (inline-quote
+     (if (phpinspect-meta-parent ,meta)
+           (+ (phpinspect-meta-parent-start (phpinspect-meta-parent ,meta))
+              (phpinspect-meta-parent-offset ,meta))
+       (phpinspect-meta-absolute-start ,meta))))
+
+(define-inline phpinspect-meta-width (meta)
+  (inline-letevals (meta)
+    (inline-quote
+     (- (phpinspect-meta-absolute-end ,meta) (phpinspect-meta-absolute-start ,meta)))))
+
+(define-inline phpinspect-meta-end (meta)
+  (inline-letevals (meta)
+    (inline-quote
+     (+ (phpinspect-meta-start ,meta) (phpinspect-meta-width ,meta)))))
+
+(defsubst phpinspect-meta-find-root (meta)
+  (while (phpinspect-meta-parent meta)
+    (setq meta (phpinspect-meta-parent meta)))
+  meta)
 
 (defun phpinspect-meta-sort-width (meta1 meta2)
   (< (phpinspect-meta-width meta1) (phpinspect-meta-width meta2)))
@@ -73,9 +96,12 @@
 (define-inline phpinspect-meta-absolute-start (meta)
   (inline-quote (caddr ,meta)))
 
-(defsubst phpinspect-meta-overlaps-point (meta point)
-  (and (> (phpinspect-meta-end meta) point)
-       (<= (phpinspect-meta-start meta) point)))
+(define-inline phpinspect-meta-overlaps-point (meta point)
+  "Check if META's region overlaps POINT."
+  (inline-letevals (point meta)
+        (inline-quote
+         (and (> (phpinspect-meta-end ,meta) ,point)
+              (<= (phpinspect-meta-start ,meta) ,point)))))
 
 (defun phpinspect-meta-find-parent-matching-token (meta predicate)
   (if (funcall predicate (phpinspect-meta-token meta))
@@ -94,7 +120,9 @@
          (setf (phpinspect-meta-parent-offset ,meta)
                (- (phpinspect-meta-start ,meta) (phpinspect-meta-start ,parent)))
          (phpinspect-meta-add-child ,parent ,meta))
-       (setcar (cdr ,meta) ,parent)))))
+       (setcar (cdr ,meta) ,parent)
+
+       ,meta))))
 
 ;; Note: using defsubst here causes a byte code overflow
 (defun phpinspect-meta-add-child (meta child)
@@ -137,7 +165,6 @@
   (when (phpinspect-meta-parent meta)
     (phpinspect-splayt-find-smallest-after (phpinspect-meta-children (phpinspect-meta-parent meta))
                                            (phpinspect-meta-parent-offset meta))))
-
 
 (cl-defmethod phpinspect-meta-find-overlapping-child ((meta (head meta)) (point integer))
   (let ((child (phpinspect-splayt-find-largest-before
@@ -208,7 +235,6 @@
       (format "[start: %d, end: %d, token: %s]"
               (phpinspect-meta-start meta) (phpinspect-meta-end meta) (phpinspect-meta-token meta))
     "[nil]"))
-
 
 (provide 'phpinspect-meta)
 ;;; phpinspect-meta.el ends here

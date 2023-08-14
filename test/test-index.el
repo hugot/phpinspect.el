@@ -46,13 +46,22 @@
             (classes
              (,(phpinspect--make-type :name"\\Potato" :fully-qualified t)
               phpinspect--indexed-class
+              (complete . t)
               (class-name . ,(phpinspect--make-type :name "\\Potato" :fully-qualified t))
+              (declaration . (:declaration (:word "class") (:word "Potato")))
               (location . (0 0))
               (imports)
               (methods)
               (static-methods . (,(phpinspect--make-function
                                    :name "staticMethod"
                                    :scope '(:public)
+                                   :token '(:function (:declaration (:word "function")
+                                        (:word "staticMethod")
+                                        (:list (:variable "untyped")
+                                               (:comma)
+                                               (:word "array")
+                                               (:variable "things")))
+                                                      (:block))
                                    :arguments `(("untyped" nil)
                                                 ("things" ,(phpinspect--make-type :name "\\array"
                                                                                   :collection t

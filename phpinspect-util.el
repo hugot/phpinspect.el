@@ -265,5 +265,16 @@ CONTINUE must be a condition-variable"
   (with-mutex mx (condition-wait continue))
   (phpinspect--log "Thread '%s' continuing execution" (thread-name (current-thread))))
 
+(defun phpinspect-namespace-name (namespace)
+  (or (and (phpinspect-namespace-p namespace)
+           (phpinspect-word-p (cadr namespace))
+           (cadadr namespace))
+      ""))
+
+
+(defsubst phpinspect-probably-token-p (token)
+  (and (listp token)
+       (keywordp (car token))))
+
 (provide 'phpinspect-util)
 ;;; phpinspect-util.el ends here

@@ -1,3 +1,5 @@
+;;; test-edtrack.el --- Unit tests for phpinspect.el  -*- lexical-binding: t; -*-
+
 (require 'ert)
 (require 'phpinspect-edtrack)
 (require 'phpinspect-meta)

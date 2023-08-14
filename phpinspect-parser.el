@@ -28,17 +28,21 @@
 (require 'phpinspect-bmap)
 (require 'phpinspect-meta)
 (require 'phpinspect-parse-context)
+(require 'phpinspect-token-predicates)
 
 (eval-when-compile
   (define-inline phpinspect--word-end-regex ()
     (inline-quote "\\([[:blank:]]\\|[^0-9a-zA-Z_]\\)")))
 
-(defsubst phpinspect--strip-word-end-space (string)
-  (when phpinspect-parse-context
-    (phpinspect-pctx-register-whitespace
-     phpinspect-parse-context
-     (substring string (- (length string) 1) (length string))))
-  (substring string 0 (- (length string) 1)))
+(define-inline phpinspect--strip-word-end-space (string)
+  (inline-letevals (string)
+    (inline-quote
+     (progn
+       (when phpinspect-parse-context
+         (phpinspect-pctx-register-whitespace
+          phpinspect-parse-context
+          (substring ,string (- (length ,string) 1) (length ,string))))
+       (substring ,string 0 (- (length ,string) 1))))))
 
 (defsubst phpinspect-munch-token-without-attribs (string token-keyword)
   "Return a token of type TOKEN-KEYWORD with STRING as value.
@@ -48,218 +52,6 @@ If STRING has text properties, they are stripped."
     (forward-char length)
     (set-text-properties 0 length nil value)
     (list token-keyword value)))
-
-(defsubst phpinspect-token-type-p (object type)
-  "Returns t if OBJECT is a token of type TYPE.
-Type can be any of the token types returned by
-`phpinspect-parse-buffer-until-point`"
-  (and (listp object) (eq (car object) type)))
-
-(defsubst phpinspect-object-attrib-p (token)
-  (phpinspect-token-type-p token :object-attrib))
-
-(defsubst phpinspect-static-attrib-p (token)
-  (phpinspect-token-type-p token :static-attrib))
-
-(defsubst phpinspect-attrib-p (token)
-  (or (phpinspect-object-attrib-p token)
-      (phpinspect-static-attrib-p token)))
-
-(defun phpinspect-html-p (token)
-  (phpinspect-token-type-p token :html))
-
-(defun phpinspect-comma-p (token)
-  (phpinspect-token-type-p token :comma))
-
-(defsubst phpinspect-terminator-p (token)
-  (phpinspect-token-type-p token :terminator))
-
-(defsubst phpinspect-end-of-token-p (token)
-  (or (phpinspect-terminator-p token)
-      (phpinspect-comma-p token)
-      (phpinspect-html-p token)))
-
-(defsubst phpinspect-end-of-statement-p (token)
-  (or (phpinspect-end-of-token-p token)
-      (phpinspect-block-p token)))
-
-(defsubst phpinspect-incomplete-block-p (token)
-  (phpinspect-token-type-p token :incomplete-block))
-
-(defsubst phpinspect-block-p (token)
-  (or (phpinspect-token-type-p token :block)
-      (phpinspect-incomplete-block-p token)))
-
-(defun phpinspect-end-of-use-p (token)
-  (or (phpinspect-block-p token)
-      (phpinspect-end-of-token-p token)))
-
-(defun phpinspect-static-p (token)
-  (phpinspect-token-type-p token :static))
-
-(defsubst phpinspect-incomplete-const-p (token)
-  (phpinspect-token-type-p token :incomplete-const))
-
-(defsubst phpinspect-const-p (token)
-  (or (phpinspect-token-type-p token :const)
-      (phpinspect-incomplete-const-p token)))
-
-(defsubst phpinspect-scope-p (token)
-  (or (phpinspect-token-type-p token :public)
-      (phpinspect-token-type-p token :private)
-      (phpinspect-token-type-p token :protected)))
-
-(defsubst phpinspect-namespace-p (object)
-  (phpinspect-token-type-p object :namespace))
-
-(defun phpinspect-incomplete-class-p (token)
-  (and (phpinspect-class-p token)
-       (phpinspect-incomplete-block-p (car (last token)))))
-
-(defun phpinspect-incomplete-namespace-p (token)
-  (and (phpinspect-namespace-p token)
-       (or (phpinspect-incomplete-block-p (car (last token)))
-           (phpinspect-incomplete-class-p (car (last token))))))
-
-(defun phpinspect-function-p (token)
-  (phpinspect-token-type-p token :function))
-
-
-(defun phpinspect-class-p (token)
-  (phpinspect-token-type-p token :class))
-
-(defun phpinspect-incomplete-method-p (token)
-  (or (phpinspect-incomplete-function-p token)
-      (and (phpinspect-scope-p token)
-           (phpinspect-incomplete-function-p (car (last token))))
-      (and (phpinspect-scope-p token)
-           (phpinspect-static-p (car (last token)))
-           (phpinspect-incomplete-function-p (car (last (car (last token))))))
-      (and (phpinspect-scope-p token)
-           (phpinspect-function-p (car (last token))))))
-
-(defun phpinspect-incomplete-function-p (token)
-  (and (phpinspect-function-p token)
-       (phpinspect-incomplete-block-p (car (last token)))))
-
-(defsubst phpinspect-incomplete-list-p (token)
-  (phpinspect-token-type-p token :incomplete-list))
-
-(defsubst phpinspect-list-p (token)
-  (or (phpinspect-token-type-p token :list)
-      (phpinspect-incomplete-list-p token)))
-
-(defun phpinspect-declaration-p (token)
-  (phpinspect-token-type-p token :declaration))
-
-(defsubst phpinspect-assignment-p (token)
-  (phpinspect-token-type-p token :assignment))
-
-(defun phpinspect-function-argument-list (php-func)
-  "Get the argument list of a function"
-  (seq-find #'phpinspect-list-p (seq-find #'phpinspect-declaration-p php-func nil) nil))
-
-(defun phpinspect-annotation-p (token)
-  (phpinspect-token-type-p token :annotation))
-
-(defun phpinspect-method-annotation-p (token)
-  (phpinspect-token-type-p token :method-annotation))
-
-(defun phpinspect-var-annotation-p (token)
-  (phpinspect-token-type-p token :var-annotation))
-
-(defun phpinspect-return-annotation-p (token)
-  (phpinspect-token-type-p token :return-annotation))
-
-(defsubst phpinspect-variable-p (token)
-  (phpinspect-token-type-p token :variable))
-
-(defsubst phpinspect-word-p (token)
-  (phpinspect-token-type-p token :word))
-
-(defsubst phpinspect-incomplete-array-p (token)
-  (phpinspect-token-type-p token :incomplete-array))
-
-(defsubst phpinspect-array-p (token)
-  (or (phpinspect-token-type-p token :array)
-      (phpinspect-incomplete-array-p token)))
-
-(defsubst phpinspect-incomplete-root-p (token)
-  (and (phpinspect-root-p token)
-       (seq-find #'phpinspect-incomplete-token-p (cdr token))))
-
-(defsubst phpinspect-incomplete-token-p (token)
-  (or (phpinspect-incomplete-root-p token)
-      (phpinspect-incomplete-class-p token)
-      (phpinspect-incomplete-block-p token)
-      (phpinspect-incomplete-list-p token)
-      (phpinspect-incomplete-array-p token)
-      (phpinspect-incomplete-const-p token)
-      (phpinspect-incomplete-function-p token)
-      (phpinspect-incomplete-method-p token)
-      (phpinspect-incomplete-namespace-p token)))
-
-(defun phpinspect--static-terminator-p (token)
-  (or (phpinspect-function-p token)
-      (phpinspect-end-of-token-p token)))
-
-(defun phpinspect--scope-terminator-p (token)
-  (or (phpinspect-function-p token)
-      (phpinspect-end-of-token-p token)
-      (phpinspect-const-p token)
-      (phpinspect-static-p token)))
-
-(defsubst phpinspect-enclosing-token-p (token)
-  "Returns t when a token can enclose other tokens"
-  (or
-   (phpinspect-list-p token)
-   (phpinspect-block-p token)
-   (phpinspect-class-p token)
-   (phpinspect-function-p token)
-   (phpinspect-array-p token)
-   (phpinspect-scope-p token)
-   (phpinspect-static-p token)
-   (phpinspect-const-p token)))
-
-(defun phpinspect-namespace-keyword-p (token)
-  (and (phpinspect-word-p token) (string= (car (last token)) "namespace")))
-
-(defun phpinspect-use-keyword-p (token)
-  (and (phpinspect-word-p token) (string= (car (last token)) "use")))
-
-
-(defsubst phpinspect-root-p (object)
-  (phpinspect-token-type-p object :root))
-
-(defsubst phpinspect-namespace-or-root-p (object)
-  (or (phpinspect-namespace-p object)
-      (phpinspect-root-p object)))
-
-(defun phpinspect-use-p (object)
-  (phpinspect-token-type-p object :use))
-
-(defun phpinspect-comment-p (token)
-  (or (phpinspect-token-type-p token :comment)
-      (phpinspect-token-type-p token :doc-block)))
-
-(defsubst phpinspect-class-block (class)
-  (caddr class))
-
-(define-inline phpinspect-namespace-is-blocked-p (namespace)
-  (inline-letevals (namespace)
-    (inline-quote
-     (and (= (length ,namespace) 3) (phpinspect-block-p (caddr ,namespace))))))
-
-(defsubst phpinspect-namespace-block (namespace)
-  (when (phpinspect-namespace-is-blocked-p namespace)
-    (caddr namespace)))
-
-(defsubst phpinspect-function-block (php-func)
-  (caddr php-func))
-
-(defsubst phpinspect-not-class-p (token)
-  "Apply inverse of `phpinspect-class-p' to TOKEN."
-  (not (phpinspect-class-p token)))
 
 (defun phpinspect-handler-func-name (handler-name)
   (intern (concat "phpinspect--" (symbol-name handler-name) "-handler")))
@@ -715,6 +507,15 @@ parsing incrementally."
       (phpinspect-munch-token-without-attribs (match-string 0) :variable)
     (list :variable nil)))
 
+(phpinspect-defhandler class-variable (start-token &rest _ignored)
+  "Handler for tokens indicating reference to a variable"
+  ((regexp . "\\$"))
+  (forward-char (length start-token))
+  (if (looking-at (phpinspect-handler-regexp word))
+      (phpinspect-munch-token-without-attribs (match-string 0) :class-variable)
+    (list :class-variable nil)))
+
+
 (phpinspect-defhandler whitespace (whitespace &rest _ignored)
   "Handler that discards whitespace"
   ((regexp . "[[:blank:]\n]+"))
@@ -827,7 +628,7 @@ static keywords with the same meaning as in a class block."
 
 (phpinspect-defparser class-block
   :tree-keyword "block"
-  :handlers '(array tag equals list comma attribute-reference variable
+  :handlers '(array tag equals list comma attribute-reference class-variable
                     assignment-operator whitespace scope-keyword static-keyword
                     const-keyword use-keyword function-keyword word terminator
                     here-doc string comment block))
@@ -961,19 +762,19 @@ nature like argument lists"
 
 (phpinspect-defparser scope-public
   :tree-keyword "public"
-  :handlers '(function-keyword static-keyword const-keyword variable here-doc
+  :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
                                string terminator tag comment)
   :delimiter-predicate #'phpinspect--scope-terminator-p)
 
 (phpinspect-defparser scope-private
   :tree-keyword "private"
-  :handlers '(function-keyword static-keyword const-keyword variable here-doc
+  :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
                                string terminator tag comment)
   :delimiter-predicate #'phpinspect--scope-terminator-p)
 
 (phpinspect-defparser scope-protected
   :tree-keyword "protected"
-  :handlers '(function-keyword static-keyword const-keyword variable here-doc
+  :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
                                string terminator tag comment)
   :delimiter-predicate #'phpinspect--scope-terminator-p)
 
@@ -991,7 +792,7 @@ nature like argument lists"
 
 (phpinspect-defparser static
   :tree-keyword "static"
-  :handlers '(comment function-keyword variable array word terminator tag)
+  :handlers '(comment function-keyword class-variable array word terminator tag)
   :delimiter-predicate #'phpinspect--static-terminator-p)
 
 (phpinspect-defhandler static-keyword (start-token max-point)

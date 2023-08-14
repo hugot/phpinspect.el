@@ -30,20 +30,32 @@
 (defvar phpinspect-cache nil
   "An object used to store and access metadata of PHP projects.")
 
-(defun phpinspect--get-or-create-global-cache ()
-  "Get `phpinspect-cache'.
-If its value is nil, it is created and then returned."
-  (or phpinspect-cache
-      (setq phpinspect-cache (phpinspect--make-cache))))
-
-
-
 (cl-defstruct (phpinspect--cache (:constructor phpinspect--make-cache))
   (projects (make-hash-table :test 'equal :size 10)
             :type hash-table
             :documentation
             "A `hash-table` with the root directories of projects
 as keys and project caches as values."))
+
+(defun phpinspect--get-or-create-global-cache ()
+  "Get `phpinspect-cache'.
+If its value is nil, it is created and then returned."
+  (or phpinspect-cache
+      (setq phpinspect-cache (phpinspect--make-cache))))
+
+(defun phpinspect-purge-cache ()
+  "Assign a fresh, empty cache object to `phpinspect-cache'.
+This effectively purges any cached code information from all
+currently opened projects."
+  (interactive)
+  (when phpinspect-cache
+    ;; Allow currently known cached projects to cleanup after themselves
+    (maphash (lambda (_ project)
+               (phpinspect-project-purge project))
+             (phpinspect--cache-projects phpinspect-cache)))
+
+  ;; Assign a fresh cache object
+  (setq phpinspect-cache (phpinspect--make-cache)))
 
 (cl-defgeneric phpinspect--cache-getproject
     ((cache phpinspect--cache) (project-name string))
