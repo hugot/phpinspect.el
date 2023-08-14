@@ -177,55 +177,62 @@ bareword typenames."))
   ((al phpinspect-autoloader) file)
   (let* ((fs (phpinspect-project-fs (phpinspect-autoloader-project al)))
          (project-root (file-name-directory (cdr file)))
-         (json (phpinspect--read-json-file fs (cdr file)))
-         (autoload (gethash "autoload" json))
-         batch)
-    (when (hash-table-p autoload)
-      (maphash
-       (lambda (type prefixes)
-         (let ((strategy))
-           (pcase type
-             ("psr-0"
-              (maphash
-               (lambda (prefix directory-paths)
-                 (when (stringp directory-paths)
-                   (setq directory-paths (list directory-paths)))
-                 (setq strategy (phpinspect-make-psr0-generated
-                                 :autoloader al
-                                 :fs fs
-                                 :prefix prefix
-                                 :own (eq 'local (car file))))
-                 (dolist (path directory-paths)
-                   (push (file-name-concat project-root path)
-                         (phpinspect-psr0-directories strategy)))
-                 (push strategy batch))
-               prefixes))
-             ("psr-4"
-              (maphash
-               (lambda (prefix directory-paths)
-                 (when (stringp directory-paths)
-                   (setq directory-paths (list directory-paths)))
-                 (setq strategy (phpinspect-make-psr4-generated
-                                 :fs fs
-                                 :autoloader al
-                                 :prefix prefix
-                                 :own (eq 'local (car file))))
-                 (dolist (path directory-paths)
-                   (push (file-name-concat project-root path)
-                         (phpinspect-psr4-directories strategy)))
-                 (push strategy batch))
-               prefixes))
-             ("files"
-              (setq strategy
-                    (phpinspect-make-files
-                     :list (mapcar
-                            (lambda (file) (file-name-concat project-root file))
-                            prefixes)
-                     :autoloader al))
-              (push strategy batch))
-             (_ (phpinspect--log "Unsupported autoload strategy \"%s\" encountered" type)))))
-       autoload)
-      (phpinspect-pipeline-emit-all batch))))
+         json autoload batch)
+
+
+    (condition-case err
+        (setq json (phpinspect--read-json-file fs (cdr file)))
+      (t (message "Error parsing composer json at %s : %s " (cdr file) err)))
+
+    (when json
+      (setq autoload (gethash "autoload" json))
+
+      (when (hash-table-p autoload)
+        (maphash
+         (lambda (type prefixes)
+           (let ((strategy))
+             (pcase type
+               ("psr-0"
+                (maphash
+                 (lambda (prefix directory-paths)
+                   (when (stringp directory-paths)
+                     (setq directory-paths (list directory-paths)))
+                   (setq strategy (phpinspect-make-psr0-generated
+                                   :autoloader al
+                                   :fs fs
+                                   :prefix prefix
+                                   :own (eq 'local (car file))))
+                   (dolist (path directory-paths)
+                     (push (file-name-concat project-root path)
+                           (phpinspect-psr0-directories strategy)))
+                   (push strategy batch))
+                 prefixes))
+               ("psr-4"
+                (maphash
+                 (lambda (prefix directory-paths)
+                   (when (stringp directory-paths)
+                     (setq directory-paths (list directory-paths)))
+                   (setq strategy (phpinspect-make-psr4-generated
+                                   :fs fs
+                                   :autoloader al
+                                   :prefix prefix
+                                   :own (eq 'local (car file))))
+                   (dolist (path directory-paths)
+                     (push (file-name-concat project-root path)
+                           (phpinspect-psr4-directories strategy)))
+                   (push strategy batch))
+                 prefixes))
+               ("files"
+                (setq strategy
+                      (phpinspect-make-files
+                       :list (mapcar
+                              (lambda (file) (file-name-concat project-root file))
+                              prefixes)
+                       :autoloader al))
+                (push strategy batch))
+               (_ (phpinspect--log "Unsupported autoload strategy \"%s\" encountered" type)))))
+         autoload)
+        (phpinspect-pipeline-emit-all batch)))))
 
 
 (cl-defmethod phpinspect-autoloader-resolve ((autoloader phpinspect-autoloader)
