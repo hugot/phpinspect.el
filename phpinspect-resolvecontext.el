@@ -79,7 +79,8 @@
                 (throw 'return (phpinspect-find-statement-before-point bmap child point)))
             (when (phpinspect-statement-introduction-p token)
               (throw 'return previous-siblings))
-            (push child previous-siblings)))))
+            (unless (phpinspect-comment-p token)
+              (push child previous-siblings))))))
     previous-siblings))
 
 (defun phpinspect--get-last-statement-in-token (token)

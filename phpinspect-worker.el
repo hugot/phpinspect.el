@@ -152,6 +152,7 @@ already present in the queue."
                           (phpinspect-worker-skip-next-pause worker))
                 (phpinspect-thread-pause phpinspect-worker-pause-time mx continue))
               (setf (phpinspect-worker-skip-next-pause worker) nil)))
+        ((debug error) (thread-signal main-thread 'phpinspect-worker-error err))
         (t (phpinspect--log "Phpinspect worker thread errored :%s" err))))
     (phpinspect--log "Worker thread exiting")
     (message "phpinspect worker thread exited")))
