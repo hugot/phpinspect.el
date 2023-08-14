@@ -175,7 +175,7 @@ directories."
 
               (phpinspect-pipeline--register-wakeup-function ,inc-queue)
               (while ,continue-running
-                (condition-case err
+                (condition-case-unless-debug err
                     (progn
                       (phpinspect-pipeline-pause)
                       (setq ,incoming (phpinspect-pipeline-receive ,inc-queue))
@@ -335,7 +335,7 @@ directories."
   (declare (indent defun))
   (let ((result (gensym))
         (async-sym (gensym))
-        async macro-params)
+        key value async macro-params)
     (while parameters
       (setq key (pop parameters)
             value (pop parameters))
