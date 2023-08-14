@@ -136,7 +136,8 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
 
     (while (and left-sibling
                 (not (phpinspect-statement-introduction-p (phpinspect-meta-token left-sibling))))
-      (push left-sibling statement)
+      (unless (phpinspect-comment-p (phpinspect-meta-token left-sibling))
+        (push left-sibling statement))
       (setq left-sibling (phpinspect-meta-find-left-sibling left-sibling)))
 
     (phpinspect--log "Eldoc statement is:  %s" (mapcar #'phpinspect-meta-token statement))
@@ -165,16 +166,15 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
         (setf (phpinspect--resolvecontext-subject rctx)
               (mapcar #'phpinspect-meta-token (butlast statement 2)))
 
-        (let* ((type-of-previous-statement
-                (phpinspect-resolve-type-from-context rctx))
-               (method-name-sym (phpinspect-intern-name (cadadr (phpinspect-meta-token (car match-result)))))
-               (class (phpinspect-project-get-class-create
-                       (phpinspect--resolvecontext-project rctx)
-                       type-of-previous-statement))
-               (method (when class
-                         (if static
-                             (phpinspect--class-get-static-method class method-name-sym)
-                           (phpinspect--class-get-method class method-name-sym)))))
+        (when-let* ((type-of-previous-statement
+                     (phpinspect-resolve-type-from-context rctx))
+                    (method-name-sym (phpinspect-intern-name (cadadr (phpinspect-meta-token (car match-result)))))
+                    (class (phpinspect-project-get-class-create
+                            (phpinspect--resolvecontext-project rctx)
+                            type-of-previous-statement))
+                    (method (if static
+                                (phpinspect--class-get-static-method class method-name-sym)
+                              (phpinspect--class-get-method class method-name-sym))))
           (when method
             (phpinspect-make-function-doc :fn method :arg-pos arg-pos))))
        ((setq match-result (phpinspect--match-sequence (last statement 2)
