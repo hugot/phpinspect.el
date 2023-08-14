@@ -66,11 +66,14 @@ of TYPE, if available."
 If ADD-USED-TYPES is set, it must be a function and will be
 called with a list of the types that are used within the
 function (think \"new\" statements, return types etc.)."
+  (phpinspect--log "Indexing function")
   (let* ((php-func (cadr scope))
          (declaration (cadr php-func))
          (type (if (phpinspect-word-p (car (last declaration)))
                    (funcall type-resolver
                             (phpinspect--make-type :name (cadar (last declaration)))))))
+
+    (phpinspect--log "Checking function return annotations")
 
     ;; @return annotation. When dealing with a collection, we want to store the
     ;; type of its members.
@@ -107,6 +110,7 @@ function (think \"new\" statements, return types etc.)."
         (when type (push (phpinspect--type-bare-name type) used-types))
         (funcall add-used-types used-types)))
 
+    (phpinspect--log "Creating function object")
     (phpinspect--make-function
      :scope `(,(car scope))
      :token php-func
@@ -492,7 +496,7 @@ Return value is a list of the types that are \"newed\"."
 (defun phpinspect--index-tokens (tokens &optional type-resolver-factory location-resolver)
   "Index TOKENS as returned by `phpinspect--parse-current-buffer`."
   (or
-   (condition-case err
+   (condition-case-unless-debug err
        (progn
          (unless type-resolver-factory
            (setq type-resolver-factory #'phpinspect--make-type-resolver))
@@ -523,9 +527,6 @@ Return value is a list of the types that are \"newed\"."
                              tokens type-resolver-factory imports))))))
      (t
       (phpinspect--log "phpinspect--index-tokens failed: %s. Enable debug-on-error for backtrace." err)
-      (when (or debug-on-error phpinspect--debug)
-        (require 'backtrace)
-        (backtrace))
       nil))
    '(phpinspect--root-index)))
 
