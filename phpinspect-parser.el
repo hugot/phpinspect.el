@@ -153,8 +153,10 @@ token is \";\", which marks the end of a statement in PHP."
                                delimiter-predicate)))
     `(defsubst ,(phpinspect-parser-func-name name "simple") (buffer max-point &optional skip-over continue-condition &rest _ignored)
        (with-current-buffer buffer
-         (let (tokens token
-                      (delimiter-predicate (when (functionp ,delimiter-predicate) ,delimiter-predicate)))
+         (let* ((tokens (cons ,tree-type nil))
+                (tokens-rear tokens)
+                token
+                (delimiter-predicate (when (functionp ,delimiter-predicate) ,delimiter-predicate)))
            (when skip-over (forward-char skip-over))
            (while (and (< (point) max-point)
                        (if continue-condition (funcall continue-condition) t)
@@ -166,13 +168,9 @@ token is \";\", which marks the end of a statement in PHP."
                         `((looking-at (,(phpinspect-handler-regexp-func-name handler)))
                           (setq token (,(phpinspect-handler-func-name handler) (match-string 0) max-point))
                           (when token
-                            (if (null tokens)
-                                (setq tokens (list token))
-                              (progn
-                                (nconc tokens (list token)))))))
+                            (setq tokens-rear (setcdr tokens-rear (cons token nil))))))
                       handlers)
                    (t (forward-char))))
-           (push ,tree-type tokens)
 
            ;; Return
            tokens)))))
@@ -186,7 +184,8 @@ is able to reuse an already parsed tree."
                                delimiter-predicate)))
     `(defsubst ,(phpinspect-parser-func-name name "incremental") (context buffer max-point &optional skip-over continue-condition root)
        (with-current-buffer buffer
-         (let* ((tokens (list ,tree-type))
+         (let* ((tokens (cons ,tree-type nil))
+                (tokens-rear tokens)
                 (root-start (point))
                 (bmap (phpinspect-pctx-bmap context))
                 (previous-bmap (phpinspect-pctx-previous-bmap context))
@@ -246,7 +245,7 @@ is able to reuse an already parsed tree."
                        handlers)
                     (t (forward-char)))
               (when token
-                (nconc tokens (list token))
+                (setq tokens-rear (setcdr tokens-rear (cons token nil)))
                 (setq token nil))))
            (when root
              (phpinspect-pctx-register-token context tokens root-start (point)))
