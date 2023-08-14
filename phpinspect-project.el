@@ -189,20 +189,23 @@ indexed by the absolute paths of the files they're watching."))
 
 (cl-defmethod phpinspect-project-add-class
   ((project phpinspect-project) (indexed-class (head phpinspect--indexed-class)) &optional index-imports)
-  (let* ((class-name (phpinspect--type-name-symbol
-                      (alist-get 'class-name (cdr indexed-class))))
-         (class (gethash class-name
-                         (phpinspect-project-class-index project))))
-    (unless class
-      (setq class (phpinspect--make-class-generated :project project)))
+  (if (not (alist-get 'class-name (cdr indexed-class)))
+      (phpinspect--log "Error: Class with declaration %s does not have a name" (alist-get 'declaration indexed-class))
+    ;; Else
+    (let* ((class-name (phpinspect--type-name-symbol
+                        (alist-get 'class-name (cdr indexed-class))))
+           (class (gethash class-name
+                           (phpinspect-project-class-index project))))
+      (unless class
+        (setq class (phpinspect--make-class-generated :project project)))
 
-    (when index-imports
-      (phpinspect-project-enqueue-imports
-       project (alist-get 'imports (cdr indexed-class))))
+      (when index-imports
+        (phpinspect-project-enqueue-imports
+         project (alist-get 'imports (cdr indexed-class))))
 
-    (phpinspect--class-set-index class indexed-class)
-    (puthash class-name class (phpinspect-project-class-index project))
-    (phpinspect-project-add-class-attribute-types-to-index-queue project class)))
+      (phpinspect--class-set-index class indexed-class)
+      (puthash class-name class (phpinspect-project-class-index project))
+      (phpinspect-project-add-class-attribute-types-to-index-queue project class))))
 
 (cl-defmethod phpinspect-project-set-class
   ((project phpinspect-project) (class-fqn phpinspect--type) (class phpinspect--class))
