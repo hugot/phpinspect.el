@@ -1,6 +1,6 @@
 ;; phpinspect-worker.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021  Free Software Foundation, Inc
+;; Copyright (C) 2021-2023  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
@@ -134,7 +134,7 @@ already present in the queue."
       ;; This error is used to wake up the thread when new tasks are added to the
       ;; queue.
       (condition-case err
-          (ignore-error 'phpinspect-wakeup-thread
+          (ignore-error phpinspect-wakeup-thread
             (let* ((task (phpinspect-queue-dequeue (phpinspect-worker-queue worker)))
                    (mx (make-mutex))
                    (continue (make-condition-variable mx)))

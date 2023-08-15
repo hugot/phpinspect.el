@@ -1,6 +1,6 @@
 ;;; phpinspect-type.el --- Data structures that represent phpinspect types  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021  Free Software Foundation, Inc
+;; Copyright (C) 2021-2023  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
@@ -244,10 +244,8 @@ return type of the function."))
 (cl-defmethod phpinspect--function-set-name ((func phpinspect--function) (name string))
   (setf (phpinspect--function-name-symbol func) (intern name phpinspect-name-obarray)))
 
-(cl-defgeneric phpinspect--function-name ((func phpinspect--function)))
-
-(cl-defmethod phpinspect--function-name ((func phpinspect--function))
-  (symbol-name (phpinspect--function-name-symbol func)))
+(define-inline phpinspect--function-name (func)
+  (inline-quote (symbol-name (phpinspect--function-name-symbol ,func))))
 
 (cl-defstruct (phpinspect--variable (:constructor phpinspect--make-variable))
   "A PHP Variable."

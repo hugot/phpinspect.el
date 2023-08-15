@@ -1,6 +1,6 @@
 ;;; phpinspect.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021  Free Software Foundation, Inc
+;; Copyright (C) 2021-2023  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
@@ -56,10 +56,6 @@ currently opened projects."
 
   ;; Assign a fresh cache object
   (setq phpinspect-cache (phpinspect--make-cache)))
-
-(cl-defgeneric phpinspect--cache-getproject
-    ((cache phpinspect--cache) (project-name string))
-  "Get project by PROJECT-NAME that is located in CACHE.")
 
 (cl-defmethod phpinspect--cache-getproject
   ((cache phpinspect--cache) (project-root string))

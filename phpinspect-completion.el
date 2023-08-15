@@ -1,6 +1,6 @@
 ;;; phpinspect-type.el --- PHP parsing and completion package -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021  Free Software Foundation, Inc
+;; Copyright (C) 2021-2023  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
@@ -97,11 +97,11 @@ candidate. Candidates can be indexed functions and variables.")
           :type phpinspect-buffer))
 
 
-(cl-defgeneric phpinspect-comp-strategy-supports (strategy (query phpinspect-completion-query) (context phpinspect--resolvecontext))
+(cl-defgeneric phpinspect-comp-strategy-supports (strategy query context)
   "Should return non-nil if STRATEGY should be deployed for QUERY
 and CONTEXT. All strategies must implement this method.")
 
-(cl-defgeneric phpinspect-comp-strategy-execute (strategy (query phpinspect-completion-query) (context phpinspect--resolvecontext))
+(cl-defgeneric phpinspect-comp-strategy-execute (strategy query context)
   "Should return a list of objects for which
 `phpinspect--make-completion' is implemented.")
 

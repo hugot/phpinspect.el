@@ -1,6 +1,6 @@
 ;;; phpinspect-pipeline.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021  Free Software Foundation, Inc
+;; Copyright (C) 2021-2023  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
@@ -273,11 +273,9 @@ directories."
              (while parameters
                (setq key (pop parameters)
                      value (pop parameters))
-               (when (eq :with-context key)
-                 (setq value `(quote ,value)))
                (setq key (intern (string-replace ":with-" ":" (symbol-name key))))
                (setq construct-params (nconc construct-params (list key value)))))
-           (push (eval `(phpinspect--make-pipeline-step ,@construct-params :name (quote ,name)))
+           (push (apply #'phpinspect--make-pipeline-step `(,@construct-params :name ,name))
                  steps)))
         (_ (error "unexpected key %s" key))))
 
@@ -320,7 +318,7 @@ directories."
             ,queue-sym (phpinspect-make-pipeline-end :thread (current-thread)))
 
            (while ,collecting-sym
-             (ignore-error 'phpinspect-pipeline-incoming
+             (ignore-error phpinspect-pipeline-incoming
                (progn
                  (phpinspect-pipeline--register-wakeup-function ,end-queue-sym)
                  (while (not (phpinspect-pipeline-end-p

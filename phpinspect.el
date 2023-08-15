@@ -1,6 +1,6 @@
 ;;; phpinspect.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021  Free Software Foundation, Inc
+;; Copyright (C) 2021-2023  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
@@ -175,14 +175,14 @@ at point (capf) functions:
 
 (defun my-php-personal-hook ()
   ;; Shortcut to add use statements for classes you use.
-  (define-key php-mode-map (kbd \"C-c u\") 'phpinspect-fix-imports)
+  (define-key php-mode-map (kbd \"C-c u\") #\\='phpinspect-fix-imports)
 
   ;; Shortcuts to quickly search/open files of PHP classes.
   ;; You can make these local to php-mode, but making them global
   ;; like this makes them work in other modes/filetypes as well, which
   ;; can be handy when jumping between templates, config files and PHP code.
-  (global-set-key (kbd \"C-c a\") 'phpinspect-find-class-file)
-  (global-set-key (kbd \"C-c c\") 'phpinspect-find-own-class-file)
+  (global-set-key (kbd \"C-c a\") #\\='phpinspect-find-class-file)
+  (global-set-key (kbd \"C-c c\") #\\='phpinspect-find-own-class-file)
 
   ;; Enable phpinspect-mode
   (phpinspect-mode))
@@ -297,7 +297,7 @@ Example configuration for `company-mode':
 (defun phpinspect-get-all-fqns (&optional filter)
   "Return a list of all FQNS congruent with FILTER in the currently active project.
 
-FILTER must be nil or the symbol 'own' if FILTER is 'own', only
+FILTER must be nil or the symbol `own' if FILTER is `own', only
 fully qualified names from the project's source, and not its
 dependencies, are returned."
   (let* ((project (phpinspect--cache-get-project-create

@@ -1,6 +1,6 @@
 ;;; phpinspect-parser.el --- PHP parsing module  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021  Free Software Foundation, Inc
+;; Copyright (C) 2021-2023  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
@@ -348,14 +348,11 @@ parsing incrementally."
 
     `(eval-when-compile
        (let ((parser (phpinspect-make-parser ,@parameters)))
-         (defconst ,simple-name nil)
-         (defconst ,incremental-name nil)
+         (defconst ,simple-name parser)
+         (defconst ,incremental-name parser)
 
          (put (quote ,simple-name) 'phpinspect--parser t)
          (put (quote ,incremental-name) 'phpinspect--incremental-parser t)
-
-         (setf ,simple-name parser)
-         (setf ,incremental-name parser)
 
          ;; Stub function to please the byte compiler (real function will be
          ;; defined by `phpinspect-define-parser-functions'.

@@ -1,6 +1,6 @@
 ;;; phpinspect-parse-context.el --- PHP parsing context module  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021  Free Software Foundation, Inc
+;; Copyright (C) 2021-2023  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
@@ -36,7 +36,7 @@ parsing. Usually used in combination with
   "Parser Context"
   (incremental nil)
   (meta-iterator nil)
-  (interrupt-threshold (time-convert '(2 . 1000))
+  (interrupt-threshold (time-convert '(0 0 2000 0))
                        :documentation
                        "After how much time `interrupt-predicate'
 should be polled. This is 2ms by default.")
@@ -110,7 +110,7 @@ thrown.")
     (inline-quote
      (progn
        (unless (phpinspect-pctx--start-time ,pctx)
-         (setf (phpinspect-pctx--start-time ,pctx) (time-convert nil)))
+         (setf (phpinspect-pctx--start-time ,pctx) (time-convert nil t)))
 
        ;; Interrupt when blocking too long while input is pending.
        (when (and (time-less-p (phpinspect-pctx-interrupt-threshold ,pctx)

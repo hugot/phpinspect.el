@@ -1,6 +1,6 @@
 ;;; phpinspect-project.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021  Free Software Foundation, Inc
+;; Copyright (C) 2021-2023  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
@@ -278,7 +278,7 @@ before the search is executed."
         :documentation
         "The type whose file should be indexed."))
 
-(cl-defgeneric phpinspect-make-index-task ((project phpinspect-project)
+(cl-defmethod phpinspect-make-index-task ((project phpinspect-project)
                                           (type phpinspect--type))
   (phpinspect-make-index-task-generated
    :project project
