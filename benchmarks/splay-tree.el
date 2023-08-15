@@ -25,49 +25,79 @@
 
 (require 'phpinspect-splayt)
 
-(let ((here (file-name-directory (or load-file-name buffer-file-name)))
-      (tree (phpinspect-make-splayt)))
+(let ((tree (phpinspect-make-splayt))
+      result)
   (message "Splay tree 10000 insertions:")
   (garbage-collect)
-  (benchmark
-   1 '(dotimes (i 10000)
-        (phpinspect-splayt-insert tree i 'value)))
+
+  (setq result
+        (benchmark-run 1
+          (dotimes (i 10000)
+            (phpinspect-splayt-insert tree i 'value))))
+
+  (message "Elapsed time: %f (%f in %d GC's)"
+           (car result) (caddr result) (cadr result))
 
   (message "Splay tree 10000 lookups:")
   (garbage-collect)
-  (benchmark
-   1 '(dotimes (i 10000)
-        (phpinspect-splayt-find tree i)))
+  (setq result
+        (benchmark-run 1
+          (dotimes (i 10000)
+            (phpinspect-splayt-find tree i))))
+
+  (message "Elapsed time: %f (%f in %d GC's)"
+           (car result) (caddr result) (cadr result))
 
   (message "Splay tree 10000 items traversal:")
   (garbage-collect)
-  (benchmark
-   1 '(phpinspect-splayt-traverse (i tree)
-        nil))
+  (setq result
+        (benchmark-run 1
+          (phpinspect-splayt-traverse (i tree)
+            i)))
+
+  (message "Elapsed time: %f (%f in %d GC's)"
+           (car result) (caddr result) (cadr result))
+
 
   (message "Splay tree 10000 items LR traversal:")
   (garbage-collect)
-  (benchmark
-   1 '(phpinspect-splayt-traverse-lr (i tree)
-        nil)))
+  (setq result
+        (benchmark-run 1
+          (phpinspect-splayt-traverse-lr (i tree)
+            i)))
+  (message "Elapsed time: %f (%f in %d GC's)"
+           (car result) (caddr result) (cadr result)))
 
 
-(let (map)
+
+(let (map result)
   (message "Hashtable 10000 insertions:")
   (garbage-collect)
-  (benchmark
-   1 '(progn
-        (setq map (make-hash-table :test #'eq :size 10000 :rehash-size 1.5))
-        (dotimes (i 10000)
-        (puthash i 'value map))))
+  (setq result
+        (benchmark-run 1
+          (progn
+            (setq map (make-hash-table :test #'eq :size 10000 :rehash-size 1.5))
+            (dotimes (i 10000)
+              (puthash i 'value map)))))
+  (message "Elapsed time: %f (%f in %d GC's)"
+           (car result) (caddr result) (cadr result))
 
   (message "Hashtable 10000 lookups:")
   (garbage-collect)
-  (benchmark
-   1 '(dotimes (i 10000)
-        (gethash i map)))
+  (setq result
+        (benchmark-run 1
+          (dotimes (i 10000)
+            (gethash i map))))
+
+  (message "Elapsed time: %f (%f in %d GC's)"
+           (car result) (caddr result) (cadr result))
+
 
   (message "Hashtable 10000 iterations:")
   (garbage-collect)
-  (benchmark
-   1 '(maphash (lambda (k v) nil) map)))
+  (setq result
+        (benchmark-run 1
+          (maphash (lambda (k v) k v) map)))
+
+  (message "Elapsed time: %f (%f in %d GC's)"
+           (car result) (caddr result) (cadr result)))

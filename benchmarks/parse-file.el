@@ -75,7 +75,7 @@
         (message "Incremental parse after buffer edit:")
         ;; Removes closing curly brace of __construct
         (goto-char 9062)
-        (delete-backward-char 1)
+        (delete-char -1)
 
         (garbage-collect)
 

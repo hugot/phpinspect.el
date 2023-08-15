@@ -27,7 +27,7 @@
 (require 'phpinspect-parser)
 (require 'phpinspect-buffer)
 (require 'phpinspect-test-env
-         (concat (file-name-directory (or load-file-name buffer-file-name))
+         (concat (file-name-directory (or load-file-name buffer-file-name byte-compile-current-file))
                  "phpinspect-test-env.el"))
 
 (ert-deftest phpinspect-buffer-region-lookups ()
