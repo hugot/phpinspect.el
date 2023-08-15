@@ -314,7 +314,7 @@ class Thing
 
     function doStuff()
     {
-        $this->getThis(new \DateTime(), bla)")
+        $this->getThis(new \\DateTime(), bla)")
          (tokens (phpinspect-parse-string php-code))
          (index (phpinspect--index-tokens tokens))
          (phpinspect-project-root-function (lambda () "phpinspect-test"))

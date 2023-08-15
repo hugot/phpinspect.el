@@ -28,6 +28,12 @@
 (require 'phpinspect-fs)
 (require 'phpinspect-autoload)
 
+(ert-deftest phpinspect-filename-to-typename ()
+  (should (eq (phpinspect-intern-name "\\Foo\\Bar") (phpinspect-filename-to-typename "src/" "src/Foo////////Bar.php")))
+
+  (should (eq (phpinspect-intern-name "\\Foo\\Bar") (phpinspect-filename-to-typename "src/somewhere/else/" "src/somewhere/else/Foo/Bar.php"))))
+
+
 (ert-deftest phpinspect-find-composer-json-files ()
   (let* ((fs (phpinspect-make-virtual-fs))
          (autoloader (phpinspect-make-autoloader

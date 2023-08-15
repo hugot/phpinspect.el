@@ -8,7 +8,7 @@
                  buffer-file-name)))
       (print-length 1000)
       (print-level 1000))
-  (dolist (file (directory-files (concat here "/../fixtures" ) t "\\.php$"))
+  (dolist (file (directory-files (concat here "/../fixtures" ) t "\\.php\\'"))
     (with-temp-buffer
       (insert-file-contents-literally file)
       (let ((result (phpinspect-parse-current-buffer)))

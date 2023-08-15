@@ -107,7 +107,7 @@ buffer position to insert the use statement at."
             (t (message "No import found for type %s" typename))))))
 
 (defun phpinspect-namespace-part-of-typename (typename)
-  (string-trim-right typename "\\\\?[^\\\\]+"))
+  (string-trim-right typename "\\\\?[^\\]+"))
 
 (defalias 'phpinspect-fix-uses-interactive #'phpinspect-fix-imports
   "Alias for backwards compatibility")

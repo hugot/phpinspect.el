@@ -102,7 +102,7 @@ bareword typenames."))
   (inline-quote
    (phpinspect-intern-name
     (replace-regexp-in-string
-     "[\\\\]+"
+     "\\\\[\\]+"
      "\\\\"
      (concat "\\"
              (or ,prefix "")
