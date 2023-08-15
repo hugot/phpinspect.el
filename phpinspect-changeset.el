@@ -23,6 +23,9 @@
 
 ;;; Code:
 
+(eval-when-compile
+  (require 'phpinspect-meta))
+
 (define-inline phpinspect-make-changeset (meta)
   (inline-letevals (meta)
     (inline-quote
@@ -47,17 +50,6 @@
 
 (define-inline phpinspect-changeset-meta (set)
   (inline-quote (car (nthcdr 5 ,set))))
-
-(define-inline phpinspect-meta-with-changeset (meta &rest body)
-  (declare (indent 1))
-  (inline-letevals (meta)
-    (push 'progn body)
-    (inline-quote
-     (progn
-       (when phpinspect-parse-context
-         (phpinspect-pctx-register-changeset
-          phpinspect-parse-context (phpinspect-make-changeset ,meta)))
-       ,body))))
 
 (define-inline phpinspect-changeset-revert (changeset)
   (inline-letevals (changeset)

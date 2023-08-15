@@ -217,7 +217,7 @@
 
 
 (ert-deftest phpinspect-resolve-type-from-context ()
-  (let* ((pctx (phpinspect-make-pctx :incremental t))
+  (let* ((pctx (phpinspect-make-pctx :incremental t :bmap (phpinspect-make-bmap)))
          (code "
 namespace Amazing;
 

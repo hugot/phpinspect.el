@@ -1,4 +1,4 @@
-;; test-autoload.el --- Unit tests for phpinspect.el  -*- lexical-binding: t; -*-
+; test-autoload.el --- Unit tests for phpinspect.el  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021 Free Software Foundation, Inc.
 
@@ -31,7 +31,11 @@
 (ert-deftest phpinspect-find-composer-json-files ()
   (let* ((fs (phpinspect-make-virtual-fs))
          (autoloader (phpinspect-make-autoloader
-                     :project (phpinspect--make-project :root "/root" :fs fs))))
+                      :fs fs
+                      :project-root-resolver (lambda () "/root")
+                      :file-indexer
+                      (phpinspect-project-make-file-indexer
+                       (phpinspect--make-project :root "/root" :fs fs)))))
     (phpinspect-virtual-fs-set-file fs
       "/root/composer.json"
       "{ \"autoload\": { \"psr-4\": {\"WoW\\\\Dwarves\\\\\": \"src/\"}}}")
@@ -57,8 +61,13 @@
 (ert-deftest phpinspect-autoload-composer-json-iterator ()
   (let* ((fs (phpinspect-make-virtual-fs))
          (autoloader (phpinspect-make-autoloader
-                      :project (phpinspect--make-project :root "/root" :fs fs)))
+                      :fs fs
+                      :project-root-resolver (lambda () "/root")
+                      :file-indexer
+                      (phpinspect-project-make-file-indexer
+                       (phpinspect--make-project :root "/root" :fs fs))))
          result error)
+
 
       (phpinspect-virtual-fs-set-file fs
       "/root/composer.json"
@@ -92,7 +101,10 @@
 (ert-deftest phpinspect-al-strategy-execute ()
   (let* ((fs (phpinspect-make-virtual-fs))
          (project (phpinspect--make-project :root "/project/root" :fs fs))
-         (autoloader (phpinspect-make-autoloader :project project))
+         (autoloader (phpinspect-make-autoloader
+                      :fs fs
+                      :project-root-resolver (lambda () "/project/root")
+                      :file-indexer (phpinspect-project-make-file-indexer project)))
          result error)
 
     (setf (phpinspect-project-autoload project) autoloader)
@@ -131,7 +143,7 @@
        "<?php class FilesList { function list() {} }")
 
      (phpinspect-virtual-fs-set-file
-      fs "/project/root/vendor/not-runescape/wow/src/TestClass.php" "")
+       fs "/project/root/vendor/not-runescape/wow/src/TestClass.php" "")
 
     (phpinspect-pipeline (phpinspect-find-composer-json-files fs "/project/root")
       :async (lambda (res err)

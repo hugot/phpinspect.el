@@ -26,6 +26,7 @@
 (require 'phpinspect-util)
 
 (eval-when-compile
+  (require 'phpinspect-meta)
   (phpinspect--declare-log-group 'edtrack))
 
 (cl-defstruct (phpinspect-edtrack (:constructor phpinspect-make-edtrack))
@@ -40,43 +41,8 @@
                    :type integer
                    :documentation "Last registered edit start position"))
 
-(defsubst phpinspect-edtrack-make-taint-iterator (track)
-  (cons (car (phpinspect-edtrack-taint-pool track))
-        (cl-copy-list (cdr (phpinspect-edtrack-taint-pool track)))))
-
-(define-inline phpinspect-taint-iterator-current (iter)
-  (inline-quote (car ,iter)))
-
-(define-inline phpinspect-taint-iterator-follow (iter pos)
-  (inline-letevals (iter pos)
-    (inline-quote
-     (or (while (and (phpinspect-taint-iterator-current ,iter)
-                     (> ,pos (phpinspect-taint-end
-                              (phpinspect-taint-iterator-current ,iter))))
-           (setf (phpinspect-taint-iterator-current ,iter) (pop (cdr ,iter))))
-         (phpinspect-taint-iterator-current ,iter)))))
-
-(define-inline phpinspect-taint-iterator-token-is-tainted-p (iter meta)
-  (inline-letevals (iter meta)
-    (inline-quote
-     (and (phpinspect-taint-iterator-follow ,iter (phpinspect-meta-start ,meta))
-          (phpinspect-taint-overlaps-meta
-           (phpinspect-taint-iterator-current ,iter) ,meta)))))
-
-(define-inline phpinspect-taint-iterator-region-is-tainted-p (iter start end)
-  (inline-letevals (iter start end)
-    (inline-quote
-     (and (phpinspect-taint-iterator-follow ,iter ,start)
-          (phpinspect-taint-overlaps-region
-           (phpinspect-taint-iterator-current ,iter) ,start ,end)))))
-
 (defsubst phpinspect-edit-original-end (edit)
   (or (caar edit) 0))
-
-(defsubst phpinspect-edit-end (edit)
-  (let ((end (or (caar edit) 0))
-        (previous-edit (cdr edit)))
-    (+ end (phpinspect-edit-delta previous-edit))))
 
 (defsubst phpinspect-edit-delta (edit)
   (let ((delta (or (cdar edit) 0))
@@ -84,6 +50,11 @@
     (while (setq previous-edit (cdr previous-edit))
       (setq delta (+ delta (cdar previous-edit))))
     delta))
+
+(defsubst phpinspect-edit-end (edit)
+  (let ((end (or (caar edit) 0))
+        (previous-edit (cdr edit)))
+    (+ end (phpinspect-edit-delta previous-edit))))
 
 (defsubst phpinspect-edtrack-original-position-at-point (track point)
   (let ((edit (phpinspect-edtrack-edits track))
@@ -113,48 +84,14 @@
         (- pos encroached)
       pos)))
 
+(define-inline phpinspect-taint-start (taint)
+  (inline-quote (car ,taint)))
 
-(defsubst phpinspect-edtrack-register-edit (track start end pre-change-length)
-  (phpinspect--log
-   "Edtrack registered change: [start: %d, end: %d, pre-change-length: %d]"
-   start end pre-change-length)
+(define-inline phpinspect-taint-end (taint)
+  (inline-quote (cdr ,taint)))
 
-  (let ((original-start (phpinspect-edtrack-original-position-at-point track start)))
-    (phpinspect-edtrack-register-taint
-     track original-start (+ original-start pre-change-length)))
-
-  (let ((edit-before (phpinspect-edtrack-edits track)))
-    (while (and edit-before (< end (phpinspect-edit-end edit-before)))
-      (setq edit-before (cdr edit-before)))
-
-    (let ((delta ;; The delta of this edit.
-           (- (- end start) pre-change-length))
-          new-edit)
-      (setq new-edit (cons
-                        ;; The end location of the edited region, before being
-                        ;; edited, with the delta edits that happened at preceding
-                        ;; points in the buffer subtratted. This corresponds with
-                        ;; the original position of the region end before the
-                        ;; buffer was ever edited.
-                        (phpinspect-edtrack-original-position-at-point
-                         track (+ start pre-change-length))
-                        delta))
-        (if edit-before
-            (progn
-              (setcdr edit-before (cons (car edit-before) (cdr edit-before)))
-              (setcar edit-before new-edit))
-          (if (phpinspect-edtrack-edits track)
-              (push new-edit (cdr (last (phpinspect-edtrack-edits track))))
-            (push new-edit (phpinspect-edtrack-edits track)))))))
-
-(defsubst phpinspect-taint-start (taint)
-  (car taint))
-
-(defsubst phpinspect-taint-end (taint)
-  (cdr taint))
-
-(defsubst phpinspect-make-taint (start end)
-  (cons start end))
+(define-inline phpinspect-make-taint (start end)
+  (inline-quote (cons ,start ,end)))
 
 (defsubst phpinspect-taint-overlaps-point (taint point)
   (and (> (phpinspect-taint-end taint) point)
@@ -179,15 +116,6 @@
       (phpinspect-taint-overlaps-point taint (phpinspect-meta-end meta))
       (phpinspect-meta-overlaps-point meta (phpinspect-taint-start taint))
       (phpinspect-meta-overlaps-point meta (phpinspect-taint-end taint))))
-
-(defsubst phpinspect-edtrack-clear-taint-pool (track)
-  (setf (phpinspect-edtrack-taint-pool track) nil))
-
-(defsubst phpinspect-edtrack-clear (track)
-  (setf (phpinspect-edtrack-edits track) nil)
-  (setf (phpinspect-edtrack-last-edit track) nil)
-  (setf (phpinspect-edtrack-last-edit-start track) -1)
-  (phpinspect-edtrack-clear-taint-pool track))
 
 (defsubst phpinspect-edtrack-register-taint (track start end)
   (let ((pool (phpinspect-edtrack-taint-pool track))
@@ -228,6 +156,80 @@
            (setcdr left-neighbour (cons taint (cdr left-neighbour))))
           (t
            (push taint (phpinspect-edtrack-taint-pool track))))))
+
+(defsubst phpinspect-edtrack-register-edit (track start end pre-change-length)
+  (phpinspect--log
+   "Edtrack registered change: [start: %d, end: %d, pre-change-length: %d]"
+   start end pre-change-length)
+
+  (let ((original-start (phpinspect-edtrack-original-position-at-point track start)))
+    (phpinspect-edtrack-register-taint
+     track original-start (+ original-start pre-change-length)))
+
+  (let ((edit-before (phpinspect-edtrack-edits track)))
+    (while (and edit-before (< end (phpinspect-edit-end edit-before)))
+      (setq edit-before (cdr edit-before)))
+
+    (let ((delta ;; The delta of this edit.
+           (- (- end start) pre-change-length))
+          new-edit)
+      (setq new-edit (cons
+                        ;; The end location of the edited region, before being
+                        ;; edited, with the delta edits that happened at preceding
+                        ;; points in the buffer subtratted. This corresponds with
+                        ;; the original position of the region end before the
+                        ;; buffer was ever edited.
+                        (phpinspect-edtrack-original-position-at-point
+                         track (+ start pre-change-length))
+                        delta))
+        (if edit-before
+            (progn
+              (setcdr edit-before (cons (car edit-before) (cdr edit-before)))
+              (setcar edit-before new-edit))
+          (if (phpinspect-edtrack-edits track)
+              (push new-edit (cdr (last (phpinspect-edtrack-edits track))))
+            (push new-edit (phpinspect-edtrack-edits track)))))))
+
+
+(defsubst phpinspect-edtrack-clear-taint-pool (track)
+  (setf (phpinspect-edtrack-taint-pool track) nil))
+
+(defsubst phpinspect-edtrack-clear (track)
+  (setf (phpinspect-edtrack-edits track) nil)
+  (setf (phpinspect-edtrack-last-edit track) nil)
+  (setf (phpinspect-edtrack-last-edit-start track) -1)
+  (phpinspect-edtrack-clear-taint-pool track))
+
+
+(defsubst phpinspect-edtrack-make-taint-iterator (track)
+  (cons (car (phpinspect-edtrack-taint-pool track))
+        (cl-copy-list (cdr (phpinspect-edtrack-taint-pool track)))))
+
+(define-inline phpinspect-taint-iterator-current (iter)
+  (inline-quote (car ,iter)))
+
+(define-inline phpinspect-taint-iterator-follow (iter pos)
+  (inline-letevals (iter pos)
+    (inline-quote
+     (or (while (and (phpinspect-taint-iterator-current ,iter)
+                     (> ,pos (phpinspect-taint-end
+                              (phpinspect-taint-iterator-current ,iter))))
+           (setf (phpinspect-taint-iterator-current ,iter) (pop (cdr ,iter))))
+         (phpinspect-taint-iterator-current ,iter)))))
+
+(define-inline phpinspect-taint-iterator-token-is-tainted-p (iter meta)
+  (inline-letevals (iter meta)
+    (inline-quote
+     (and (phpinspect-taint-iterator-follow ,iter (phpinspect-meta-start ,meta))
+          (phpinspect-taint-overlaps-meta
+           (phpinspect-taint-iterator-current ,iter) ,meta)))))
+
+(define-inline phpinspect-taint-iterator-region-is-tainted-p (iter start end)
+  (inline-letevals (iter start end)
+    (inline-quote
+     (and (phpinspect-taint-iterator-follow ,iter ,start)
+          (phpinspect-taint-overlaps-region
+           (phpinspect-taint-iterator-current ,iter) ,start ,end)))))
 
 (provide 'phpinspect-edtrack)
 ;;; phpinspect-edtrack.el ends here

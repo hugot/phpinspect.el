@@ -169,7 +169,7 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
                      (alist-get key index2-class))))))
 
 (ert-deftest phpinspect-index-bmap-class ()
-  (let* ((pctx (phpinspect-make-pctx :incremental t))
+  (let* ((pctx (phpinspect-make-pctx :incremental t :bmap (phpinspect-make-bmap)))
          (tree))
     (with-temp-buffer
       (insert-file-contents (concat phpinspect-test-php-file-directory "/IndexClass1.php"))

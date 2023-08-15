@@ -26,7 +26,6 @@
 (require 'phpinspect-util)
 (require 'phpinspect-meta)
 (require 'phpinspect-changeset)
-(require 'phpinspect-bmap)
 
 (defvar phpinspect-parse-context nil
   "An instance of `phpinspect-pctx' that is used when
@@ -55,7 +54,7 @@ thrown.")
               :documentation "Metadata change sets executed during this parse")
   (edtrack nil
            :type phpinspect-edtrack)
-  (bmap (phpinspect-make-bmap)
+  (bmap nil
         :type phpinspect-bmap)
   (previous-bmap nil
                  :type phpinspect-bmap)
@@ -94,6 +93,18 @@ thrown.")
    (progn
      (push ,changeset (phpinspect-pctx-changesets ,pctx)))))
 
+(define-inline phpinspect-meta-with-changeset (meta &rest body)
+  (declare (indent 1))
+  (inline-letevals (meta)
+    (push 'progn body)
+    (inline-quote
+     (progn
+       (when phpinspect-parse-context
+         (phpinspect-pctx-register-changeset
+          phpinspect-parse-context (phpinspect-make-changeset ,meta)))
+       ,body))))
+
+
 (define-inline phpinspect-pctx-check-interrupt (pctx)
   (inline-letevals (pctx)
     (inline-quote
@@ -107,12 +118,6 @@ thrown.")
                   (funcall (phpinspect-pctx-interrupt-predicate ,pctx)))
          (phpinspect-pctx-cancel ,pctx)
          (throw 'phpinspect-parse-interrupted nil))))))
-
-(define-inline phpinspect-pctx-register-token (pctx token start end)
-  (inline-letevals (pctx)
-    (inline-quote
-     (phpinspect-bmap-register
-      (phpinspect-pctx-bmap ,pctx) ,start ,end ,token (phpinspect-pctx-consume-whitespace ,pctx)))))
 
 (define-inline phpinspect-pctx-register-whitespace (pctx whitespace)
   (inline-quote

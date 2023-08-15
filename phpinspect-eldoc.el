@@ -24,8 +24,9 @@
 ;;; Code:
 (require 'phpinspect-util)
 (require 'phpinspect-meta)
-(require 'phpinspect-parser)
+(require 'phpinspect-token-predicates)
 (require 'phpinspect-resolve)
+(require 'phpinspect-buffer)
 
 (defvar phpinspect-eldoc-word-width 14
   "The maximum width of words in eldoc strings.")

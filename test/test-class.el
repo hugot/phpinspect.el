@@ -101,7 +101,9 @@
     (should (= 1 (length (hash-table-values (phpinspect--class-subscriptions other-class)))))))
 
 (ert-deftest phpinspect--class-update-declaration ()
-  (let ((class (phpinspect--make-class-generated :project (phpinspect--make-project))))
+  (let ((class (phpinspect--make-class-generated
+                :class-retriever (phpinspect-project-make-class-retriever
+                                  (phpinspect--make-project)))))
     (phpinspect--class-update-declaration class '(:declaration (:word "class") (:word "TestClass")
                                                                (:word "extends") (:word "OtherClass")
                                                                (:word "implements") (:word "ImplClass"))

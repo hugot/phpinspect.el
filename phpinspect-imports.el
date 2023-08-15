@@ -25,7 +25,7 @@
 
 ;;; Code:
 
-(require 'phpinspect-parser)
+(require 'phpinspect-token-predicates)
 (require 'phpinspect-index)
 (require 'phpinspect-autoload)
 (require 'phpinspect-buffer)
@@ -80,15 +80,13 @@ buffer position to insert the use statement at."
            (format "use %s;%c" fqn ?\n))
         (let* ((first-token (phpinspect-meta-first-child (phpinspect-buffer-root-meta buffer)))
                token-after)
-          (message "First token %s" (phpinspect-meta-string first-token))
           (when (and (phpinspect-word-p (phpinspect-meta-token first-token))
                      (string= "declare" (cadr (phpinspect-meta-token first-token))))
             (progn
               (setq token-after first-token)
               (while (and token-after (not (phpinspect-terminator-p
                                             (phpinspect-meta-token token-after))))
-                (setq token-after (phpinspect-meta-find-right-sibling token-after))
-                (message "Token after: %s" (phpinspect-meta-string token-after)))))
+                (setq token-after (phpinspect-meta-find-right-sibling token-after)))))
           (if token-after
               (phpinspect-insert-at-point
                (phpinspect-meta-end token-after) (format "%c%cuse %s;%c" ?\n ?\n fqn ?\n))
@@ -155,8 +153,6 @@ that there are import (\"use\") statements for them."
                  (class-name (alist-get 'class-name class))
                  (region (alist-get 'location class))
                  token-meta)
-            (message "Region: %s" region)
-            (message "index: %s" index)
             (setq token-meta (phpinspect-meta-find-parent-matching-token
                               (phpinspect-bmap-last-token-before-point
                                (phpinspect-buffer-map buffer)

@@ -129,7 +129,7 @@ directories."
 (define-inline phpinspect-pipeline-pause ()
   "Pause the current pipeline thread"
   (inline-quote
-   (if (input-pending-p)
+   (if (phpinspect--input-pending-p)
        (let ((mx (make-mutex)))
          (phpinspect-thread-pause
           phpinspect-pipeline-pause-time mx (make-condition-variable mx "phpinspect-pipeline-pause")))

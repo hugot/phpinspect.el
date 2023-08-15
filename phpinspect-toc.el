@@ -24,7 +24,8 @@
 ;;; Code:
 
 (require 'phpinspect-splayt)
-(require 'phpinspect-parser)
+(eval-when-compile
+  (require 'phpinspect-meta))
 
 (defun phpinspect-make-toc (&optional tree)
   (let ((table (make-hash-table :test #'eq :size 20 :rehash-size 2.0)))

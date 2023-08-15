@@ -25,7 +25,7 @@
 
 (require 'phpinspect-resolvecontext)
 (require 'phpinspect-resolve)
-(require 'phpinspect-parser)
+(require 'phpinspect-token-predicates)
 (require 'phpinspect-type)
 (require 'phpinspect-project)
 (require 'phpinspect-class)

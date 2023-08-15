@@ -29,7 +29,7 @@
 
 (ert-deftest phpinspect-pctx-cancel ()
   (let ((meta (phpinspect-make-meta nil 10 20 "    " 'token 'overlay nil))
-        (pctx (phpinspect-make-pctx)))
+        (pctx (phpinspect-make-pctx :bmap (phpinspect-make-bmap))))
     (phpinspect-with-parse-context pctx
       (phpinspect-meta-with-changeset meta
         (setf (phpinspect-meta-absolute-start meta) 222)

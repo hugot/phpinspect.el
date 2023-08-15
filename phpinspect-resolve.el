@@ -24,8 +24,9 @@
 ;;; Code:
 
 (require 'phpinspect-resolvecontext)
+(require 'phpinspect-cache)
 (require 'phpinspect-type)
-(require 'phpinspect-parser)
+(require 'phpinspect-token-predicates)
 
 (cl-defstruct (phpinspect--assignment
                (:constructor phpinspect--make-assignment))
@@ -35,13 +36,6 @@
   (from nil
         :type phpinspect-token
         :documentation "The token that is assigned from"))
-
-(define-inline phpinspect-statement-introduction-p (token)
-  (inline-letevals (token)
-    (inline-quote
-     (or (phpinspect-return-p ,token)
-         (phpinspect-end-of-statement-p ,token)
-         (phpinspect-function-p ,token)))))
 
 (defsubst phpinspect-block-or-list-p (token)
   (or (phpinspect-block-p token)

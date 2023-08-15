@@ -24,6 +24,11 @@
 ;;; Code:
 
 (require 'phpinspect-util)
+(require 'phpinspect-token-predicates)
+
+(eval-when-compile
+  (require 'phpinspect-parser))
+
 
 (cl-defstruct (phpinspect--type
                (:constructor phpinspect--make-type-generated)
@@ -278,6 +283,70 @@ mutability of the variable")
 (defun phpinspect--variable-vanilla-p (variable)
   (not (or (phpinspect--variable-static-p variable)
            (phpinspect--variable-const-p variable))))
+
+(defun phpinspect--use-to-type (use)
+  (let* ((fqn (cadr (cadr use)))
+         (type (phpinspect--make-type :name (if (string-match "^\\\\" fqn)
+                                                fqn
+                                              (concat "\\" fqn))
+                                      :fully-qualified t))
+         (type-name (if (and (phpinspect-word-p (caddr use))
+                             (string= "as" (cadr (caddr use))))
+                        (cadr (cadddr use))
+                      (progn (string-match "[^\\]+$" fqn)
+                             (match-string 0 fqn)))))
+    (cons (phpinspect-intern-name type-name) type)))
+
+(defun phpinspect--uses-to-types (uses)
+  (mapcar #'phpinspect--use-to-type uses))
+
+(defun phpinspect--get-class-name-from-token (class-token)
+  (let ((subtoken (seq-find (lambda (word)
+                              (and (phpinspect-word-p word)
+                                   (not (string-match
+                                         (concat "^" (phpinspect--class-keyword-handler-regexp))
+                                         (concat (cadr word) " ")))))
+                            (cadr class-token))))
+    (cadr subtoken)))
+
+(defun phpinspect--index-class-declaration (decl type-resolver)
+  ;; Find out what the class extends or implements
+  (let (encountered-extends encountered-implements encountered-class
+        class-name extends implements used-types)
+    (dolist (word decl)
+      (if (phpinspect-word-p word)
+          (cond ((string= (cadr word) "extends")
+                 (phpinspect--log "Class %s extends other classes" class-name)
+                 (setq encountered-extends t))
+                ((string= (cadr word) "implements")
+                 (setq encountered-extends nil)
+                 (phpinspect--log "Class %s implements in interface" class-name)
+                 (setq encountered-implements t))
+                ((string= (cadr word) "class")
+                 (setq encountered-class t))
+                (t
+                 (phpinspect--log "Calling Resolver from index-class on %s" (cadr word))
+                 (cond (encountered-extends
+                        (push (funcall type-resolver (phpinspect--make-type
+                                                      :name (cadr word)))
+                              extends)
+                        (push (cadr word) used-types))
+                       (encountered-implements
+                        (push (funcall type-resolver (phpinspect--make-type
+                                                      :name (cadr word)))
+                              implements)
+                        (push (cadr word) used-types))
+                       (encountered-class
+                        (setq class-name (funcall type-resolver (phpinspect--make-type :name (cadr word)))
+                              encountered-class nil)))))))
+
+    (list class-name extends implements used-types)))
+
+(defun phpinspect-namespace-name (namespace)
+  (or (and (phpinspect-namespace-p namespace)
+           (phpinspect-word-p (cadr namespace))
+           (cadadr namespace))
+      ""))
 
 (provide 'phpinspect-type)
 ;;; phpinspect-type.el ends here

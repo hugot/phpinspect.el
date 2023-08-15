@@ -23,6 +23,7 @@
 
 ;;; Code:
 
+(require 'phpinspect-class)
 (require 'phpinspect-parser)
 (require 'phpinspect-bmap)
 (require 'phpinspect-edtrack)
@@ -77,7 +78,7 @@ linked with."
         (let* ((map (phpinspect-make-bmap))
                (buffer-map (phpinspect-buffer-map buffer))
                (ctx (phpinspect-make-pctx
-                     :interrupt-predicate (unless no-interrupt #'input-pending-p)
+                     :interrupt-predicate (unless no-interrupt #'phpinspect--input-pending-p)
                      :bmap map
                      :incremental t
                      :previous-bmap buffer-map

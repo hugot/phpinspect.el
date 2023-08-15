@@ -1,4 +1,4 @@
-;;; phpinspect-worker.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
+;; phpinspect-worker.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021  Free Software Foundation, Inc
 
@@ -25,7 +25,7 @@
 
 (require 'cl-lib)
 (require 'phpinspect-util)
-(require 'phpinspect-project)
+(require 'phpinspect-project-struct)
 (require 'phpinspect-index)
 (require 'phpinspect-class)
 (require 'phpinspect-queue)
@@ -75,7 +75,7 @@ on the worker independent of dynamic variables during testing.")
 (cl-defmethod phpinspect-resolve-dynamic-worker ((_worker phpinspect-dynamic-worker))
   phpinspect-worker)
 
-(defsubst phpinspect-make-dynamic-worker ()
+(defun phpinspect-make-dynamic-worker ()
   (phpinspect-make-dynamic-worker-generated))
 
 (defsubst phpinspect-make-worker ()
@@ -148,7 +148,7 @@ already present in the queue."
 
               ;; Pause for a second after indexing something, to allow user input to
               ;; interrupt the thread.
-              (unless (or (not (input-pending-p))
+              (unless (or (not (phpinspect--input-pending-p))
                           (phpinspect-worker-skip-next-pause worker))
                 (phpinspect-thread-pause phpinspect-worker-pause-time mx continue))
               (setf (phpinspect-worker-skip-next-pause worker) nil)))
@@ -224,87 +224,6 @@ already present in the queue."
 
 (cl-defgeneric phpinspect-task-project (task)
   "The project that this task belongs to.")
-
-
-;;; INDEX TASK
-(cl-defstruct (phpinspect-index-task
-               (:constructor phpinspect-make-index-task-generated))
-  "Represents an index task that can be executed by a `phpinspect-worker`."
-  (project nil
-           :type phpinspect-project
-           :documentation
-           "The project that the task should be executed for.")
-  (type nil
-        :type phpinspect--type
-        :documentation
-        "The type whose file should be indexed."))
-
-(cl-defgeneric phpinspect-make-index-task ((project phpinspect-project)
-                                          (type phpinspect--type))
-  (phpinspect-make-index-task-generated
-   :project project
-   :type type))
-
-(cl-defmethod phpinspect-task-project ((task phpinspect-index-task))
-  (phpinspect-index-task-project task))
-
-
-(cl-defmethod phpinspect-task= ((task1 phpinspect-index-task) (task2 phpinspect-index-task))
-  (and (eq (phpinspect-index-task-project task1)
-           (phpinspect-index-task-project task2))
-       (phpinspect--type= (phpinspect-index-task-type task1) (phpinspect-index-task-type task2))))
-
-(cl-defmethod phpinspect-task-execute ((task phpinspect-index-task)
-                                       (worker phpinspect-worker))
-  "Execute index TASK for WORKER."
-  (let ((project (phpinspect-index-task-project task))
-        (is-native-type (phpinspect--type-is-native
-                         (phpinspect-index-task-type task))))
-    (phpinspect--log "Indexing class %s for project in %s as task."
-                     (phpinspect-index-task-type task)
-                     (phpinspect-project-root project))
-
-    (cond (is-native-type
-           (phpinspect--log "Skipping indexation of native type %s as task"
-                            (phpinspect-index-task-type task))
-
-           ;; We can skip pausing when a native type is encountered
-           ;; and skipped, as we haven't done any intensive work that
-           ;; may cause hangups.
-           (setf (phpinspect-worker-skip-next-pause worker) t))
-          (t
-           (let* ((type (phpinspect-index-task-type task))
-                  (root-index (phpinspect-project-index-type-file project type)))
-             (when root-index
-               (phpinspect-project-add-index project root-index)))))))
-
-;;; INDEX FILE TASK
-(cl-defstruct (phpinspect-index-dir-task (:constructor phpinspect-make-index-dir-task))
-  "A task for the indexation of files"
-  (project nil
-           :type phpinspect-project)
-  (dir nil
-       :type string))
-
-(cl-defmethod phpinspect-task=
-  ((task1 phpinspect-index-dir-task) (task2 phpinspect-index-dir-task))
-  (and (eq (phpinspect-index-dir-task-project task1)
-           (phpinspect-index-dir-task-project task2))
-       (string= (phpinspect-index-dir-task-dir task1)
-                (phpinspect-index-dir-task-dir task2))))
-
-(cl-defmethod phpinspect-task-project ((task phpinspect-index-dir-task))
-  (phpinspect-index-dir-task-project task))
-
-(cl-defmethod phpinspect-task-execute ((task phpinspect-index-dir-task)
-                                       (_worker phpinspect-worker))
-  (phpinspect--log "Entering..")
-  (let* ((project (phpinspect-index-dir-task-project task))
-         (fs (phpinspect-project-fs project))
-         (dir (phpinspect-index-dir-task-dir task)))
-    (phpinspect--log "Indexing directory %s" dir)
-    (phpinspect-pipeline (phpinspect-fs-directory-files-recursively fs dir "\\.php$")
-      :into (phpinspect-project-add-file-index :with-context project))))
 
 (provide 'phpinspect-worker)
 ;;; phpinspect-worker.el ends here

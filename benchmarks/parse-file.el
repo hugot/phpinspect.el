@@ -12,7 +12,7 @@
     (insert-file-contents (concat here "/Response.php"))
 
     (message "Incremental parse (warmup):")
-    (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t)
+    (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :bmap (phpinspect-make-bmap))
       (benchmark 1 '(phpinspect-parse-current-buffer)))
 
     (let ((bmap (phpinspect-make-bmap))
@@ -24,13 +24,19 @@
       (garbage-collect)
 
       (message "Incremental parse (no edits):")
-      (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :bmap bmap2 :previous-bmap bmap :edtrack (phpinspect-make-edtrack))
+      (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t
+                                                           :bmap bmap2
+                                                           :previous-bmap bmap
+                                                           :edtrack (phpinspect-make-edtrack))
         (benchmark 1 '(phpinspect-parse-current-buffer)))
 
       (garbage-collect)
 
       (message "Incremental parse repeat (no edits):")
-      (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :previous-bmap bmap2 :edtrack (phpinspect-make-edtrack))
+      (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t
+                                                           :bmap (phpinspect-make-bmap)
+                                                           :previous-bmap bmap2
+                                                           :edtrack (phpinspect-make-edtrack))
         (benchmark 1 '(phpinspect-parse-current-buffer)))
 
       (garbage-collect)
@@ -64,7 +70,10 @@
 
         ;;(profiler-start 'cpu)
         (message "Incremental parse after 2 more edits:")
-        (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :previous-bmap bmap-after :edtrack edtrack)
+        (phpinspect-with-parse-context (phpinspect-make-pctx :bmap (phpinspect-make-bmap)
+                                                             :incremental t
+                                                             :previous-bmap bmap-after
+                                                             :edtrack edtrack)
           (benchmark 1 '(phpinspect-parse-current-buffer)))
 
         ;; (save-current-buffer

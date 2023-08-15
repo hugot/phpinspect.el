@@ -26,6 +26,7 @@
 (require 'phpinspect-splayt)
 (require 'phpinspect-meta)
 (require 'phpinspect-changeset)
+(require 'phpinspect-parse-context)
 (require 'phpinspect-util)
 (require 'compat)
 (require 'phpinspect-token-predicates)
@@ -216,6 +217,13 @@
 
     (setf (phpinspect-bmap-last-token-start bmap) start)
     (push token-meta (phpinspect-bmap-token-stack bmap))))
+
+(define-inline phpinspect-pctx-register-token (pctx token start end)
+  (inline-letevals (pctx)
+    (inline-quote
+     (phpinspect-bmap-register
+      (phpinspect-pctx-bmap ,pctx) ,start ,end ,token (phpinspect-pctx-consume-whitespace ,pctx)))))
+
 
 (defsubst phpinspect-overlay-p (overlay)
   (and (listp overlay)

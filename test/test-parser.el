@@ -42,7 +42,7 @@
 
 
 (ert-deftest phpinspect-parse-bmap ()
-  (let* ((ctx (phpinspect-make-pctx :incremental t))
+  (let* ((ctx (phpinspect-make-pctx :incremental t :bmap (phpinspect-make-bmap)))
          (code "
 class TestClass {
     public function getCurrentStatisticAction(): JsonResponse
@@ -73,7 +73,7 @@ class TestClass {
 
 (ert-deftest phpinspect-parse-comma ()
   (let* ((code "(,)")
-         (ctx (phpinspect-make-pctx :incremental t))
+         (ctx (phpinspect-make-pctx :incremental t :bmap (phpinspect-make-bmap)))
          (parsed (phpinspect-with-parse-context ctx
                    (phpinspect-parse-string code)))
          (comma (cadadr parsed))

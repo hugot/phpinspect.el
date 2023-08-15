@@ -24,7 +24,6 @@
 ;;; Code:
 
 (require 'cl-lib)
-(require 'phpinspect-project)
 (require 'phpinspect-fs)
 (require 'phpinspect-util)
 (require 'phpinspect-pipeline)
@@ -72,9 +71,12 @@
                (:constructor phpinspect-make-autoloader))
   (refresh-thread nil
                   :type thread)
-  (project nil
-           :type phpinspect-project
-           :documentation "The project that this autoloader can find files for")
+  (fs nil
+      :type phpinspect-fs)
+  (file-indexer nil
+                :type function)
+  (project-root-resolver nil
+                         :type function)
   (own-types (make-hash-table :test 'eq :size 10000 :rehash-size 10000)
              :type hash-table
              :documentation "The internal types that can be
@@ -160,9 +162,9 @@ bareword typenames."))
 
 (cl-defmethod phpinspect-al-strategy-execute ((strat phpinspect-files))
   (phpinspect--log "indexing files list: %s" (phpinspect-files-list strat))
-  (let* ((project (phpinspect-autoloader-project (phpinspect-files-autoloader strat))))
+  (let* ((indexer (phpinspect-autoloader-file-indexer (phpinspect-files-autoloader strat))))
     (phpinspect-pipeline (phpinspect-files-list strat)
-      :into (phpinspect-project-add-file-index :with-context project))))
+      :into (funcall :with-context indexer))))
 
 (cl-defmethod phpinspect-autoloader-put-type-bag ((al phpinspect-autoloader) (type-fqn symbol))
   (let* ((type-name (phpinspect-intern-name
@@ -175,7 +177,7 @@ bareword typenames."))
 
 (cl-defmethod phpinspect-iterate-composer-jsons
   ((al phpinspect-autoloader) file)
-  (let* ((fs (phpinspect-project-fs (phpinspect-autoloader-project al)))
+  (let* ((fs (phpinspect-autoloader-fs  al))
          (project-root (file-name-directory (cdr file)))
          json autoload batch)
 
@@ -254,8 +256,8 @@ bareword typenames."))
 (cl-defmethod phpinspect-autoloader-refresh ((autoloader phpinspect-autoloader) &optional async-callback)
   "Refresh autoload definitions by reading composer.json files
   from the project and vendor folders."
-  (let* ((project-root (phpinspect-project-root (phpinspect-autoloader-project autoloader)))
-         (fs (phpinspect-project-fs (phpinspect-autoloader-project autoloader))))
+  (let* ((project-root (funcall (phpinspect-autoloader-project-root-resolver autoloader)))
+         (fs (phpinspect-autoloader-fs autoloader)))
     (setf (phpinspect-autoloader-type-name-fqn-bags autoloader)
           (make-hash-table :test 'eq :size 3000 :rehash-size 3000))
     (setf (phpinspect-autoloader-own-types autoloader)

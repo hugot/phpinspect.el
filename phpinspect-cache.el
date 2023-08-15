@@ -65,6 +65,13 @@ currently opened projects."
   ((cache phpinspect--cache) (project-root string))
   (gethash project-root (phpinspect--cache-projects cache)))
 
+(defun phpinspect-get-or-create-cached-project-class (project-root class-fqn)
+  (when project-root
+    (let ((project (phpinspect--cache-get-project-create
+                    (phpinspect--get-or-create-global-cache)
+                    project-root)))
+      (phpinspect-project-get-class-create project class-fqn))))
+
 (cl-defmethod phpinspect--cache-get-project-create
   ((cache phpinspect--cache) (project-root string))
     "Get a project that is located in PROJECT-ROOT from CACHE.
@@ -78,11 +85,43 @@ then returned."
                               :root project-root
                               :worker (phpinspect-make-dynamic-worker))
                              (phpinspect--cache-projects cache)))
-      (let ((autoloader (phpinspect-make-autoloader :project project)))
-        (setf (phpinspect-project-autoload project) autoloader)
+      (let ((autoloader (phpinspect-make-autoloader
+                         :fs (phpinspect-project-fs project)
+                         :file-indexer (phpinspect-project-make-file-indexer project)
+                         :project-root-resolver (phpinspect-project-make-root-resolver project))))        (setf (phpinspect-project-autoload project) autoloader)
         (phpinspect-autoloader-refresh autoloader)
         (phpinspect-project-enqueue-include-dirs project)))
     project))
+
+(defun phpinspect-project-enqueue-include-dirs (project)
+  (interactive (list (phpinspect--cache-get-project-create
+                      (phpinspect--get-or-create-global-cache)
+                      (phpinspect-current-project-root))))
+  (let ((dirs (alist-get 'include-dirs
+                         (alist-get (phpinspect-project-root project)
+                                    phpinspect-projects
+                                    nil nil #'string=))))
+    (dolist (dir dirs)
+      (message "enqueueing dir %s" dir)
+      (phpinspect-worker-enqueue
+       (phpinspect-project-worker project)
+       (phpinspect-make-index-dir-task :dir dir :project project)))))
+
+(defun phpinspect-project-add-include-dir (dir)
+  "Configure DIR as an include dir for the current project."
+  (interactive (list (read-directory-name "Include Directory: ")))
+  (custom-set-variables '(phpinspect-projects))
+  (let ((existing
+         (alist-get (phpinspect-current-project-root) phpinspect-projects nil #'string=)))
+    (if existing
+        (push dir (alist-get 'include-dirs existing))
+      (push `(,(phpinspect-current-project-root) . ((include-dirs . (,dir)))) phpinspect-projects)))
+
+  (customize-save-variable 'phpinspect-projects phpinspect-projects)
+
+  (phpinspect-project-enqueue-include-dirs (phpinspect--cache-get-project-create
+                                            (phpinspect--get-or-create-global-cache)
+                                            (phpinspect-current-project-root))))
 
 (provide 'phpinspect-cache)
 ;;; phpinspect.el ends here

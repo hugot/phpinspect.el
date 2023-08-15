@@ -23,6 +23,10 @@
 
 ;;; Code:
 
+(require 'phpinspect-project-struct)
+(require 'phpinspect-autoload)
+(require 'phpinspect-worker)
+(require 'phpinspect-index)
 (require 'phpinspect-class)
 (require 'phpinspect-type)
 (require 'phpinspect-fs)
@@ -45,47 +49,6 @@ serious performance hits. Enable at your own risk (:")
     (set (make-local-variable 'phpinspect--buffer-project) (funcall phpinspect-project-root-function)))
   phpinspect--buffer-project)
 
-(cl-defstruct (phpinspect-project (:constructor phpinspect--make-project))
-  (class-index (make-hash-table :test 'eq :size 100 :rehash-size 1.5)
-               :type hash-table
-               :documentation
-               "A `hash-table` that contains all of the currently
-indexed classes in the project")
-  (function-index (make-hash-table :test 'eq :size 100 :rehash-size 2.0)
-                  :type hash-table
-                  :documentation
-                  "A hash able that contains all of the currently indexed functions
-in the project")
-  (function-token-index (make-hash-table :test 'eq :size 100 :rehash-size 1.5))
-  (fs nil
-      :type phpinspect-fs
-      :documentation
-      "The filesystem object through which this project's files
-can be accessed.")
-  (autoload nil
-    :type phpinspect-autoload
-    :documentation
-    "The autoload object through which this project's type
-definitions can be retrieved")
-  (worker (progn
-            (unless (featurep 'phpinspect-worker)
-              (require 'phpinspect-worker))
-            (phpinspect-make-dynamic-worker))
-          :type phpinspect-worker
-          :documentation
-          "The worker that this project may queue tasks for")
-  (root nil
-        :type string
-        :documentation
-        "The root directory of this project")
-  (purged nil
-          :type boolean
-          :documentation "Whether or not the project has been purged or not.
-Projects get purged when they are removed from the global cache.")
-  (file-watchers (make-hash-table :test #'equal :size 10000 :rehash-size 10000)
-                 :type hash-table
-                 :documentation "All active file watchers in this project,
-indexed by the absolute paths of the files they're watching."))
 
 (cl-defmethod phpinspect-project-purge ((project phpinspect-project))
   "Disable all background processes for project and put it in a `purged` state."
@@ -197,7 +160,8 @@ indexed by the absolute paths of the files they're watching."))
            (class (gethash class-name
                            (phpinspect-project-class-index project))))
       (unless class
-        (setq class (phpinspect--make-class-generated :project project)))
+        (setq class (phpinspect--make-class-generated
+                     :class-retriever (phpinspect-project-make-class-retriever project))))
 
       (when index-imports
         (phpinspect-project-enqueue-imports
@@ -215,7 +179,8 @@ indexed by the absolute paths of the files they're watching."))
 
 (cl-defmethod phpinspect-project-create-class
   ((project phpinspect-project) (class-fqn phpinspect--type))
-  (let ((class (phpinspect--make-class-generated :project project)))
+  (let ((class (phpinspect--make-class-generated
+                :class-retriever (phpinspect-project-make-class-retriever project))))
     (phpinspect-project-set-class project class-fqn class)
     class))
 
@@ -283,20 +248,6 @@ before the search is executed."
 (cl-defmethod phpinspect-project-add-file-index ((project phpinspect-project) (filename string))
   (phpinspect-project-add-index project (phpinspect-project-index-file project filename)))
 
-(defun phpinspect-project-enqueue-include-dirs (project)
-  (interactive (list (phpinspect--cache-get-project-create
-                      (phpinspect--get-or-create-global-cache)
-                      (phpinspect-current-project-root))))
-  (let ((dirs (alist-get 'include-dirs
-                         (alist-get (phpinspect-project-root project)
-                                    phpinspect-projects
-                                    nil nil #'string=))))
-    (dolist (dir dirs)
-      (message "enqueueing dir %s" dir)
-      (phpinspect-worker-enqueue
-       (phpinspect-project-worker project)
-       (phpinspect-make-index-dir-task :dir dir :project project)))))
-
 (defcustom phpinspect-projects nil
   "PHPInspect Projects."
   :type '(alist :key-type string
@@ -304,22 +255,95 @@ before the search is executed."
                                    :options ((include-dirs (repeat string)))))
   :group 'phpinspect)
 
-(defun phpinspect-project-add-include-dir (dir)
-  "Configure DIR as an include dir for the current project."
-  (interactive (list (read-directory-name "Include Directory: ")))
-  (custom-set-variables '(phpinspect-projects))
-  (let ((existing
-         (alist-get (phpinspect-current-project-root) phpinspect-projects nil #'string=)))
-    (if existing
-        (push dir (alist-get 'include-dirs existing))
-      (push `(,(phpinspect-current-project-root) . ((include-dirs . (,dir)))) phpinspect-projects)))
+(defun phpinspect-project-make-file-indexer (project)
+  (lambda (filename)
+    (phpinspect-project-add-file-index project filename)))
 
-  (customize-save-variable 'phpinspect-projects phpinspect-projects)
+(defun phpinspect-project-make-root-resolver (project)
+  (lambda () (phpinspect-project-root project)))
 
-  (phpinspect-project-enqueue-include-dirs (phpinspect--cache-get-project-create
-                                            (phpinspect--get-or-create-global-cache)
-                                            (phpinspect-current-project-root))))
+(defun phpinspect-project-make-class-retriever (project)
+  (lambda (type) (phpinspect-project-get-class-create project type)))
 
+;;; INDEX TASK
+(cl-defstruct (phpinspect-index-task
+               (:constructor phpinspect-make-index-task-generated))
+  "Represents an index task that can be executed by a `phpinspect-worker`."
+  (project nil
+           :type phpinspect-project
+           :documentation
+           "The project that the task should be executed for.")
+  (type nil
+        :type phpinspect--type
+        :documentation
+        "The type whose file should be indexed."))
+
+(cl-defgeneric phpinspect-make-index-task ((project phpinspect-project)
+                                          (type phpinspect--type))
+  (phpinspect-make-index-task-generated
+   :project project
+   :type type))
+
+(cl-defmethod phpinspect-task-project ((task phpinspect-index-task))
+  (phpinspect-index-task-project task))
+
+
+(cl-defmethod phpinspect-task= ((task1 phpinspect-index-task) (task2 phpinspect-index-task))
+  (and (eq (phpinspect-index-task-project task1)
+           (phpinspect-index-task-project task2))
+       (phpinspect--type= (phpinspect-index-task-type task1) (phpinspect-index-task-type task2))))
+
+(cl-defmethod phpinspect-task-execute ((task phpinspect-index-task)
+                                       (worker phpinspect-worker))
+  "Execute index TASK for WORKER."
+  (let ((project (phpinspect-index-task-project task))
+        (is-native-type (phpinspect--type-is-native
+                         (phpinspect-index-task-type task))))
+    (phpinspect--log "Indexing class %s for project in %s as task."
+                     (phpinspect-index-task-type task)
+                     (phpinspect-project-root project))
+
+    (cond (is-native-type
+           (phpinspect--log "Skipping indexation of native type %s as task"
+                            (phpinspect-index-task-type task))
+
+           ;; We can skip pausing when a native type is encountered
+           ;; and skipped, as we haven't done any intensive work that
+           ;; may cause hangups.
+           (setf (phpinspect-worker-skip-next-pause worker) t))
+          (t
+           (let* ((type (phpinspect-index-task-type task))
+                  (root-index (phpinspect-project-index-type-file project type)))
+             (when root-index
+               (phpinspect-project-add-index project root-index)))))))
+
+;;; INDEX FILE TASK
+(cl-defstruct (phpinspect-index-dir-task (:constructor phpinspect-make-index-dir-task))
+  "A task for the indexation of files"
+  (project nil
+           :type phpinspect-project)
+  (dir nil
+       :type string))
+
+(cl-defmethod phpinspect-task=
+  ((task1 phpinspect-index-dir-task) (task2 phpinspect-index-dir-task))
+  (and (eq (phpinspect-index-dir-task-project task1)
+           (phpinspect-index-dir-task-project task2))
+       (string= (phpinspect-index-dir-task-dir task1)
+                (phpinspect-index-dir-task-dir task2))))
+
+(cl-defmethod phpinspect-task-project ((task phpinspect-index-dir-task))
+  (phpinspect-index-dir-task-project task))
+
+(cl-defmethod phpinspect-task-execute ((task phpinspect-index-dir-task)
+                                       (_worker phpinspect-worker))
+  (phpinspect--log "Entering..")
+  (let* ((project (phpinspect-index-dir-task-project task))
+         (fs (phpinspect-project-fs project))
+         (dir (phpinspect-index-dir-task-dir task)))
+    (phpinspect--log "Indexing directory %s" dir)
+    (phpinspect-pipeline (phpinspect-fs-directory-files-recursively fs dir "\\.php$")
+      :into (phpinspect-project-add-file-index :with-context project))))
 
 (provide 'phpinspect-project)
 ;;; phpinspect-project.el ends here

@@ -2,7 +2,7 @@
 (require 'phpinspect-resolvecontext)
 
 (ert-deftest phinspect-get-resolvecontext ()
-  (let* ((ctx (phpinspect-make-pctx :incremental t))
+  (let* ((ctx (phpinspect-make-pctx :incremental t :bmap (phpinspect-make-bmap)))
          (code "
 class TestClass {
     public function getCurrentStatisticAction(): JsonResponse

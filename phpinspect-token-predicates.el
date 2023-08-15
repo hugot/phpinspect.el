@@ -56,16 +56,16 @@ Type can be any of the token types returned by
       (phpinspect-comma-p token)
       (phpinspect-html-p token)))
 
-(defsubst phpinspect-end-of-statement-p (token)
-  (or (phpinspect-end-of-token-p token)
-      (phpinspect-block-p token)))
-
 (defsubst phpinspect-incomplete-block-p (token)
   (phpinspect-token-type-p token :incomplete-block))
 
 (defsubst phpinspect-block-p (token)
   (or (phpinspect-token-type-p token :block)
       (phpinspect-incomplete-block-p token)))
+
+(defsubst phpinspect-end-of-statement-p (token)
+  (or (phpinspect-end-of-token-p token)
+      (phpinspect-block-p token)))
 
 (defun phpinspect-end-of-use-p (token)
   (or (phpinspect-block-p token)
@@ -170,11 +170,10 @@ Type can be any of the token types returned by
   (or (phpinspect-token-type-p token :array)
       (phpinspect-incomplete-array-p token)))
 
-(defsubst phpinspect-incomplete-root-p (token)
-  (and (phpinspect-root-p token)
-       (seq-find #'phpinspect-incomplete-token-p (cdr token))))
+(defsubst phpinspect-root-p (object)
+  (phpinspect-token-type-p object :root))
 
-(defsubst phpinspect-incomplete-token-p (token)
+(defun phpinspect-incomplete-token-p (token)
   (or (phpinspect-incomplete-root-p token)
       (phpinspect-incomplete-class-p token)
       (phpinspect-incomplete-block-p token)
@@ -184,6 +183,10 @@ Type can be any of the token types returned by
       (phpinspect-incomplete-function-p token)
       (phpinspect-incomplete-method-p token)
       (phpinspect-incomplete-namespace-p token)))
+
+(defun phpinspect-incomplete-root-p (token)
+  (and (phpinspect-root-p token)
+       (seq-find #'phpinspect-incomplete-token-p (cdr token))))
 
 (defun phpinspect--static-terminator-p (token)
   (or (phpinspect-function-p token)
@@ -214,9 +217,6 @@ Type can be any of the token types returned by
   (and (phpinspect-word-p token) (string= (car (last token)) "use")))
 
 
-(defsubst phpinspect-root-p (object)
-  (phpinspect-token-type-p object :root))
-
 (defsubst phpinspect-namespace-or-root-p (object)
   (or (phpinspect-namespace-p object)
       (phpinspect-root-p object)))
@@ -246,5 +246,9 @@ Type can be any of the token types returned by
 (defsubst phpinspect-not-class-p (token)
   "Apply inverse of `phpinspect-class-p' to TOKEN."
   (not (phpinspect-class-p token)))
+
+(defsubst phpinspect-probably-token-p (token)
+  (and (listp token)
+       (keywordp (car token))))
 
 (provide 'phpinspect-token-predicates)
