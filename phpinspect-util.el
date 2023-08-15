@@ -179,7 +179,10 @@ it evaluates to a non-nil value."
          (sequence-pos 0)
          (sequence-sym (gensym))
          (match-sym (gensym))
-         checkers key value)
+         (match-rear-sym (gensym))
+         (checkers (cons nil nil))
+         (checkers-rear checkers)
+         key value)
 
     (while (setq key (pop pattern))
       (unless (keywordp key)
@@ -190,26 +193,37 @@ it evaluates to a non-nil value."
 
       (cond ((eq key :m)
              (unless (eq value '*)
-               (setq checkers
-                     (nconc checkers (list `(equal ,value (elt ,sequence-sym ,sequence-pos)))))))
+               (setq checkers-rear
+                     (setcdr checkers-rear
+                             (cons `(equal ,value (elt ,sequence-sym ,sequence-pos)) nil)))))
             ((eq key :f)
-             (setq checkers
-                   (nconc
-                    checkers (list
-                              (if (symbolp value)
-                                  `(,value (elt ,sequence-sym ,sequence-pos))
-                                `(funcall ,value (elt ,sequence-sym ,sequence-pos)))))))
+             (setq checkers-rear
+                   (setcdr
+                    checkers-rear
+                    (cons
+                     (if (symbolp value)
+                         `(,value (elt ,sequence-sym ,sequence-pos))
+                       `(funcall ,value (elt ,sequence-sym ,sequence-pos)))
+                     nil))))
             (t (error "Invalid keyword: %s" key)))
 
-      (setq checkers (nconc checkers (list `(setq ,match-sym (nconc ,match-sym (list (elt ,sequence-sym ,sequence-pos)))))))
+      (setq checkers-rear
+            (setcdr checkers-rear
+                    (cons `(setq ,match-rear-sym
+                                 (setcdr ,match-rear-sym
+                                         (cons (elt ,sequence-sym ,sequence-pos) nil)))
+                          nil)))
 
       (setq sequence-pos (+ sequence-pos 1)))
 
-    `(let ((,sequence-sym ,sequence)
-           ,match-sym)
+    (setq checkers (cdr checkers))
+
+    `(let* ((,sequence-sym ,sequence)
+            (,match-sym (cons nil nil))
+            (,match-rear-sym ,match-sym))
        (and (= ,sequence-length (length ,sequence))
             ,@checkers)
-       ,match-sym)))
+       (cdr ,match-sym))))
 
 (defun phpinspect--pattern-concat (pattern1 pattern2)
   (let* ((pattern1-sequence-length (/ (length (phpinspect--pattern-code pattern1)) 2)))
