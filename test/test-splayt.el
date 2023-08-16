@@ -71,7 +71,7 @@
     (should (string= "twelve" (phpinspect-splayt-find tree 12)))
     (should (string= "eleven" (phpinspect-splayt-find tree 11)))
 
-    (let ((expected (sort '("nine" "three" "eleven" "eight" "twelve" "four" "one") #'string-lessp))
+    (let ((expected (sort (copy-sequence '("nine" "three" "eleven" "eight" "twelve" "four" "one")) #'string-lessp))
           (result))
 
       (phpinspect-splayt-traverse (item tree)
@@ -91,7 +91,7 @@
     (phpinspect-splayt-insert tree 4 "four")
     (phpinspect-splayt-insert tree 1 "one")
 
-    (let ((expected (sort '("nine" "three" "eleven" "eight" "twelve" "four" "one") #'string-lessp))
+    (let ((expected (sort (copy-sequence '("nine" "three" "eleven" "eight" "twelve" "four" "one")) #'string-lessp))
           (result))
 
       (phpinspect-splayt-traverse (item tree)
@@ -161,7 +161,7 @@
     (phpinspect-splayt-insert tree 1 "one")
 
 
-    (should (equal (sort '("eight" "nine" "eleven" "twelve") #'string-lessp)
+    (should (equal (sort (copy-sequence '("eight" "nine" "eleven" "twelve")) #'string-lessp)
                    (sort (phpinspect-splayt-find-all-after tree 7) #'string-lessp)))))
 
 (ert-deftest phpinspect-splayt-to-list ()

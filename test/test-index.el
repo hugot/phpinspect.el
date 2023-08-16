@@ -24,6 +24,13 @@
 ;;; Code:
 (require 'ert)
 (require 'phpinspect-index)
+(require 'phpinspect-parse-context)
+(require 'phpinspect-bmap)
+(require 'phpinspect-parser)
+(require 'phpinspect-test-env
+         (expand-file-name "phpinspect-test-env.el"
+                           (file-name-directory (macroexp-file-name))))
+
 
 (ert-deftest phpinspect-index-static-methods ()
   (let* ((class-tokens
@@ -92,8 +99,9 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
     (should (equal
              (mapcar #'phpinspect-intern-name
                      (sort
-                      '("Cheese" "Bacon" "Ham" "Bagel" "Monkey" "ExtendedThing"
-                        "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing")
+                      (copy-sequence
+                       '("Cheese" "Bacon" "Ham" "Bagel" "Monkey" "ExtendedThing"
+                         "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing"))
                       #'string<))
              (sort used-types (lambda (s1 s2) (string< (symbol-name s1) (symbol-name s2))))))))
 
@@ -111,7 +119,7 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
                    ("Request" "Response")))))
     (dolist (set blocks)
       (let ((result (phpinspect--find-used-types-in-tokens (car set))))
-        (should (equal (cadr set) result))))))
+        (should (equal (sort (copy-sequence (cadr set)) #'string-lessp) (sort result #'string-lessp)))))))
 
 (ert-deftest phpinspect-index-method-annotations ()
   (let* ((result (phpinspect--index-tokens
@@ -172,7 +180,7 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
   (let* ((pctx (phpinspect-make-pctx :incremental t :bmap (phpinspect-make-bmap)))
          (tree))
     (with-temp-buffer
-      (insert-file-contents (concat phpinspect-test-php-file-directory "/IndexClass1.php"))
+      (insert-file-contents (expand-file-name "IndexClass1.php" phpinspect-test-php-file-directory))
       (setf (phpinspect-pctx-bmap pctx) (phpinspect-make-bmap))
       (phpinspect-with-parse-context pctx (setq tree (phpinspect-parse-current-buffer))))
     (let* ((index1 (phpinspect--index-tokens tree

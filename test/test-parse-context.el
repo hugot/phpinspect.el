@@ -26,6 +26,7 @@
 (require 'ert)
 (require 'phpinspect-parse-context)
 (require 'phpinspect-meta)
+(require 'phpinspect-bmap)
 
 (ert-deftest phpinspect-pctx-cancel ()
   (let ((meta (phpinspect-make-meta nil 10 20 "    " 'token 'overlay nil))

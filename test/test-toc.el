@@ -2,6 +2,7 @@
 
 (require 'phpinspect-toc)
 (require 'phpinspect-splayt)
+(require 'phpinspect-meta)
 
 (ert-deftest phpinspect-make-toc ()
   (let ((tokens (phpinspect-make-splayt))

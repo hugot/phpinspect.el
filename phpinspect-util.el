@@ -51,7 +51,8 @@ PHP. Used to optimize string comparison.")
 
   (inline-quote
    (progn
-     (add-to-list 'phpinspect-log-groups (cons (or load-file-name buffer-file-name) ,group) nil #'equal))))
+     (add-to-list 'phpinspect-log-groups
+                  (cons (macroexp-file-name) ,group)))))
 
 (defun phpinspect-log-group-enabled-p (group)
   (seq-find (lambda (cons)
@@ -61,7 +62,8 @@ PHP. Used to optimize string comparison.")
 (phpinspect--declare-log-group 'bam)
 
 (defmacro phpinspect--log (&rest args)
-  (let ((log-group (alist-get (or load-file-name buffer-file-name) phpinspect-log-groups nil nil #'string=)))
+  (let ((log-group (alist-get (macroexp-file-name)
+                              phpinspect-log-groups nil nil #'string=)))
     `(when (and phpinspect--debug
                 (or (not phpinspect-enabled-log-groups)
                     ,(when log-group
@@ -77,7 +79,8 @@ PHP. Used to optimize string comparison.")
 (defun phpinspect-filter-logs (group-name)
   (interactive (list (completing-read "Log group: "
                                       (mapcar (lambda (g) (symbol-name (cdr g)))
-                                              phpinspect-log-groups) nil t)))
+                                              phpinspect-log-groups)
+                                      nil t)))
   (add-to-list 'phpinspect-enabled-log-groups (intern group-name)))
 
 (defun phpinspect-unfilter-logs ()

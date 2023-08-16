@@ -258,9 +258,10 @@ directories."
 
       (pcase key
         (:into
-         (let ((parameters)
-               (name)
-               (construct-params))
+         (let* ((construct-params (cons nil nil))
+                (cons-params-rear construct-params)
+                parameters name)
+
            (if (listp value)
                (progn
                  (setq name (car value)
@@ -275,8 +276,9 @@ directories."
                (setq key (pop parameters)
                      value (pop parameters))
                (setq key (intern (string-replace ":with-" ":" (symbol-name key))))
-               (setq construct-params (nconc construct-params (list key value)))))
-           (push (apply #'phpinspect--make-pipeline-step `(,@construct-params :name ,name))
+               (setq cons-params-rear
+                     (setcdr cons-params-rear (cons key (cons value nil))))))
+           (push (apply #'phpinspect--make-pipeline-step `(,@(cdr construct-params) :name ,name))
                  steps)))
         (_ (error "unexpected key %s" key))))
 

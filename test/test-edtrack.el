@@ -106,8 +106,7 @@
     (should-not (phpinspect-taint-iterator-region-is-tainted-p iterator 30 35))))
 
 (ert-deftest phpinspect-edtrack-taint-overlapping-edits ()
-  (let ((track (phpinspect-make-edtrack))
-        iterator)
+  (let ((track (phpinspect-make-edtrack)))
     (phpinspect-edtrack-register-edit track 10 20 5)
 
     (should (equal (list (cons 10 15)) (phpinspect-edtrack-taint-pool track)))

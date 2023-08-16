@@ -36,7 +36,7 @@ parsing. Usually used in combination with
   "Parser Context"
   (incremental nil)
   (meta-iterator nil)
-  (interrupt-threshold (time-convert '(0 0 2000 0))
+  (interrupt-threshold (time-convert '(0 0 2000 0) t)
                        :documentation
                        "After how much time `interrupt-predicate'
 should be polled. This is 2ms by default.")

@@ -173,57 +173,57 @@ Example configuration if you already have a completion
 UI (Company, Corfu) setup that can take advantage of completion
 at point (capf) functions:
 
-(defun my-php-personal-hook ()
-  ;; Shortcut to add use statements for classes you use.
-  (define-key php-mode-map (kbd \"C-c u\") #\\='phpinspect-fix-imports)
+    (defun my-php-personal-hook ()
+      ;; Shortcut to add use statements for classes you use.
+      (define-key php-mode-map (kbd \"C-c u\") #\\='phpinspect-fix-imports)
 
-  ;; Shortcuts to quickly search/open files of PHP classes.
-  ;; You can make these local to php-mode, but making them global
-  ;; like this makes them work in other modes/filetypes as well, which
-  ;; can be handy when jumping between templates, config files and PHP code.
-  (global-set-key (kbd \"C-c a\") #\\='phpinspect-find-class-file)
-  (global-set-key (kbd \"C-c c\") #\\='phpinspect-find-own-class-file)
+      ;; Shortcuts to quickly search/open files of PHP classes.
+      ;; You can make these local to php-mode, but making them global
+      ;; like this makes them work in other modes/filetypes as well, which
+      ;; can be handy when jumping between templates, config files and PHP code.
+      (global-set-key (kbd \"C-c a\") #\\='phpinspect-find-class-file)
+      (global-set-key (kbd \"C-c c\") #\\='phpinspect-find-own-class-file)
 
-  ;; Enable phpinspect-mode
-  (phpinspect-mode))
+      ;; Enable phpinspect-mode
+      (phpinspect-mode))
 
-(add-hook 'php-mode-hook #'my-php-personal-hook)
+    (add-hook \\='php-mode-hook #\\='my-php-personal-hook)
 
 
 Example configuration for `company-mode':
 
-  (defun my-php-personal-hook ()
-    ;; Assuming you already have company-mode enabled, these settings
-    ;; add some IDE-like flair to it. This is of course not required, do
-    ;; with it what you like.
-    (setq-local company-minimum-prefix-length 0)
-    (setq-local company-tooltip-align-annotations t)
-    (setq-local company-idle-delay 0.1)
+    (defun my-php-personal-hook ()
+      ;; Assuming you already have company-mode enabled, these settings
+      ;; add some IDE-like flair to it. This is of course not required, do
+      ;; with it what you like.
+      (setq-local company-minimum-prefix-length 0)
+      (setq-local company-tooltip-align-annotations t)
+      (setq-local company-idle-delay 0.1)
 
-    ;; If you don't have company-mode enabled by default, uncomment this line:
-    ;; (company-mode)
+      ;; If you don't have company-mode enabled by default, uncomment this line:
+      ;; (company-mode)
 
-    ;; By default, phpinspect-mode adds itself as a backend to
-    ;; the `company-backends' of the current buffer. You can completely
-    ;; disable all other backends with the statement below.
-    (setq-local company-backends '(phpinspect-company-backend))
+      ;; By default, phpinspect-mode adds itself as a backend to
+      ;; the `company-backends' of the current buffer. You can completely
+      ;; disable all other backends with the statement below.
+      (setq-local company-backends \\='(phpinspect-company-backend))
 
-    ;; Shortcut to add use statements for classes you use.
-    (define-key php-mode-map (kbd \"C-c u\") 'phpinspect-fix-imports)
+      ;; Shortcut to add use statements for classes you use.
+      (define-key php-mode-map (kbd \"C-c u\") #\\='phpinspect-fix-imports)
 
-    ;; Shortcuts to quickly search/open files of PHP classes.
-    ;; You can make these local to php-mode, but making them global
-    ;; like this makes them work in other modes/filetypes as well, which
-    ;; can be handy when jumping between templates, config files and PHP code.
-    (global-set-key (kbd \"C-c a\") 'phpinspect-find-class-file)
-    (global-set-key (kbd \"C-c c\") 'phpinspect-find-own-class-file)
+      ;; Shortcuts to quickly search/open files of PHP classes.
+      ;; You can make these local to php-mode, but making them global
+      ;; like this makes them work in other modes/filetypes as well, which
+      ;; can be handy when jumping between templates, config files and PHP code.
+      (global-set-key (kbd \"C-c a\") #\\='phpinspect-find-class-file)
+      (global-set-key (kbd \"C-c c\") #\\='phpinspect-find-own-class-file)
 
-    ;; Enable phpinspect-mode
-    (phpinspect-mode))
+      ;; Enable phpinspect-mode
+      (phpinspect-mode))
 
-  (add-hook 'php-mode-hook #'my-php-personal-hook)
+    (add-hook \\='php-mode-hook #\\='my-php-personal-hook)
 
-;; End example configuration."
+    ;; End example configuration."
   :after-hook (phpinspect--mode-function))
 
 (defun phpinspect--suggest-at-point ()

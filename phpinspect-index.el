@@ -405,8 +405,9 @@ NAMESPACE will be assumed the root namespace if not provided"
   "Find usage of the \"new\" keyword in TOKENS.
 
 Return value is a list of the types that are \"newed\"."
-  (let ((previous-tokens)
-        (used-types))
+  (let* ((previous-tokens)
+         (used-types (cons nil nil))
+         (used-types-rear used-types))
     (while tokens
       (let ((token (pop tokens))
             (previous-token (car previous-tokens)))
@@ -415,23 +416,25 @@ Return value is a list of the types that are \"newed\"."
                     (phpinspect-word-p token))
                (let ((type (cadr token)))
                  (when (not (string-match-p "\\\\" type))
-                   (push type used-types))))
+                   (setq used-types-rear (setcdr used-types-rear (cons type nil))))))
               ((and (phpinspect-static-attrib-p token)
                     (phpinspect-word-p previous-token))
                (let ((type (cadr previous-token)))
                  (when (not (string-match-p "\\\\" type))
-                   (push type used-types))))
+                   (setq used-types-rear (setcdr used-types-rear (cons type nil))))))
               ((phpinspect-object-attrib-p token)
                (let ((lists (seq-filter #'phpinspect-list-p token)))
                  (dolist (list lists)
-                   (setq used-types (append (phpinspect--find-used-types-in-tokens (cdr list))
-                                            used-types)))))
+                   (setq used-types-rear
+                         (nconc used-types-rear
+                                (phpinspect--find-used-types-in-tokens (cdr list)))
+                         used-types-rear (last used-types-rear)))))
               ((or (phpinspect-list-p token) (phpinspect-block-p token))
-               (setq used-types (append (phpinspect--find-used-types-in-tokens (cdr token))
-                                        used-types))))
-
+               (setq used-types-rear
+                     (nconc used-types-rear (phpinspect--find-used-types-in-tokens (cdr token)))
+                     used-types-rear (last used-types-rear))))
         (push token previous-tokens)))
-    used-types))
+    (cdr used-types)))
 
 (defun phpinspect--index-tokens (tokens &optional type-resolver-factory location-resolver)
   "Index TOKENS as returned by `phpinspect--parse-current-buffer`."

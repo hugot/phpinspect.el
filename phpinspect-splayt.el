@@ -279,23 +279,20 @@ apeared to be a little more performant than using `let'."
        nil)))
 
 (defmacro phpinspect-splayt-traverse (place-and-splayt &rest body)
-  "Traverse splay tree in cadr of PLACE-AND-SPLAYT, executing BODY.
+  "Traverse SPLAYT, executing BODY.
 
-The car of PLACE-AND-SPLAYT is assigned the value of each node.
+The PLACE is assigned the value of each node.
 
-Traversal is breadth-first to take advantage of the splay trees
+Traversal is breadth-first to take advantage of the splay trees'
 main benefit: the most accessed interval of keys is likely to be
-near the top of the tee."
+near the top of the tee.
+
+(fn (PLACE SPLAYT) BODY...)"
   (declare (indent 1))
- (let* ((current (gensym))
-         (code `(phpinspect-splayt-node-traverse
-                    (,current (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
-                  (setf ,(car place-and-splayt) (phpinspect-splayt-node-value ,current))
-                  ,@body)))
-    (if (symbolp (car place-and-splayt))
-        `(let (,(car place-and-splayt))
-           ,code)
-      code)))
+  `(phpinspect-splayt-node-traverse
+       (,(car place-and-splayt) (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
+     (setf ,(car place-and-splayt) (phpinspect-splayt-node-value ,(car place-and-splayt)))
+     ,@body))
 
 (defmacro phpinspect-splayt-node-traverse-lr (place-and-node &rest body)
   (declare (indent 1))
@@ -316,21 +313,16 @@ near the top of the tee."
            (setq ,current (phpinspect-splayt-node-right ,current)))))))
 
 (defmacro phpinspect-splayt-traverse-lr (place-and-splayt &rest body)
-  "Traverse splay tree depth-first from left to right,executing BODY.
+  "Traverse SPLAYT depth-first from left to right,executing BODY.
 
-The car of PLACE-AND-SPLAYT is assigned the value of each node.
-The cadr of PLACE-AND-SPLAYT is expected to be a splay tree."
+The PLACE is assigned the value of each node.
+
+(fn (PLACE SPLAYT) BODY...)"
   (declare (indent 1))
-  (let* ((current (gensym))
-         (code `(phpinspect-splayt-node-traverse-lr
-                    (,current (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
-                  (setf ,(car place-and-splayt) (phpinspect-splayt-node-value ,current))
-                  ,@body)))
-    (if (symbolp (car place-and-splayt))
-        `(let (,(car place-and-splayt))
-           ,code)
-      code)))
-
+  `(phpinspect-splayt-node-traverse-lr
+       (,(car place-and-splayt) (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
+     (setf ,(car place-and-splayt) (phpinspect-splayt-node-value ,(car place-and-splayt)))
+     ,@body))
 
 (define-inline phpinspect-splayt-node-key-less-p (node key)
   (inline-quote (> ,key (phpinspect-splayt-node-key ,node))))

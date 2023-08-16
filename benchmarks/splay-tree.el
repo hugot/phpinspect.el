@@ -53,7 +53,7 @@
   (setq result
         (benchmark-run 1
           (phpinspect-splayt-traverse (i tree)
-            i)))
+            (ignore i))))
 
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
@@ -64,7 +64,7 @@
   (setq result
         (benchmark-run 1
           (phpinspect-splayt-traverse-lr (i tree)
-            i)))
+            (ignore i))))
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result)))
 
@@ -87,7 +87,7 @@
   (setq result
         (benchmark-run 1
           (dotimes (i 10000)
-            (gethash i map))))
+            (ignore (gethash i map)))))
 
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
@@ -97,7 +97,7 @@
   (garbage-collect)
   (setq result
         (benchmark-run 1
-          (maphash (lambda (k v) k v) map)))
+          (ignore (maphash (lambda (k v) k v) map))))
 
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result)))

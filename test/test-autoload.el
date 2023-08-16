@@ -27,6 +27,7 @@
 (require 'ert)
 (require 'phpinspect-fs)
 (require 'phpinspect-autoload)
+(require 'phpinspect-resolvecontext)
 
 (ert-deftest phpinspect-filename-to-typename ()
   (should (eq (phpinspect-intern-name "\\Foo\\Bar") (phpinspect-filename-to-typename "src/" "src/Foo////////Bar.php")))
@@ -35,13 +36,7 @@
 
 
 (ert-deftest phpinspect-find-composer-json-files ()
-  (let* ((fs (phpinspect-make-virtual-fs))
-         (autoloader (phpinspect-make-autoloader
-                      :fs fs
-                      :project-root-resolver (lambda () "/root")
-                      :file-indexer
-                      (phpinspect-project-make-file-indexer
-                       (phpinspect--make-project :root "/root" :fs fs)))))
+  (let* ((fs (phpinspect-make-virtual-fs)))
     (phpinspect-virtual-fs-set-file fs
       "/root/composer.json"
       "{ \"autoload\": { \"psr-4\": {\"WoW\\\\Dwarves\\\\\": \"src/\"}}}")
@@ -57,12 +52,13 @@
 
     (let ((sorter (lambda (file1 file2) (string-lessp (cdr file1) (cdr file2)))))
 
-    (should (equal (sort '((vendor . "/root/vendor/apples/pears/composer.json")
-                           (vendor . "/root/vendor/runescape/client/composer.json")
-                           (local . "/root/composer.json"))
-                         sorter)
-                   (sort (phpinspect-find-composer-json-files fs "/root")
-                         sorter))))))
+      (should (equal (sort (copy-sequence
+                            '((vendor . "/root/vendor/apples/pears/composer.json")
+                              (vendor . "/root/vendor/runescape/client/composer.json")
+                              (local . "/root/composer.json")))
+                           sorter)
+                     (sort (phpinspect-find-composer-json-files fs "/root")
+                           sorter))))))
 
 (ert-deftest phpinspect-autoload-composer-json-iterator ()
   (let* ((fs (phpinspect-make-virtual-fs))

@@ -24,21 +24,10 @@
 ;;; Code:
 
 (require 'phpinspect-parser)
-
-(defvar phpinspect-test-directory
-  (file-name-directory
-   (or load-file-name
-       buffer-file-name))
-  "Directory that phpinspect tests reside in.")
-
-
-(defvar phpinspect-test-php-file-directory
-  (concat
-   (file-name-directory
-    (or load-file-name
-        buffer-file-name))
-   "/fixtures")
-  "Directory with syntax trees of example PHP files.")
+(require 'phpinspect-index)
+(require 'phpinspect-test-env
+         (expand-file-name "phpinspect-test-env.el"
+                           (file-name-directory (macroexp-file-name))))
 
 
 (ert-deftest phpinspect-parse-bmap ()

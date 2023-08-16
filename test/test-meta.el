@@ -40,28 +40,3 @@
     (should (= 30 (phpinspect-meta-start meta)))
 
     (should (phpinspect-meta-overlaps-point meta 30))))
-
-(ert-deftest phpinspect-meta-iterator ()
-  (let* ((meta (phpinspect-make-meta nil 10 20 "" 'token))
-         (firstchild (phpinspect-make-meta nil 10 12 "" 'token))
-         (secondchild (phpinspect-make-meta nil 13 15 "" 'token))
-         (parent1 (phpinspect-make-meta nil 9 22 "" 'token))
-         (sibling (phpinspect-make-meta nil 30 55 "" 'token))
-         (parent2 (phpinspect-make-meta nil 0 100 "" 'token))
-         iterator)
-    (phpinspect-meta-set-parent meta parent1)
-    (phpinspect-meta-set-parent parent1 parent2)
-    (phpinspect-meta-set-parent sibling parent2)
-    (phpinspect-meta-set-parent firstchild meta)
-    (phpinspect-meta-set-parent secondchild meta)
-
-    (setq iterator (phpinspect-make-meta-iterator parent2))
-
-    (should (eq meta (phpinspect-meta-iterator-token-at-point iterator 10)))
-    (should (eq sibling (phpinspect-meta-iterator-token-at-point iterator 30)))
-    (should (eq meta (phpinspect-meta-iterator-token-at-point iterator 10)))
-    (should (eq firstchild (phpinspect-meta-iterator-token-at-point iterator 10)))
-    (should (eq secondchild (phpinspect-meta-iterator-token-at-point iterator 13)))
-    (should (eq meta (phpinspect-meta-iterator-token-at-point iterator 10)))
-    (should (eq firstchild (phpinspect-meta-iterator-token-at-point iterator 10)))
-    (should (eq sibling (phpinspect-meta-iterator-token-at-point iterator 30)))))

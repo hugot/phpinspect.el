@@ -3,12 +3,10 @@
 (require 'phpinspect-index)
 (require 'phpinspect-serialize)
 
-(let ((here (file-name-directory
-             (or load-file-name
-                 buffer-file-name)))
+(let ((here (file-name-directory (macroexp-file-name)))
       (print-length 1000)
       (print-level 1000))
-  (dolist (file (directory-files (concat here "/../fixtures" ) t "\\.php\\'"))
+  (dolist (file (directory-files (expand-file-name "../fixtures" here) t "\\.php\\'"))
     (with-temp-buffer
       (insert-file-contents-literally file)
       (let ((result (phpinspect-parse-current-buffer)))

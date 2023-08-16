@@ -35,11 +35,9 @@
 (ert-deftest phpinspect-project-watch-file-and-purge ()
   (let* ((root (make-temp-file "phpinspect-test" 'dir))
          (fs (phpinspect-make-fs))
-         (worker (phpinspect-make-worker))
          (watch-file (concat root "/watch1"))
          (project (phpinspect--make-project :fs fs :root root)))
-    (phpinspect-project-watch-file project watch-file
-                                    (lambda (&rest ignored)))
+    (phpinspect-project-watch-file project watch-file #'ignore)
 
     (phpinspect-project-purge project)
 

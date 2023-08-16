@@ -23,6 +23,8 @@
 
 ;;; Code:
 
+(require 'phpinspect-type)
+
 (ert-deftest phpinspect--resolve-late-static-binding ()
   (let* ((sets '(("\\bool" . "\\bool")
                  ("\\static" . "\\AType")

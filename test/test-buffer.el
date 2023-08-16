@@ -27,12 +27,11 @@
 (require 'phpinspect-parser)
 (require 'phpinspect-buffer)
 (require 'phpinspect-test-env
-         (concat (file-name-directory (or load-file-name buffer-file-name byte-compile-current-file))
-                 "phpinspect-test-env.el"))
+         (expand-file-name "phpinspect-test-env.el"
+                           (file-name-directory (macroexp-file-name))))
 
 (ert-deftest phpinspect-buffer-region-lookups ()
-  (let* ((parsed)
-         (class))
+  (let* (parsed)
     (with-temp-buffer
       (insert-file-contents (concat phpinspect-test-php-file-directory "/NamespacedClass.php"))
       (setq phpinspect-current-buffer
@@ -54,12 +53,11 @@
 (ert-deftest phpinspect-parse-buffer-no-current ()
   "Confirm that the parser is still functional with
 `phpinspect-current-buffer' unset."
-  (let*((buffer)
-        (parsed))
-    (with-temp-buffer
-      (should-not phpinspect-current-buffer)
-      (insert-file-contents (concat phpinspect-test-php-file-directory "/NamespacedClass.php"))
-      (setq parsed (phpinspect-parse-current-buffer)))
+  (let* ((parsed
+          (with-temp-buffer
+            (should-not phpinspect-current-buffer)
+            (insert-file-contents (expand-file-name "NamespacedClass.php" phpinspect-test-php-file-directory))
+            (phpinspect-parse-current-buffer))))
 
     (should (cdr parsed))))
 

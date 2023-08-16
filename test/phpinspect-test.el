@@ -27,8 +27,8 @@
 (require 'phpinspect)
 
 (require 'phpinspect-test-env
-         (concat (file-name-directory (or load-file-name buffer-file-name byte-compile-current-file))
-                 "phpinspect-test-env.el"))
+         (expand-file-name "phpinspect-test-env.el"
+                           (file-name-directory (macroexp-file-name))))
 
 (ert-deftest phpinspect-get-variable-type-in-block ()
   (let* ((code "class Foo { function a(\\Thing $baz) { $foo = new \\DateTime(); $bar = $foo; Whatever comes after don't matter.")
@@ -514,6 +514,7 @@ class Thing
 (load-file (concat phpinspect-test-directory "/test-splayt.el"))
 (load-file (concat phpinspect-test-directory "/test-pipeline.el"))
 (load-file (concat phpinspect-test-directory "/test-toc.el"))
+(load-file (concat phpinspect-test-directory "/test-meta.el"))
 
 
 (provide 'phpinspect-test)

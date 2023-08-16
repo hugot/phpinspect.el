@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 
 (require 'phpinspect-bmap)
 
@@ -6,7 +7,6 @@
         (bmap2 (phpinspect-make-bmap))
         (bmap3 (phpinspect-make-bmap))
         (token '(:token))
-        (token1 '(:token1))
         (token2 '(:token2))
         (token3 '(:token3)))
 
@@ -69,13 +69,15 @@
     (phpinspect-bmap-register bmap 9  20 '(:node3))
     (phpinspect-bmap-register bmap 21  44 '(:node4))
 
-    (setq result (phpinspect-bmap-tokens-overlapping bmap 22))
-    (should (equal '((:node4) (:node2) (:node1)) (mapcar #'phpinspect-meta-token result)))))
+    (let ((result (phpinspect-bmap-tokens-overlapping bmap 22)))
+      (should (equal '((:node4) (:node2) (:node1))
+                     (mapcar #'phpinspect-meta-token result))))))
 
 (ert-deftest phpinspect-bmap-tokens-overlapping-overlayed ()
   (let ((bmap (phpinspect-make-bmap))
         (bmap2 (phpinspect-make-bmap))
-        (bmap3 (phpinspect-make-bmap)))
+        (bmap3 (phpinspect-make-bmap))
+        result)
     (phpinspect-bmap-register bmap 9 200 '(:token1))
     (phpinspect-bmap-register bmap 20 200 '(:token2))
     (phpinspect-bmap-register bmap 9 20 '(:token3))

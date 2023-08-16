@@ -23,6 +23,8 @@
 
 ;;; Code:
 
+(require 'phpinspect-util)
+
 (ert-deftest phpinspect--pattern ()
   (let* ((a "a")
          (pattern1 (phpinspect--make-pattern :m `(,a) :m * :m "b"))

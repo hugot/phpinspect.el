@@ -11,18 +11,12 @@
 (phpinspect-purge-cache)
 
 (defvar phpinspect-test-directory
-  (file-name-directory
-   (or load-file-name
-       buffer-file-name))
+  (file-name-directory (macroexp-file-name))
   "Directory that phpinspect tests reside in.")
 
 
 (defvar phpinspect-test-php-file-directory
-  (concat
-   (file-name-directory
-    (or load-file-name
-        buffer-file-name))
-   "/fixtures")
+  (expand-file-name "fixtures" phpinspect-test-directory)
   "Directory with syntax trees of example PHP files.")
 
 (defun phpinspect-test-read-fixture-data (name)
@@ -33,7 +27,7 @@
 (defun phpinspect-test-read-fixture-serialization (name)
   (with-temp-buffer
     (insert-file-contents-literally (concat phpinspect-test-php-file-directory "/" name ".eld"))
-    (eval (read (current-buffer)))))
+    (eval (read (current-buffer)) t)))
 
 (defun phpinspect-test-parse-fixture-code (name)
   (phpinspect-parse-file

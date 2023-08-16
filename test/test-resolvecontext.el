@@ -1,5 +1,11 @@
+;; -*- lexical-binding: t; -*-
 
 (require 'phpinspect-resolvecontext)
+(require 'phpinspect)
+(require 'phpinspect-test-env
+         (expand-file-name "phpinspect-test-env.el"
+                           (file-name-directory (macroexp-file-name))))
+
 
 (ert-deftest phinspect-get-resolvecontext ()
   (let* ((ctx (phpinspect-make-pctx :incremental t :bmap (phpinspect-make-bmap)))
@@ -29,7 +35,7 @@ class TestClass {
 
 (ert-deftest phpinspect-type-resolver-for-resolvecontext ()
   (with-temp-buffer
-    (insert-file-contents (concat phpinspect-test-php-file-directory "/IncompleteClass.php"))
+    (insert-file-contents (expand-file-name "IncompleteClass.php" phpinspect-test-php-file-directory))
     (let* ((bmap (phpinspect-parse-string-to-bmap (buffer-string)))
            (resolvecontext (phpinspect-get-resolvecontext bmap (point-max)))
            (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
@@ -80,10 +86,7 @@ class TestClass {
                                  (funcall type-resolver (phpinspect--make-type :name "Dupuis\\GastonLagaffe")))))))
 
 (ert-deftest phpinspect-type-resolver-for-resolvecontext-multiple-namespace-blocks ()
-  (with-temp-buffer
-    (insert-file-contents (concat phpinspect-test-php-file-directory "/IncompleteClassMultipleNamespaces.php"))
-    (let* ((bmap (phpinspect-parse-string-to-bmap (buffer-string)))
-           (resolvecontext (phpinspect--get-resolvecontext
+  (let* ((resolvecontext (phpinspect--get-resolvecontext
                           (phpinspect-test-read-fixture-data
                            "IncompleteClassMultipleNamespaces")))
          (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
@@ -97,13 +100,13 @@ class TestClass {
                                         (phpinspect--make-type :name "\\array"))))
     (should (phpinspect--type= (phpinspect--make-type
                                 :name  "\\Symfony\\Component\\HttpFoundation\\Response")
-                     (funcall type-resolver (phpinspect--make-type :name "Response"))))
+                               (funcall type-resolver (phpinspect--make-type :name "Response"))))
     (should (phpinspect--type= (phpinspect--make-type :name  "\\Response")
                                (funcall type-resolver
                                         (phpinspect--make-type :name "\\Response"))))
     (should (phpinspect--type= (phpinspect--make-type :name  "\\App\\Controller\\GastonLagaffe")
-                     (funcall type-resolver (phpinspect--make-type :name "GastonLagaffe"))))
+                               (funcall type-resolver (phpinspect--make-type :name "GastonLagaffe"))))
     (should (phpinspect--type= (phpinspect--make-type
                                 :name  "\\App\\Controller\\Dupuis\\GastonLagaffe")
                                (funcall type-resolver (phpinspect--make-type
-                                                       :name "Dupuis\\GastonLagaffe")))))))
+                                                       :name "Dupuis\\GastonLagaffe"))))))
