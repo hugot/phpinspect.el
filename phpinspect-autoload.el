@@ -27,6 +27,7 @@
 (require 'phpinspect-fs)
 (require 'phpinspect-util)
 (require 'phpinspect-pipeline)
+(require 'json)
 
 (cl-defstruct (phpinspect-psr0
                (:constructor phpinspect-make-psr0-generated))

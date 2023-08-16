@@ -53,7 +53,7 @@ If STRING has text properties, they are stripped."
     (set-text-properties 0 length nil value)
     (list token-keyword value)))
 
-(eval-when-compile
+(eval-and-compile
   (defun phpinspect-handler-func-name (handler-name)
     (intern (concat "phpinspect--" (symbol-name handler-name) "-handler")))
 

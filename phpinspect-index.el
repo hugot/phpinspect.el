@@ -27,6 +27,7 @@
 (require 'phpinspect-util)
 (require 'phpinspect-type)
 (require 'phpinspect-token-predicates)
+(require 'phpinspect-parser)
 
 (defun phpinspect--function-from-scope (scope)
   (cond ((and (phpinspect-static-p (cadr scope))
