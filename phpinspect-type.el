@@ -320,7 +320,10 @@ mutability of the variable")
                  (setq encountered-extends nil)
                  (phpinspect--log "Class %s implements in interface" class-name)
                  (setq encountered-implements t))
-                ((string= (cadr word) "class")
+                ((string-match-p
+                  (eval-when-compile
+                    (concat "^" (phpinspect--class-keyword-handler-regexp) "?$"))
+                  (cadr word))
                  (setq encountered-class t))
                 (t
                  (phpinspect--log "Calling Resolver from index-class on %s" (cadr word))
