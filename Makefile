@@ -10,9 +10,11 @@ cask: $(CASK_DIR)
 
 .PHONY: compile
 compile: cask
-	cask emacs -batch -L . -L test \
-	  -f batch-byte-compile $$(cask files); \
-	  (ret=$$? ; cask clean-elc && exit $$ret)
+	bash ./compile.bash
+
+.PHONY: compile-native
+compile-native: cask
+	bash ./native-compile.bash
 
 .PHONY: test
 test: compile
