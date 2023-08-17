@@ -35,6 +35,9 @@
 (cl-defstruct (phpinspect--completion
                (:constructor phpinspect--construct-completion))
   "Contains a possible completion value with all it's attributes."
+  (target nil
+          :documentation
+          "The object that this completion is aimed at/completing towards")
   (value nil :type string)
   (meta nil :type string)
   (annotation nil :type string)
@@ -244,6 +247,7 @@ Returns list of `phpinspect--completion'."
    :annotation (concat " "
                        (phpinspect--type-bare-name
                         (phpinspect--function-return-type completion-candidate)))
+   :target completion-candidate
    :kind 'function))
 
 (cl-defmethod phpinspect--make-completion
@@ -253,6 +257,7 @@ Returns list of `phpinspect--completion'."
    :meta (phpinspect--format-type-name
           (or (phpinspect--variable-type completion-candidate)
               phpinspect--null-type))
+   :target completion-candidate
    :annotation (concat " "
                        (phpinspect--type-bare-name
                         (or (phpinspect--variable-type completion-candidate)
@@ -286,12 +291,15 @@ Returns list of `phpinspect--completion'."
                    (nreverse affixated)))
                :exit-function
                (lambda (comp-name state)
+                 (let ((comp (phpinspect--completion-list-get-metadata
+                              phpinspect--last-completion-list
+                              comp-name)))
                  (when (and (eq 'finished state)
-                            (eq 'function (phpinspect--completion-kind
-                                           (phpinspect--completion-list-get-metadata
-                                            phpinspect--last-completion-list
-                                            comp-name))))
-                   (insert "(")))
+                            (eq 'function (phpinspect--completion-kind comp)))
+                   (insert "(")
+                   (when (= 0 (length (phpinspect--function-arguments
+                                       (phpinspect--completion-target comp))))
+                     (insert ")")))))
                :company-kind (lambda (comp-name)
                                (phpinspect--completion-kind
                                 (phpinspect--completion-list-get-metadata
