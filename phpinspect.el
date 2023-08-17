@@ -344,13 +344,11 @@ before the search is executed."
                    (phpinspect-current-project-root))))
     (phpinspect-project-get-type-filepath project class index-new)))
 
-(defun phpinspect-index-current-project ()
-  "Index all available FQNs in the current project."
-  (interactive)
-  (let* ((project (phpinspect--cache-get-project-create
-                  (phpinspect--get-or-create-global-cache)
-                  (phpinspect-current-project-root)))
-         (autoloader (phpinspect-project-autoload project)))
+(defun phpinspect-project-refresh-autoloader (project)
+  (interactive (list (phpinspect--cache-get-project-create
+                      (phpinspect--get-or-create-global-cache)
+                      (phpinspect-current-project-root))))
+  (let* ((autoloader (phpinspect-project-autoload project)))
     ;; Update display so that it is clear to the user that emacs is
     ;; responsive. Otherwise the autoloader refresh thread hogging the cpu will
     ;; make it look like emacs is not responsive, especially when M-x uses some
@@ -358,9 +356,16 @@ before the search is executed."
     ;; appear frozen while the thread is executing.
     (redisplay)
 
-    (phpinspect-autoloader-refresh autoloader)
-    (phpinspect-project-enqueue-include-dirs project)))
+    (phpinspect-autoloader-refresh autoloader)))
 
+(defun phpinspect-index-current-project ()
+  "Index all available FQNs in the current project."
+  (interactive)
+  (let* ((project (phpinspect--cache-get-project-create
+                  (phpinspect--get-or-create-global-cache)
+                  (phpinspect-current-project-root))))
+    (phpinspect-project-refresh-autoloader project)
+    (phpinspect-project-enqueue-include-dirs project)))
 
 (provide 'phpinspect)
 ;;; phpinspect.el ends here
