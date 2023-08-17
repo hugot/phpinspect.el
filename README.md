@@ -76,6 +76,52 @@ git clone https://git.snorba.art/hugo/phpinspect.el ~/projects/phpinspect.el
 (require 'phpinspect)
 ```
 
+## Compilation
+It is highly recommended to byte- or native compile phpinspect. Aside from the
+normal performance boost that this brings to most packages, it can reduce
+phpinspect's parsing time by up to 90%. It especially makes a difference when
+incrementally parsing edited buffers. For example:
+
+### benchmarks/parse-file.el uncompiled on Ryzen 5 3600 (time in seconds):
+```
+Incremental parse (warmup):
+Elapsed time: 0.168390 (0.019751 in 1 GC’s)
+Incremental parse:
+Elapsed time: 0.143811 (0.000000 in 0 GC’s)
+Incremental parse (no edits):
+Elapsed time: 0.000284 (0.000000 in 0 GC’s)
+Incremental parse repeat (no edits):
+Elapsed time: 0.000241 (0.000000 in 0 GC’s)
+Incremental parse after buffer edit:
+Elapsed time: 0.012449 (0.000000 in 0 GC’s)
+Incremental parse after 2 more edits:
+Elapsed time: 0.015839 (0.000000 in 0 GC’s)
+Bare (no token reuse) parse (warmup):
+Elapsed time: 0.048996 (0.000000 in 0 GC’s)
+Bare (no token reuse) parse:
+Elapsed time: 0.052495 (0.000000 in 0 GC’s)
+```
+
+### benchmarks/parse-file.el with native compilation on Ryzen 5 3600 (time in seconds):
+```
+Incremental parse (warmup):
+Elapsed time: 0.023432 (0.000000 in 0 GC’s)
+Incremental parse:
+Elapsed time: 0.018350 (0.000000 in 0 GC’s)
+Incremental parse (no edits):
+Elapsed time: 0.000076 (0.000000 in 0 GC’s)
+Incremental parse repeat (no edits):
+Elapsed time: 0.000058 (0.000000 in 0 GC’s)
+Incremental parse after buffer edit:
+Elapsed time: 0.001212 (0.000000 in 0 GC’s)
+Incremental parse after 2 more edits:
+Elapsed time: 0.001381 (0.000000 in 0 GC’s)
+Bare (no token reuse) parse (warmup):
+Elapsed time: 0.013874 (0.000000 in 0 GC’s)
+Bare (no token reuse) parse:
+Elapsed time: 0.013878 (0.000000 in 0 GC’s)
+```
+
 ## Development
 
 ### Running tests
