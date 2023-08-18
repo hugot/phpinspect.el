@@ -167,9 +167,9 @@ bareword typenames."))
     (phpinspect-pipeline (phpinspect-files-list strat)
       :into (funcall :with-context indexer))))
 
-(cl-defmethod phpinspect-autoloader-put-type-bag ((al phpinspect-autoloader) (type-fqn symbol))
+(cl-defmethod phpinspect-autoloader-put-type-bag ((al phpinspect-autoloader) (type-fqn (head phpinspect-name)))
   (let* ((type-name (phpinspect-intern-name
-                     (car (last (split-string (symbol-name type-fqn) "\\\\")))))
+                     (car (last (split-string (phpinspect-name-string type-fqn) "\\\\")))))
          (bag (gethash type-name (phpinspect-autoloader-type-name-fqn-bags al))))
     (if bag
         (push type-fqn bag)
@@ -239,7 +239,7 @@ bareword typenames."))
 
 
 (cl-defmethod phpinspect-autoloader-resolve ((autoloader phpinspect-autoloader)
-                                             typename-symbol)
+                                             (typename (head phpinspect-name)))
   ;; Wait for pending refresh if not running in main thread.
   (unless (eq main-thread (current-thread))
     (when (and (phpinspect-autoloader-refresh-thread autoloader)
@@ -251,8 +251,8 @@ bareword typenames."))
       (phpinspect--log "Autoload refresh completed, continuing waiting thread %s"
                        (thread-name (current-thread)))))
 
-  (or (gethash typename-symbol (phpinspect-autoloader-own-types autoloader))
-      (gethash typename-symbol (phpinspect-autoloader-types autoloader))))
+  (or (gethash typename (phpinspect-autoloader-own-types autoloader))
+      (gethash typename (phpinspect-autoloader-types autoloader))))
 
 (cl-defmethod phpinspect-autoloader-refresh ((autoloader phpinspect-autoloader) &optional async-callback)
   "Refresh autoload definitions by reading composer.json files

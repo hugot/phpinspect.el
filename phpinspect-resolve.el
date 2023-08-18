@@ -124,7 +124,7 @@
 ;; object through global variables.
 (defsubst phpinspect-get-cached-project-class (project-root class-fqn)
   (when project-root
-    (phpinspect-project-get-class
+    (phpinspect-project-get-class-or-extra
      (phpinspect--cache-get-project-create (phpinspect--get-or-create-global-cache)
                                            project-root)
      class-fqn)))
@@ -142,16 +142,6 @@
           (if static
               (phpinspect--class-get-static-method-list class)
             (phpinspect--class-get-method-list class))))))
-
-(defmacro phpinspect-find-function-in-list (method-name list)
-  (let ((break-sym (gensym))
-        (method-name-sym (gensym)))
-    `(let ((,method-name-sym (phpinspect-intern-name ,method-name)))
-       (catch (quote ,break-sym)
-         (dolist (func ,list)
-           (when (eq (phpinspect--function-name-symbol func)
-                     ,method-name-sym)
-             (throw (quote ,break-sym) func)))))))
 
 (defsubst phpinspect-get-cached-project-class-method-type
   (project-root class-fqn method-name)

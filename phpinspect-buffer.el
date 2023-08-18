@@ -63,10 +63,16 @@ emacs buffer."
   (functions nil
              :type phpinspect-toc)
   (token-index (make-hash-table :test 'eq :size 100 :rehash-size 1.5))
-  (project nil
-           :type phpinspect-project)
+  (-project nil
+            :type phpinspect-project)
   (edit-tracker (phpinspect-make-edtrack)
                 :type phpinspect-edtrack))
+
+(defun phpinspect-buffer-project (buffer)
+  (or (phpinspect-buffer--project buffer)
+      (with-current-buffer (phpinspect-buffer-buffer buffer)
+        (phpinspect--cache-get-project-create (phpinspect--get-or-create-global-cache)
+                                              (phpinspect-current-project-root)))))
 
 (cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer) &optional no-interrupt)
   "Parse the PHP code in the the emacs buffer that this object is
@@ -95,8 +101,6 @@ linked with."
     ;; Else: Just return last parse result
     (setq tree (phpinspect-buffer-tree buffer)))
   tree))
-
-
 
 (cl-defmethod phpinspect-buffer-get-index-for-token ((buffer phpinspect-buffer) token)
   (gethash token (phpinspect-buffer-token-index buffer)))
@@ -388,7 +392,8 @@ linked with."
                                                                :enclosing-metadata (list class))))
               (setf (phpinspect--variable-type indexed)
                     (phpinspect-get-pattern-type-in-block
-                     rctx (phpinspect--make-pattern :m `(:variable "this") :m `(:object-attrib (:word ,(cadr var))))
+                     rctx (phpinspect--make-pattern :m `(:variable "this")
+                                                    :m `(:object-attrib (:word ,(cadr (phpinspect-meta-token var)))))
                      (phpinspect-function-block (phpinspect--function-token constructor))
                      type-resolver
                      (phpinspect-function-argument-list (phpinspect--function-token constructor))))))
@@ -400,12 +405,17 @@ linked with."
            buffer (phpinspect-meta-token var)
            (cons (phpinspect--class-name class-obj) indexed)))))))
 
-(cl-defmethod phpinspect-buffer-reparse ((buffer phpinspect-buffer))
+(cl-defmethod phpinspect-buffer-reset ((buffer phpinspect-buffer))
   (setf (phpinspect-buffer-tree buffer) nil)
   (setf (phpinspect-buffer-map buffer) (phpinspect-make-bmap))
   (setf (phpinspect-buffer-declarations buffer) nil)
   (setf (phpinspect-buffer-imports buffer) nil)
-  (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
+  (setf (phpinspect-buffer-token-index buffer)
+        (make-hash-table :test 'eq :size 100 :rehash-size 1.5))
+  (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer)))
+
+(cl-defmethod phpinspect-buffer-reparse ((buffer phpinspect-buffer))
+  (phpinspect-buffer-reset buffer)
   (phpinspect-buffer-parse buffer 'no-interrupt))
 
 (cl-defmethod phpinspect-buffer-update-project-index ((buffer phpinspect-buffer))

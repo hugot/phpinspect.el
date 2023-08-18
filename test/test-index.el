@@ -51,7 +51,7 @@
           `(phpinspect--root-index
             (imports)
             (classes
-             (,(phpinspect--make-type :name"\\Potato" :fully-qualified t)
+             (,(phpinspect--make-type :name "\\Potato" :fully-qualified t)
               phpinspect--indexed-class
               (complete . t)
               (class-name . ,(phpinspect--make-type :name "\\Potato" :fully-qualified t))
@@ -103,7 +103,7 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
                        '("Cheese" "Bacon" "Ham" "Bagel" "Monkey" "ExtendedThing"
                          "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing"))
                       #'string<))
-             (sort used-types (lambda (s1 s2) (string< (symbol-name s1) (symbol-name s2))))))))
+             (sort used-types (lambda (s1 s2) (string< (phpinspect-name-string s1) (phpinspect-name-string s2))))))))
 
 (ert-deftest phpinspect--find-used-types-in-tokens ()
   (let ((blocks `(

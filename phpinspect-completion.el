@@ -23,6 +23,8 @@
 
 ;;; Code:
 
+(require 'obarray)
+
 (require 'phpinspect-bmap)
 (require 'phpinspect-buffer)
 (require 'phpinspect-resolvecontext)

@@ -288,7 +288,7 @@ class YYY {
 
 
 (ert-deftest phpinspect-buffer-index-classes ()
-  (let* ((buffer (phpinspect-make-buffer :project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))
+  (let* ((buffer (phpinspect-make-buffer :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))
          (namespaces (phpinspect-make-splayt))
          (declarations (phpinspect-make-splayt))
          (classes (phpinspect-make-splayt))
@@ -356,7 +356,7 @@ class YYY {
       (should (= 1 (hash-table-count (phpinspect-project-class-index (phpinspect-buffer-project buffer))))))))
 
 (ert-deftest phpinspect-buffer-index-functions ()
-  (let ((buffer (phpinspect-make-buffer :project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))
+  (let ((buffer (phpinspect-make-buffer :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))
         (namespaces (phpinspect-make-splayt))
         (declarations  (phpinspect-make-splayt))
         (classes (phpinspect-make-splayt))
@@ -408,7 +408,7 @@ class YYY {
                                      (phpinspect--make-type :name "\\NS\\TestClass"))))))))
 
 (ert-deftest phpinspect-buffer-index-class-variables ()
-  (let ((buffer (phpinspect-make-buffer :project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))
+  (let ((buffer (phpinspect-make-buffer :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))
         (namespaces (phpinspect-make-splayt))
         (declarations  (phpinspect-make-splayt))
         (classes (phpinspect-make-splayt))

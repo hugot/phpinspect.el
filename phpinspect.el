@@ -28,7 +28,6 @@
 
 (require 'cl-lib)
 (require 'json)
-(require 'obarray)
 
 ;; internal dependencies
 (require 'phpinspect-cache)
@@ -46,10 +45,6 @@
 (require 'phpinspect-eldoc)
 (require 'phpinspect-suggest)
 (require 'phpinspect-completion)
-
-(defvar-local phpinspect--buffer-index nil
-  "The result of the last successfull parse + index action
-  executed by phpinspect for the current buffer")
 
 (defvar phpinspect-insert-file-contents-function #'insert-file-contents-literally
   "Function that phpinspect uses to insert file contents into a buffer.")
@@ -82,12 +77,16 @@
 (defun phpinspect--init-mode ()
   "Initialize the phpinspect minor mode for the current buffer."
   (phpinspect-ensure-worker)
+  (when (and phpinspect-load-stubs (not phpinspect-stub-cache))
+    (phpinspect-load-stub-index))
+
   (setq phpinspect-current-buffer
-        (phpinspect-make-buffer
-         :buffer (current-buffer)
-         :project (phpinspect--cache-get-project-create
-                   (phpinspect--get-or-create-global-cache)
-                   (phpinspect-current-project-root))))
+        (phpinspect-make-buffer :buffer (current-buffer)))
+
+  (phpinspect-register-current-buffer
+   (lambda () (phpinspect-buffer-reset phpinspect-current-buffer)))
+  (add-hook 'kill-buffer-hook #'phpinspect-unregister-current-buffer)
+
   (add-hook 'after-change-functions #'phpinspect-after-change-function)
 
   (when (featurep 'company)
@@ -121,7 +120,8 @@ Reparses the entire buffer without token reuse."
   (kill-local-variable 'phpinspect--buffer-project)
   (kill-local-variable 'company-backends)
   (kill-local-variable 'eldoc-documentation-function)
-  (kill-local-variable 'eldoc-message-commands))
+  (kill-local-variable 'eldoc-message-commands)
+  (phpinspect-unregister-current-buffer))
 
 (defun phpinspect--mode-function ()
   (if (and (boundp 'phpinspect-mode) phpinspect-mode)
@@ -305,7 +305,7 @@ dependencies, are returned."
                    (phpinspect-current-project-root)))
          (autoloader (phpinspect-project-autoload project)))
     (let ((fqns))
-      (maphash (lambda (type _) (push (symbol-name type) fqns))
+      (maphash (lambda (type _) (push (phpinspect-name-string type) fqns))
                (if (eq 'own filter)
                    (phpinspect-autoloader-own-types autoloader)
                  (phpinspect-autoloader-types autoloader)))

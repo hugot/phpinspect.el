@@ -23,9 +23,15 @@
 
 ;;; Code:
 
-(defvar phpinspect-name-obarray (obarray-make)
-  "An obarray containing symbols for all encountered names in
-PHP. Used to optimize string comparison.")
+(defvar phpinspect-names (make-hash-table :test #'equal :size 5000 :rehash-size 1.2)
+  "An hash-table containing cons cells representing encountered names in
+PHP code. Used to optimize string comparison. See also `phpinspect-indern-name'")
+
+(defun phpinspect-make-name-hash ()
+  (make-hash-table :test #'equal :size 5000 :rehash-size 1.2))
+
+(define-inline phpinspect-name-string (name)
+  (inline-quote (cdr ,name)))
 
 (defvar phpinspect-project-root-file-list
   '("composer.json" "composer.lock" ".git" ".svn" ".hg")
@@ -33,6 +39,11 @@ PHP. Used to optimize string comparison.")
 
 (defvar phpinspect--debug nil
   "Enable debug logs for phpinspect by setting this variable to true")
+
+(defun phpinspect-message (&rest args)
+  (let ((format-string (car args))
+        (args (cdr args)))
+    (apply #'message `(,(concat "[phpinspect] " format-string) ,@args))))
 
 (defun phpinspect-toggle-logging ()
   (interactive)
@@ -112,8 +123,10 @@ level of START-FILE in stead of `default-directory`."
                            (string= parent-without-vendor "")))
               (phpinspect--find-project-root parent-without-vendor))))))))
 
-(defsubst phpinspect-intern-name (name)
-  (intern name phpinspect-name-obarray))
+(defun phpinspect-intern-name (name)
+  (setq name (cons 'phpinspect-name name))
+  (or (gethash name phpinspect-names)
+      (puthash name name phpinspect-names)))
 
 (defsubst phpinspect--wrap-plist-name-in-symbol (property-list)
   (let ((new-plist)

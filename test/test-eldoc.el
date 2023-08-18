@@ -5,6 +5,9 @@
 
 (ert-deftest phpinspect-eld-method-call ()
   (with-temp-buffer
+    (phpinspect-ensure-worker)
+    (phpinspect-purge-cache)
+
     (let* ((php-code "
 class Thing
 {
@@ -23,8 +26,6 @@ class Thing
            (phpinspect-eldoc-word-width 100)
            (buffer (phpinspect-make-buffer :buffer (current-buffer)))
            second-arg-pos inside-nested-list-pos first-arg-pos)
-      (phpinspect-ensure-worker)
-      (phpinspect-purge-cache)
       (phpinspect-cache-project-class
        (phpinspect-current-project-root)
        (cdar (alist-get 'classes (cdr index))))
@@ -53,42 +54,60 @@ class Thing
         (should (= 0 (phpinspect-function-doc-arg-pos result)))
         (should (string= "getThis" (phpinspect--function-name (phpinspect-function-doc-fn result))))))))
 
-;; (ert-deftest phpinspect-eld-attribute ()
-;;   (with-temp-buffer
-;;     (let* ((php-code "
-;; class Thing
-;; {
-;;     /** @var \\DateTime **/
-;;     public $banana;
+(ert-deftest phpinspect-eldoc-function-for-object-method ()
+  (phpinspect-purge-cache)
+  (let* ((php-code "
+class Thing
+{
+    function getThis(\\DateTime $moment, Thing $thing, $other): static
+    {
+        return $this;
+    }
 
-;;     function getThis(\\DateTime $moment, Thing $thing, $other): static
-;;     {
-;;         return $this;
-;;     }
+    function doStuff()
+    {
+        $this->getThis(new \\DateTime(), bla)")
+         (tokens (phpinspect-parse-string php-code))
+         (index (phpinspect--index-tokens tokens))
+         (phpinspect-project-root-function (lambda () "phpinspect-test"))
+         (phpinspect-eldoc-word-width 100))
+    (phpinspect-cache-project-class
+     (phpinspect-current-project-root)
+     (cdar (alist-get 'classes (cdr index))))
 
-;;     function doStuff()
-;;     {
-;;         $this->banana;
-;;         $this->getThis(new \\DateTime(), bla)")
-;;            (tokens (phpinspect-parse-string php-code))
-;;            (index (phpinspect--index-tokens tokens))
-;;            (phpinspect-project-root-function (lambda () "phpinspect-test"))
-;;            (phpinspect-eldoc-word-width 100)
-;;            (buffer (phpinspect-make-buffer :buffer (current-buffer)))
-;;            getThis-pos banana-pos)
+    (should (string= "getThis: ($moment DateTime, $thing Thing, $other): Thing"
+                   (with-temp-buffer
+                     (insert php-code)
+                     (backward-char)
+                     (setq-local phpinspect-current-buffer
+                                 (phpinspect-make-buffer :buffer (current-buffer)))
+                     (phpinspect-buffer-parse phpinspect-current-buffer)
+                     (phpinspect-eldoc-function))))))
 
-;;       (insert php-code)
-;;       (backward-char 28)
-;;       (setq getThis-pos (point))
-;;       (backward-char 22)
-;;       (setq banana-pos (point))
+(ert-deftest phpinspect-eldoc-function-for-static-method ()
+  (phpinspect-purge-cache)
+  (let* ((php-code "
+class Thing
+{
+    static function doThing(\\DateTime $moment, Thing $thing, $other): static
+    {
+        return $this;
+    }
 
-;;       (phpinspect-ensure-worker)
-;;       (phpinspect-purge-cache)
-;;       (phpinspect-cache-project-class
-;;        (phpinspect-current-project-root)
-;;        (cdar (alist-get 'classes (cdr index))))
+    function doStuff()
+    {
+        self::doThing(")
+         (tokens (phpinspect-parse-string php-code))
+         (index (phpinspect--index-tokens tokens))
+         (phpinspect-project-root-function (lambda () "phpinspect-test"))
+         (phpinspect-eldoc-word-width 100))
+    (phpinspect-cache-project-class
+     (phpinspect-current-project-root)
+     (cdar (alist-get 'classes (cdr index))))
 
-;;       (let ((result (phpinspect-eldoc-query-execute
-;;                      (phpinspect-make-eldoc-query :point getThis-pos :buffer buffer))))
-;;         (message "Result: %s" result)))))
+    (should (string= "doThing: ($moment DateTime, $thing Thing, $other): Thing"
+                   (with-temp-buffer
+                     (insert php-code)
+                     (setq-local phpinspect-current-buffer
+                                 (phpinspect-make-buffer :buffer (current-buffer)))
+                     (phpinspect-eldoc-function))))))

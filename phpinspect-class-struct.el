@@ -25,10 +25,19 @@
 
 
 (cl-defstruct (phpinspect--class (:constructor phpinspect--make-class-generated))
-  (project nil
-           :type phpinspect-project
-           :documentaton
-           "The project that this class belongs to")
+  (class-retriever nil
+                   :type lambda
+                   :documentaton
+                   "A function that returns classes for types
+(should accept `phpinspect--type' as argument)")
+
+  (read-only-p nil
+               :type boolean
+               :documentation
+               "Whether this class instance is read-only, meaning that its data
+should never be changed. Methods and functions that are meant to
+manipulate class data should become no-ops when this slot has a
+non-nil value.")
   (index nil
          :type phpinspect--indexed-class
          :documentation
@@ -64,5 +73,6 @@
                  :documentation
                  "A boolean indicating whether or not this class
                  has been indexed yet."))
+
 
 (provide 'phpinspect-class-struct)

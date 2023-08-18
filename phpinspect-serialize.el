@@ -26,6 +26,9 @@
 (require 'phpinspect-type)
 (require 'phpinspect-class)
 
+(cl-defgeneric phpinspect--serialize-type (_type)
+  nil)
+
 (cl-defmethod phpinspect--serialize-type ((type phpinspect--type))
   `(phpinspect--make-type
     :name ,(phpinspect--type-name type)
@@ -33,6 +36,9 @@
     :contains ,(when (phpinspect--type-contains type)
                  (phpinspect--serialize-type (phpinspect--type-contains type)))
     :fully-qualified ,(phpinspect--type-fully-qualified type)))
+
+;; (cl-defmethod phpinspect--serialize-function (_func)
+;;   nil)
 
 (cl-defmethod phpinspect--serialize-function ((func phpinspect--function))
   `(phpinspect--make-function

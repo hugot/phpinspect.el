@@ -32,7 +32,7 @@
 
 (defun phpinspect-suggest-functions (rctx)
   (let* ((project (phpinspect--resolvecontext-project rctx)))
-    (phpinspect-project-get-functions project)))
+    (phpinspect-project-get-functions-with-extra project)))
 
 (defun phpinspect-suggest-variables-at-point (resolvecontext)
   (phpinspect--log "Suggesting variables at point")
@@ -72,9 +72,12 @@
       (let ((class (phpinspect-get-or-create-cached-project-class
                     project-root
                     class-fqn)))
+        (phpinspect--log (if class
+                             "Retrieved class index, starting method collection %s (%s)"
+                           "No class index found in %s for %s")
+                         project-root class-fqn)
+
         (when class
-          (phpinspect--log "Retrieved class index, starting method collection %s (%s)"
-                           project-root class-fqn)
           (if static
               (phpinspect--class-get-static-method-list class)
             (phpinspect--class-get-method-list class))))))

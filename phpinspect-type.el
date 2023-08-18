@@ -29,7 +29,6 @@
 (eval-when-compile
   (require 'phpinspect-parser))
 
-
 (cl-defstruct (phpinspect--type
                (:constructor phpinspect--make-type-generated)
                (:copier phpinspect--copy-type))
@@ -82,6 +81,18 @@ that the collection is expected to contain")
 (defconst phpinspect--this-type (phpinspect--make-type :name "\\this" :fully-qualified t))
 (defconst phpinspect--null-type (phpinspect--make-type :name "\\null" :fully-qualified t))
 
+(defun phpinspect-define-standard-types ()
+  (setq phpinspect-native-types
+        (phpinspect--make-types (mapcar (lambda (name) (concat "\\" name))
+                                        phpinspect-native-typenames))
+        phpinspect-collection-types (phpinspect--make-types
+                                     '("\\array" "\\iterable" "\\SplObjectCollection" "\\mixed"))
+        phpinspect--object-type (phpinspect--make-type :name "\\object" :fully-qualified t)
+        phpinspect--static-type (phpinspect--make-type :name "\\static" :fully-qualified t)
+        phpinspect--self-type (phpinspect--make-type :name "\\self" :fully-qualified t)
+        phpinspect--this-type (phpinspect--make-type :name "\\this" :fully-qualified t)
+        phpinspect--null-type (phpinspect--make-type :name "\\null" :fully-qualified t)))
+
 (cl-defmethod phpinspect--type-set-name ((type phpinspect--type) (name string))
   (setf (phpinspect--type-name-symbol type) (phpinspect-intern-name name)))
 
@@ -112,7 +123,7 @@ See https://wiki.php.net/rfc/static_return_type ."
 
 
 (cl-defmethod phpinspect--type-name ((type phpinspect--type))
-  (symbol-name (phpinspect--type-name-symbol type)))
+  (phpinspect-name-string (phpinspect--type-name-symbol type)))
 
 (defun phpinspect--get-bare-class-name-from-fqn (fqn)
   (car (last (split-string fqn "\\\\"))))
@@ -242,10 +253,10 @@ return type of the function."))
     ,@(phpinspect--wrap-plist-name-in-symbol property-list)))
 
 (cl-defmethod phpinspect--function-set-name ((func phpinspect--function) (name string))
-  (setf (phpinspect--function-name-symbol func) (intern name phpinspect-name-obarray)))
+  (setf (phpinspect--function-name-symbol func) (intern name phpinspect-names)))
 
 (define-inline phpinspect--function-name (func)
-  (inline-quote (symbol-name (phpinspect--function-name-symbol ,func))))
+  (inline-quote (phpinspect-name-string (phpinspect--function-name-symbol ,func))))
 
 (cl-defstruct (phpinspect--variable (:constructor phpinspect--make-variable))
   "A PHP Variable."

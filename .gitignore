@@ -1,6 +1,8 @@
 *.elc
 /benchmarks/profile.txt
-/.cask
+/.deps
+/data
+
 
 # ELPA-generated files
 /phpinspect-autoloads.el

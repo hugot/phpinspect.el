@@ -26,8 +26,31 @@
 (eval-when-compile
   (declare-function phpinspect-make-dynamic-worker "phpinspect-worker.el"))
 
-
 (cl-defstruct (phpinspect-project (:constructor phpinspect--make-project))
+  (read-only-p nil
+               :type boolean
+               :documentation
+               "Whether this project instance is read-only, meaning that its data
+should never be changed.
+
+When this slot has a non-nil value:
+
+- Methods and functions that are meant to manipulate class data
+should become no-ops.
+- All classes retrieved from it should be marked as read-only as well.")
+  (extra-class-retriever nil
+                         :type lambda
+                         :documentation
+                         "A function that should accept a `phpinspect--type' and return
+matching `phpinspect--class' instances or nil. Used to discover
+classes that are defined outside of project code.")
+  (extra-function-retriever nil
+                            :type lambda
+                            :documentation
+                            "A function that should accept a `phpinspect-name' (see
+`phpinspect-intern-name') and return matching `phpinspect--function'
+instances or nil. Used to discover functions that are defined
+outside of project code.")
   (class-index (make-hash-table :test 'eq :size 100 :rehash-size 1.5)
                :type hash-table
                :documentation

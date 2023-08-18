@@ -24,85 +24,55 @@
 ;;; Code:
 
 (require 'phpinspect-type)
+(require 'phpinspect-class-struct)
 
-(cl-defstruct (phpinspect--class (:constructor phpinspect--make-class-generated))
-  (class-retriever nil
-                   :type lambda
-                   :documentaton
-                   "A function that returns classes for types
-(should accept `phpinspect--type' as argument)")
-  (index nil
-         :type phpinspect--indexed-class
-         :documentation
-         "The index that this class is derived from")
-  (methods (make-hash-table :test 'eq :size 20 :rehash-size 20)
-           :type hash-table
-           :documentation
-           "All methods, including those from extended classes.")
-  (static-methods (make-hash-table :test 'eq :size 20 :rehash-size 20)
-                  :type hash-table
-                  :documentation
-                  "All static methods this class provides,
-                  including those from extended classes.")
-  (name nil
-        :type phpinspect--type)
-  (variables nil
-             :type list
-             :documentation
-             "Variables that belong to this class.")
-  (extended-classes nil
-                    :type list
-                    :documentation
-                    "All extended/implemented classes.")
-  (subscriptions (make-hash-table :test #'eq :size 10 :rehash-size 1.5)
-                 :type hash-table
-                 :documentation
-                 "A list of subscription functions that should be
-                 called whenever anything about this class is
-                 updated")
-  (declaration nil)
-  (initial-index nil
-                 :type bool
-                 :documentation
-                 "A boolean indicating whether or not this class
-                 has been indexed yet."))
+(defmacro phpinspect--class-edit (class &rest body)
+  "Declare intent to edit CLASS in BODY.
+
+Conditionally executes BODY depending on
+`phpinspect--class-read-only-p' value."
+  (declare (indent 1))
+  `(unless (phpinspect--class-read-only-p ,class)
+     ,@body))
 
 (cl-defmethod phpinspect--class-trigger-update ((class phpinspect--class))
   (dolist (sub (hash-table-values (phpinspect--class-subscriptions class)))
     (funcall sub class)))
 
 (cl-defmethod phpinspect--class-update-extensions ((class phpinspect--class) extensions)
-  (setf (phpinspect--class-extended-classes class)
-        (seq-filter
-         #'phpinspect--class-p
-         (mapcar
-          (lambda (class-name)
-            (funcall (phpinspect--class-class-retriever class) class-name))
-          extensions)))
+  (phpinspect--class-edit class
+    (setf (phpinspect--class-extended-classes class)
+          (seq-filter
+           #'phpinspect--class-p
+           (mapcar
+            (lambda (class-name)
+              (funcall (phpinspect--class-class-retriever class) class-name))
+            extensions)))
 
-  (dolist (extended (phpinspect--class-extended-classes class))
-    (phpinspect--class-incorporate class extended)))
+    (dolist (extended (phpinspect--class-extended-classes class))
+      (phpinspect--class-incorporate class extended))))
 
 
 (cl-defmethod phpinspect--class-set-index ((class phpinspect--class)
                                            (index (head phpinspect--indexed-class)))
-  (setf (phpinspect--class-declaration class) (alist-get 'declaration index))
-  (setf (phpinspect--class-name class) (alist-get 'class-name index))
+  (phpinspect--class-edit class
+    (setf (phpinspect--class-declaration class) (alist-get 'declaration index))
+    (setf (phpinspect--class-name class) (alist-get 'class-name index))
 
-  ;; Override methods when class seems syntactically correct (has balanced braces)
-  (when (alist-get 'complete index)
-    (let ((methods (phpinspect--class-methods class))
-          (static-methods (phpinspect--class-static-methods class)))
+    ;; Override methods when class seems syntactically correct (has balanced braces)
+    (when (alist-get 'complete index)
+      (let ((methods (phpinspect--class-methods class))
+            (static-methods (phpinspect--class-static-methods class)))
 
-      (dolist (method (hash-table-values methods))
-        (unless (phpinspect--function--inherited method)
-          (remhash (phpinspect--function-name-symbol method) methods)))
-      (dolist (method (hash-table-values static-methods))
-        (unless (phpinspect--function--inherited method)
-          (remhash (phpinspect--function-name-symbol method) static-methods)))))
+        (dolist (method (hash-table-values methods))
+          (unless (phpinspect--function--inherited method)
+            (remhash (phpinspect--function-name-symbol method) methods)))
+        (dolist (method (hash-table-values static-methods))
+          (unless (phpinspect--function--inherited method)
+            (remhash (phpinspect--function-name-symbol method) static-methods)))))
 
-  (setf (phpinspect--class-initial-index class) t)
-  (setf (phpinspect--class-index class) index)
+    (setf (phpinspect--class-initial-index class) t)
+    (setf (phpinspect--class-index class) index)
 
   (dolist (method (alist-get 'methods index))
     (phpinspect--class-update-method class method))
@@ -118,22 +88,23 @@
   (phpinspect--class-update-extensions
    class `(,@(alist-get 'implements index) ,@(alist-get 'extends index)))
 
-  (phpinspect--class-trigger-update class))
+  (phpinspect--class-trigger-update class)))
 
 (cl-defmethod phpinspect--class-update-declaration
   ((class phpinspect--class) declaration imports namespace-name)
-  (pcase-let ((`(,class-name ,extends ,implements ,_used-types)
-               (phpinspect--index-class-declaration
-                declaration (phpinspect--make-type-resolver
-                             (phpinspect--uses-to-types imports) nil namespace-name))))
-    (setf (phpinspect--class-name class) class-name)
-    (setf (phpinspect--class-declaration class) declaration)
-    (phpinspect--class-update-extensions class `(,@extends ,@implements))))
+  (phpinspect--class-edit class
+    (pcase-let ((`(,class-name ,extends ,implements ,_used-types)
+                 (phpinspect--index-class-declaration
+                  declaration (phpinspect--make-type-resolver
+                               (phpinspect--uses-to-types imports) nil namespace-name))))
+      (setf (phpinspect--class-name class) class-name)
+      (setf (phpinspect--class-declaration class) declaration)
+      (phpinspect--class-update-extensions class `(,@extends ,@implements)))))
 
-(cl-defmethod phpinspect--class-get-method ((class phpinspect--class) (method-name symbol))
+(cl-defmethod phpinspect--class-get-method ((class phpinspect--class) (method-name (head phpinspect-name)))
   (gethash method-name (phpinspect--class-methods class)))
 
-(cl-defmethod phpinspect--class-get-static-method ((class phpinspect--class) (method-name symbol))
+(cl-defmethod phpinspect--class-get-static-method ((class phpinspect--class) (method-name (head phpinspect-name)))
   (gethash method-name (phpinspect--class-static-methods class)))
 
 (cl-defmethod phpinspect--class-get-variable
@@ -145,13 +116,15 @@
 
 (cl-defmethod phpinspect--class-set-variable ((class phpinspect--class)
                                               (var phpinspect--variable))
-  (push var (phpinspect--class-variables class)))
+  (phpinspect--class-edit class
+    (push var (phpinspect--class-variables class))))
 
 (cl-defmethod phpinspect--class-delete-variable ((class phpinspect--class)
                                                  (var phpinspect--variable))
-  (setf (phpinspect--class-variables class)
-        (seq-filter (lambda (clvar) (not (eq var clvar)))
-                    (phpinspect--class-variables class))))
+  (phpinspect--class-edit class
+    (setf (phpinspect--class-variables class)
+          (seq-filter (lambda (clvar) (not (eq var clvar)))
+                      (phpinspect--class-variables class)))))
 
 (cl-defmethod phpinspect--class-get-variables ((class phpinspect--class))
   (seq-filter #'phpinspect--variable-vanilla-p (phpinspect--class-variables class)))
@@ -179,34 +152,35 @@
 
 (cl-defmethod phpinspect--class-set-method ((class phpinspect--class)
                                             (method phpinspect--function))
-  (phpinspect--log "Adding method by name %s to class"
-                   (phpinspect--function-name method))
-  (phpinspect--add-method-copy-to-map
-   (phpinspect--class-methods class)
-   (phpinspect--class-name class)
-   method))
-
+  (phpinspect--class-edit class
+    (phpinspect--log "Adding method by name %s to class"
+                     (phpinspect--function-name method))
+    (phpinspect--add-method-copy-to-map
+     (phpinspect--class-methods class)
+     (phpinspect--class-name class)
+     method)))
 
 (cl-defmethod phpinspect--class-set-static-method ((class phpinspect--class)
                                                    (method phpinspect--function))
-  (phpinspect--add-method-copy-to-map
-   (phpinspect--class-static-methods class)
-   (phpinspect--class-name class)
-   method))
-
+  (phpinspect--class-edit class
+    (phpinspect--add-method-copy-to-map
+     (phpinspect--class-static-methods class)
+     (phpinspect--class-name class)
+     method)))
 
 (cl-defmethod phpinspect--class-delete-method ((class phpinspect--class) (method phpinspect--function))
-  (remhash (phpinspect--function-name-symbol method) (phpinspect--class-static-methods class))
-  (remhash (phpinspect--function-name-symbol method) (phpinspect--class-methods class)))
+  (phpinspect--class-edit class
+    (remhash (phpinspect--function-name-symbol method) (phpinspect--class-static-methods class))
+    (remhash (phpinspect--function-name-symbol method) (phpinspect--class-methods class))))
 
 (cl-defmethod phpinspect--class-get-method-return-type
-  ((class phpinspect--class) (method-name symbol))
+  ((class phpinspect--class) (method-name (head phpinspect-name)))
   (let ((method (phpinspect--class-get-method class method-name)))
     (when method
       (phpinspect--function-return-type method))))
 
 (cl-defmethod phpinspect--class-get-static-method-return-type
-  ((class phpinspect--class) (method-name symbol))
+  ((class phpinspect--class) (method-name (head phpinspect-name)))
   (let ((method (phpinspect--class-get-static-method class method-name)))
     (when method
       (phpinspect--function-return-type method))))
@@ -240,49 +214,54 @@
 (cl-defmethod phpinspect--class-update-static-method ((class phpinspect--class)
                                                       (method phpinspect--function)
                                                       &optional extended)
-  (let ((existing (gethash (phpinspect--function-name-symbol method)
-                           (phpinspect--class-static-methods class))))
-    (if existing
-        (phpinspect--merge-method
-         (alist-get 'class-name (phpinspect--class-index class))
-         existing method extended)
-      (setf (phpinspect--function--inherited method) extended)
-      (phpinspect--class-set-static-method class method))))
+  (phpinspect--class-edit class
+    (let ((existing (gethash (phpinspect--function-name-symbol method)
+                             (phpinspect--class-static-methods class))))
+      (if existing
+          (phpinspect--merge-method
+           (alist-get 'class-name (phpinspect--class-index class))
+           existing method extended)
+        (setf (phpinspect--function--inherited method) extended)
+        (phpinspect--class-set-static-method class method)))))
 
 (cl-defmethod phpinspect--class-update-method ((class phpinspect--class)
                                                (method phpinspect--function)
                                                &optional extended)
-  (let* ((existing (gethash (phpinspect--function-name-symbol method)
-                            (phpinspect--class-methods class))))
+  (phpinspect--class-edit class
+    (let* ((existing (gethash (phpinspect--function-name-symbol method)
+                              (phpinspect--class-methods class))))
 
-    (if existing
-        (phpinspect--merge-method
-         (alist-get 'class-name (phpinspect--class-index class))
-         existing method extended)
-      (setf (phpinspect--function--inherited method) extended)
-      (phpinspect--class-set-method class method))))
+      (if existing
+          (phpinspect--merge-method
+           (alist-get 'class-name (phpinspect--class-index class))
+           existing method extended)
+        (setf (phpinspect--function--inherited method) extended)
+        (phpinspect--class-set-method class method)))))
 
 ;; FIXME: Remove inherited methods when they no longer exist in parent classes
 ;; (and/or the current class in the case of abstract methods).
 (cl-defmethod phpinspect--class-incorporate ((class phpinspect--class)
                                              (other-class phpinspect--class))
-  (dolist (method (phpinspect--class-get-method-list other-class))
-    (phpinspect--class-update-method class method 'extended))
+  (phpinspect--class-edit class
+    (dolist (method (phpinspect--class-get-method-list other-class))
+      (phpinspect--class-update-method class method 'extended))
 
-  (dolist (method (phpinspect--class-get-static-method-list other-class))
-    (phpinspect--class-update-static-method class method 'extended))
+    (dolist (method (phpinspect--class-get-static-method-list other-class))
+      (phpinspect--class-update-static-method class method 'extended))
 
-    (phpinspect--class-subscribe class other-class))
+    (phpinspect--class-subscribe class other-class)))
 
 (cl-defmethod phpinspect--class-subscribe ((class phpinspect--class)
                                            (subscription-class phpinspect--class))
-  (unless (gethash subscription-class (phpinspect--class-subscriptions class))
-    (let ((update-function
-           (lambda (new-class)
-             (phpinspect--class-incorporate class new-class)
-             (phpinspect--class-trigger-update class))))
-      (puthash subscription-class update-function
-               (phpinspect--class-subscriptions subscription-class)))))
+  (phpinspect--class-edit class
+    (unless (gethash subscription-class (phpinspect--class-subscriptions class))
+      (let ((update-function
+             (lambda (new-class)
+               (phpinspect--class-edit class
+                 (phpinspect--class-incorporate class new-class)
+                 (phpinspect--class-trigger-update class)))))
+        (puthash subscription-class update-function
+                 (phpinspect--class-subscriptions subscription-class))))))
 
 (provide 'phpinspect-class)
 ;;; phpinspect-class.el ends here

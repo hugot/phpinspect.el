@@ -28,6 +28,9 @@
 (require 'phpinspect-resolve)
 (require 'phpinspect-buffer)
 
+(eval-when-compile
+  (phpinspect--declare-log-group 'eldoc))
+
 (defvar phpinspect-eldoc-word-width 14
   "The maximum width of words in eldoc strings.")
 
@@ -65,7 +68,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
     (setq type-before (phpinspect-resolve-type-from-context rctx))
 
     (when type-before
-      (let ((class (phpinspect-project-get-class-create
+      (let ((class (phpinspect-project-get-class-extra-or-create
                     (phpinspect--resolvecontext-project rctx)
                     type-before))
             (attribute-name (cadadr attrib))
@@ -167,15 +170,18 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
         (setf (phpinspect--resolvecontext-subject rctx)
               (mapcar #'phpinspect-meta-token (butlast statement 2)))
 
+
+
         (when-let* ((type-of-previous-statement
                      (phpinspect-resolve-type-from-context rctx))
                     (method-name-sym (phpinspect-intern-name (cadadr (phpinspect-meta-token (car match-result)))))
-                    (class (phpinspect-project-get-class-create
+                    (class (phpinspect-project-get-class-extra-or-create
                             (phpinspect--resolvecontext-project rctx)
                             type-of-previous-statement))
                     (method (if static
                                 (phpinspect--class-get-static-method class method-name-sym)
                               (phpinspect--class-get-method class method-name-sym))))
+
           (when method
             (phpinspect-make-function-doc :fn method :arg-pos arg-pos))))
        ((setq match-result (phpinspect--match-sequence (last statement 2)
@@ -191,7 +197,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                            count))
                        (phpinspect-meta-find-children-before arg-list (phpinspect-eldoc-query-point q)) 0))
 
-        (let ((func (phpinspect-project-get-function
+        (let ((func (phpinspect-project-get-function-or-extra
                      (phpinspect--resolvecontext-project rctx)
                      (phpinspect-intern-name (cadr (phpinspect-meta-token (car match-result)))))))
           (phpinspect--log "Got past that")
