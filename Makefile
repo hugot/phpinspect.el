@@ -10,11 +10,17 @@ cask: $(CASK_DIR)
 
 .PHONY: compile
 compile: cask
-	bash ./compile.bash
+compile: generate-stubs
+	bash ./scripts/compile.bash
 
 .PHONY: compile-native
 compile-native: cask
-	bash ./native-compile.bash
+compile-native: generate-stubs
+	bash ./scripts/native-compile.bash
+
+.PHONY: generate-stubs
+generate-stubs: cask
+	php ./scripts/generate-builtin-stubs.php > ./stubs/builtins.php
 
 .PHONY: test
 test: compile

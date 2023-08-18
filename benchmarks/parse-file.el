@@ -30,11 +30,17 @@
    (current-buffer)
    (point-max)))
 
-(let ((here (file-name-directory (macroexp-file-name)))
-      result)
+
+
+(let* ((here (file-name-directory (macroexp-file-name)))
+       (benchmark-file (or (getenv "PHPINSPECT_BENCHMARK_FILE")
+                           (expand-file-name "Response.php" here)))
+       result)
+
+
 
   (with-temp-buffer
-    (insert-file-contents (expand-file-name "Response.php" here))
+    (insert-file-contents benchmark-file)
 
     (message "Incremental parse (warmup):")
     (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :bmap (phpinspect-make-bmap))
@@ -116,7 +122,7 @@
         )))
 
   (with-temp-buffer
-    (insert-file-contents (expand-file-name "Response.php" here))
+    (insert-file-contents benchmark-file)
 
     (garbage-collect)
     (message "Bare (no token reuse) parse (warmup):")
