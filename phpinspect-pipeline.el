@@ -179,31 +179,35 @@ directories."
                 (condition-case-unless-debug err
                     (progn
                       (phpinspect-pipeline-pause)
-                      (setq ,incoming (phpinspect-pipeline-receive ,inc-queue))
+                      ;; Prevent quitting during step execution, as this could
+                      ;; break data integrity.
+                      (let ((inhibit-quit t))
+                        (setq ,incoming (phpinspect-pipeline-receive ,inc-queue))
 
-                      (if (phpinspect-pipeline-end-p ,incoming)
-                          (progn
-                            (setq ,incoming-end ,incoming)
-                            (when (phpinspect-pipeline-end-value ,incoming)
-                              (progn
-                                (setq ,incoming (phpinspect-pipeline-end-value ,incoming)
-                                      ,outgoing (phpinspect--read-pipeline-emission ,statement))
-                                (phpinspect-pipeline--enqueue ,out-queue ,outgoing 'no-notify)))
+                        (if (phpinspect-pipeline-end-p ,incoming)
+                            (progn
+                              (setq ,incoming-end ,incoming)
+                              (when (phpinspect-pipeline-end-value ,incoming)
+                                (progn
+                                  (setq ,incoming (phpinspect-pipeline-end-value ,incoming)
+                                        ,outgoing (phpinspect--read-pipeline-emission ,statement))
+                                  (phpinspect-pipeline--enqueue ,out-queue ,outgoing 'no-notify)))
 
+                              (setq ,end (phpinspect-make-pipeline-end :thread (current-thread)))
+                              (phpinspect-pipeline-ctx-register-end ,pctx-sym ,end)
+                              (setq ,continue-running nil)
+                              (phpinspect-pipeline--enqueue ,out-queue ,end))
+
+                          ;; Else
+                          (setq ,outgoing (phpinspect--read-pipeline-emission ,statement))
+                          (when (phpinspect-pipeline-end-p ,outgoing)
                             (setq ,end (phpinspect-make-pipeline-end :thread (current-thread)))
                             (phpinspect-pipeline-ctx-register-end ,pctx-sym ,end)
-                            (setq ,continue-running nil)
-                            (phpinspect-pipeline--enqueue ,out-queue ,end))
-
-                        ;; Else
-                        (setq ,outgoing (phpinspect--read-pipeline-emission ,statement))
-                        (when (phpinspect-pipeline-end-p ,outgoing)
-                          (setq ,end (phpinspect-make-pipeline-end :thread (current-thread)))
-                          (phpinspect-pipeline-ctx-register-end ,pctx-sym ,end)
-                          (setq ,continue-running nil))
-                        (phpinspect-pipeline--enqueue ,out-queue ,outgoing)))
+                            (setq ,continue-running nil))
+                          (phpinspect-pipeline--enqueue ,out-queue ,outgoing))))
+                  (quit (ignore-error phpinspect-pipeline-incoming
+                          (phpinspect-pipeline-pause)))
                   (phpinspect-pipeline-incoming)
-                  (quit)
                   (t (phpinspect--log "Pipeline thread errored: %s" err)
                      (setq ,end (phpinspect-make-pipeline-end :thread (current-thread) :error err))
                      (setq ,continue-running nil)

@@ -1,5 +1,4 @@
 export EMACS ?= $(shell which emacs)
-CASK_DIR := $(shell cask package-directory)
 
 ELC_FILES = $(patsubst %.el, %.elc, $(shell ls -1 ./*.el ./test/*.el ./benchmarks/*.el))
 DEP_DIRECTORY = $(CURDIR)/.deps
@@ -34,7 +33,11 @@ stub-index: ./data/builtin-stubs-index.eld.gz
 
 .PHONY: clean
 clean:
-	rm -f $(ELC_FILES) ./stubs/builtins.php ./data/builtin-stubs-index.eld.gz
+	rm -f $(ELC_FILES) ./data/builtin-stubs-index.eld.gz
+
+.PHONY: clean-all
+clean-all: clean
+	rm -f ./stubs/builtins.php
 
 .PHONY: compile
 compile: ./.deps
