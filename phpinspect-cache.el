@@ -206,7 +206,7 @@ then returned."
                                       phpinspect-projects
                                       nil nil #'string=))))
       (dolist (dir dirs)
-        (message "enqueueing dir %s" dir)
+        (phpinspect-message "enqueueing dir %s" dir)
         (phpinspect-worker-enqueue
          (phpinspect-project-worker project)
          (phpinspect-make-index-dir-task :dir dir :project project))))))

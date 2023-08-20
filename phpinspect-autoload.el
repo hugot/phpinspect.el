@@ -185,7 +185,7 @@ bareword typenames."))
 
     (condition-case err
         (setq json (phpinspect--read-json-file fs (cdr file)))
-      (t (message "Error parsing composer json at %s : %s " (cdr file) err)))
+      (t (phpinspect-message "Error parsing composer json at %s : %s " (cdr file) err)))
 
     (when json
       (setq autoload (gethash "autoload" json))
@@ -271,8 +271,8 @@ bareword typenames."))
             :async (or async-callback
                        (lambda (_result error)
                          (if error
-                             (message "Error during autoloader refresh: %s" error)
-                           (message
+                             (phpinspect-message "Error during autoloader refresh: %s" error)
+                           (phpinspect-message
                             (concat "Refreshed project autoloader. Found %d types within project,"
                                     " %d types total.")
                             (hash-table-count (phpinspect-autoloader-own-types autoloader))

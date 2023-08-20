@@ -164,7 +164,7 @@ already present in the queue."
         ((debug error) (thread-signal main-thread 'phpinspect-worker-error err))
         (t (phpinspect--log "Phpinspect worker thread errored :%s" err))))
     (phpinspect--log "Worker thread exiting")
-    (message "phpinspect worker thread exited")))
+    (phpinspect-message "phpinspect worker thread exited")))
 
 (cl-defmethod phpinspect-worker-make-thread-function ((worker phpinspect-dynamic-worker))
   (phpinspect-worker-make-thread-function

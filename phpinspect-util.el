@@ -48,8 +48,8 @@ PHP code. Used to optimize string comparison. See also `phpinspect-indern-name'"
 (defun phpinspect-toggle-logging ()
   (interactive)
   (if (setq phpinspect--debug (not phpinspect--debug))
-      (message "Enabled phpinspect logging.")
-    (message "Disabled phpinspect logging.")))
+      (phpinspect-message "Enabled phpinspect logging.")
+    (phpinspect-message "Disabled phpinspect logging.")))
 
 (eval-and-compile
   (defvar phpinspect-log-groups nil)
