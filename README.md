@@ -65,10 +65,12 @@ configuration to get the most out of phpinspect is the following:
 (add-hook 'php-mode-hook #'my-php-personal-hook)
 ```
 
-## Install
+## Install from git
 
 ```bash
 git clone https://git.snorba.art/hugo/phpinspect.el ~/projects/phpinspect.el
+cd ~/projects/phpinspect.el
+make
 ```
 
 ```elisp
@@ -124,10 +126,19 @@ Elapsed time: 0.013878 (0.000000 in 0 GC’s)
 
 ## Development
 
+### Building
+
+```bash
+make
+```
+
 ### Running tests
 Tests are implemented using `ert`. You can run them in batch mode with the following
 command:
 
 ```bash
-emacs -L ./ -batch -l ert -l ./phpinspect.el -l ./test/phpinspect-test.el -f ert-run-tests-batch-and-exit
+make test
+
+# or:
+emacs -L ./ -batch -l ert -l ./test/phpinspect-test.el -f ert-run-tests-batch-and-exit
 ```
