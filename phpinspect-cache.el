@@ -286,5 +286,173 @@ then returned."
     (puthash "builtins" project (phpinspect--cache-projects phpinspect-stub-cache))
     (setf (phpinspect--cache-read-only-p phpinspect-stub-cache) t)))
 
+(cl-defstruct (phpinspect-cache (:constructor phpinspect-make-cache))
+  (groups (make-hash-table :test #'equal :size 2000 :rehash-size 1.2)))
+
+(eval-and-compile
+  (defconst phpinspect-cache-types '(interface trait class method
+                                               abstract-method function variable namespace)
+    "Types of entities that the cache can store.")
+
+  (defconst phpinspect-cache-containing-types '(class trait interface)
+    "Types of entities that the cache can store members for.")
+
+  (defconst phpinspect-cache-member-types '(method abstract-method function variable)
+    "Types of entities that the cache can store as members."))
+
+(define-inline phpinspect-cache-query--do-delete (&rest args)
+  (inline-quote
+   (message ":delete Args: %s" ,(cons 'list args))))
+
+(define-inline phpinspect-cache-query--do-insert (&rest args)
+  (inline-quote
+   (message ":insert Args: %s" ,(cons 'list args))))
+
+(define-inline phpinspect-cache-query--do-get (&rest args)
+  (inline-quote
+   (message ":get Args: %s" ,(cons 'list args))))
+
+(cl-defstruct (phpinspect-cache-group (:constructor phpinspect-make-cache-group)))
+
+(defun phpinspect-cache-query--compile-groups (cache group-specs intent)
+  (cl-assert (phpinspect-cache-p cache))
+  (let (groups)
+
+    (if group-specs
+        (dolist (spec group-specs)
+          (cl-assert (listp spec))
+          (cl-assert (memq (car spec) '(project label))
+                     t "Spec car must be the symbol `project' or `label'")
+          (let ((group (gethash spec (phpinspect-cache-groups cache))))
+            (when (and (eq :insert intent) (not group))
+              (setq group (puthash spec (phpinspect-make-cache-group) (phpinspect-cache-groups cache))))
+            (push group groups)))
+      (if (eq :insert intent)
+          (error "Cannot insert without defining cache group")
+        (setq groups (hash-table-values (phpinspect-cache-groups cache)))))
+
+    groups))
+
+(define-inline phpinspect-cache-transact (cache group-specs &rest query)
+  (declare (indent 2))
+  (cl-assert (listp query))
+
+  (let (type intent intent-param member namespace implements extends key value)
+    (condition-case err
+        (progn
+          (while (setq key (pop query))
+            (cl-assert (keywordp key) t "Query keys must be keywords, %s provided" key)
+            (setq value (pop query))
+            (cl-assert value t "Key %s has no value" key)
+
+            (pcase key
+              ((or :insert :get :delete)
+               (when intent
+                 (inline-error "Defined duplicate intent: %s, %s" intent key))
+               (setq intent key
+                     intent-param value))
+              (:as (cl-assert (and (inline-const-p value)
+                                   (memq (inline-const-val value) phpinspect-cache-types))
+                              t ":type must be one of %s" phpinspect-cache-types)
+                   (setq type (inline-const-val value)))
+              (:member-of (setq member value))
+              (:in (setq namespace value))
+              (:implementing (setq implements value))
+              (:extending (setq extends value))
+              (_ (error "Unexpected query keyword %s" key))))
+
+          ;; Query validation
+          (unless type
+            (error "Providing entity type with keyword :as is required."))
+
+          (when (and member (not (memq type phpinspect-cache-member-types)))
+            (error "Keyword :member-of can only be usd for types %s" phpinspect-cache-member-types))
+
+          (when (and extends (not (memq type '(class trait interface))))
+            (error "Keyword :extending cannot be used for types other than %s" '(class trait interface)))
+
+          (when (and (eq 'variable type) (not member))
+            (error "Variables outside of classes cannot be stored in the cache."))
+
+          (when (and intent (not intent-param))
+            (error "Intent %s must have a parameter %s" intent)))
+      (t (inline-error "phpinspect-cache-transact: %s" err)))
+
+
+    (inline-letevals (group-specs intent-param cache type member namespace implements extends)
+      (let ((action-args `(,intent-param (quote ,type) ,member ,namespace ,implements ,extends))
+            (action (pcase intent
+                      (:insert 'phpinspect-cache-query--do-insert)
+                      (:delete 'phpinspect-cache-query--do-delete)
+                      (:get 'phpinspect-cache-query--do-get)
+                      (_ (inline-error "Invalid intent %s" intent)))))
+
+        (message "action: %s" action)
+
+        (inline-quote
+         (let ((groups (phpinspect-cache-query--compile-groups ,cache ,group-specs ,intent)))
+           ,(cons 'phpinspect-cache-query--validate (cons intent action-args))
+           (dolist (group groups)
+             ,(cons action (cons 'group action-args)))))))))
+
+(defun phpinspect-cache-query--validate (intent intent-param type member namespace implements extends)
+  (and
+   ;; Validate intent-param
+   (cond
+    ((phpinspect--type-p intent-param)
+     (cond
+      ((not (memq type '(class trait interface)))
+       (error "Cannot use intent-param of type phpinspect--type when querying for %s" type))
+      ((and (phpinspect--type-fully-qualified intent-param)
+            namespace)
+       (error "Use of fully qualified type %s while specifying namespace %s in query"
+              intent-param namespace)))
+     t)
+    ((phpinspect-name-p intent-param) t)
+    ((phpinspect--function-p intent-param)
+     (cond
+      ((not (memq intent '(:insert :delete)))
+       (error "`phpinspect--function' can only be used as parameter for :insert and :delete intents."))
+      ((not (memq type '(function method abstract-method)))
+       (error "Inserting/deleting `phpinspect--function' as type %s is not supported" type)))
+     t)
+    (t (error "Unsupported intent-param %s" intent-param)))
+   ;; Validate member
+   (cond
+    ((phpinspect-name-p member) t)
+    ((phpinspect--type-p member) t)
+    ((not member) t)
+    (t (error "unsupported member type (allowed `phpinspect-name' and `phpinspect--type'): %s" member)))
+
+   ;; Validate namespace
+   (cond
+    ((stringp namespace) t)
+    ((phpinspect-name-p namespace) t)
+    ((not namespace) t)
+    (t (error "unsupported namespace type (allowed `phpinspect-name' and `stringp'): %s" namespace)))
+
+   ;; Validate implements
+   (cond
+    ((listp implements)
+     (unless (seq-every-p #'phpinspect--type-or-name-p implements)
+       (error "Each parameter of :implementing must be of type `phpinspect--type' or `phpinspect-name'. Got: %s" implements))
+     t)
+    ((phpinspect-name-p implements) t)
+    ((phpinspect--type-p implements) t)
+    ((not implements) t)
+    (t (error "unsupported parameter for :implementing (allowed `phpinspect--type' or `phpinspect-name': %s" implements)))
+
+   ;; Validate extends
+   (cond
+    ((listp extends)
+     (unless (seq-every-p #'phpinspect--type-or-name-p extends)
+       (error "Each parameter of :extending must be of type `phpinspect--type' or `phpinspect-name'. Got: %s" extends))
+     t)
+    ((phpinspect-name-p extends) t)
+    ((phpinspect--type-p extends) t)
+    ((not extends) t)
+    (t (error "unsupported parameter for :extending (allowed `phpinspect--type' or `phpinspect-name': %s" extends)))))
+
+
 ;;; phpinspect.el ends here
 (provide 'phpinspect-cache)

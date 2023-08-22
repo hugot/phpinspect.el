@@ -128,6 +128,12 @@ level of START-FILE in stead of `default-directory`."
   (or (gethash name phpinspect-names)
       (puthash name name phpinspect-names)))
 
+(define-inline phpinspect-name-p (name)
+  (inline-letevals (name)
+    (inline-quote
+     (and (consp ,name)
+          (eq 'phpinspect-name (car ,name))))))
+
 (defsubst phpinspect--wrap-plist-name-in-symbol (property-list)
   (let ((new-plist)
         (wrap-value))
