@@ -105,13 +105,11 @@ BODY can be any form."
   (let ((item-sym (gensym))
         (place (car place-and-queue))
         (queue (cadr place-and-queue)))
-    `(let* ((,item-sym (phpinspect-queue-first ,queue))
-            (,place (when ,item-sym (phpinspect-queue-item-value ,item-sym))))
-       (when ,place
-         ,@body
-         (while (setq ,item-sym (phpinspect-queue-item-next ,item-sym))
-           (setq ,place (phpinspect-queue-item-value ,item-sym))
-           ,@body)))))
+    `(let* ((,item-sym (phpinspect-queue-first ,queue)))
+       (while ,item-sym
+         (let ((,place (phpinspect-queue-item-value ,item-sym)))
+           ,@body
+           (setq ,item-sym (phpinspect-queue-item-next ,item-sym)))))))
 
 (cl-defmethod phpinspect-queue-find
   ((queue phpinspect-queue) value comparison-func)

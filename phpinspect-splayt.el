@@ -245,8 +245,7 @@ apeared to be a little more performant than using `let'."
             (,reverse-sym t)
             ,current-sym
             ,size-sym
-            ,stack-sym
-            ,(if (symbolp place) place (gensym)))
+            ,stack-sym)
 
        (while ,queue-sym
          (setq ,size-sym (length ,queue-sym))
@@ -257,8 +256,8 @@ apeared to be a little more performant than using `let'."
 
            (if ,reverse-sym
                (push ,current-sym ,stack-sym)
-             (setf ,place ,current-sym)
-             ,@body)
+             (let ((,place ,current-sym))
+               ,@body))
 
            (when (phpinspect-splayt-node-right ,current-sym)
              (push (phpinspect-splayt-node-right ,current-sym) ,queue-sym))
@@ -271,8 +270,8 @@ apeared to be a little more performant than using `let'."
          (when ,reverse-sym
            (while ,stack-sym
              (setq ,current-sym (pop ,stack-sym))
-             (setf ,place ,current-sym)
-             ,@body))
+             (let ((,place ,current-sym))
+               ,@body)))
 
          (setq ,reverse-sym (not ,reverse-sym)))
 
@@ -300,16 +299,15 @@ near the top of the tee.
         (current (gensym))
         (stack (gensym)))
     `(let* ((,current ,(cadr place-and-node))
-            ,stack
-            ,@(if (symbolp place) (list place)))
+            ,stack)
        (while (or ,stack ,current)
          (if ,current
              (progn
                (push ,current ,stack)
                (setq ,current (phpinspect-splayt-node-left ,current)))
            (setq ,current (pop ,stack))
-           (setf ,place ,current)
-           ,@body
+           (let ((,place ,current))
+             ,@body)
            (setq ,current (phpinspect-splayt-node-right ,current)))))))
 
 (defmacro phpinspect-splayt-traverse-lr (place-and-splayt &rest body)
@@ -321,8 +319,8 @@ The PLACE is assigned the value of each node.
   (declare (indent 1))
   `(phpinspect-splayt-node-traverse-lr
        (,(car place-and-splayt) (phpinspect-splayt-root-node ,(cadr place-and-splayt)))
-     (setf ,(car place-and-splayt) (phpinspect-splayt-node-value ,(car place-and-splayt)))
-     ,@body))
+       (let ((,(car place-and-splayt) (phpinspect-splayt-node-value ,(car place-and-splayt))))
+         ,@body)))
 
 (define-inline phpinspect-splayt-node-key-less-p (node key)
   (inline-quote (> ,key (phpinspect-splayt-node-key ,node))))

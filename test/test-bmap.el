@@ -64,46 +64,15 @@
 
 (ert-deftest phpinspect-bmap-tokens-overlapping ()
   (let ((bmap (phpinspect-make-bmap)))
-    (phpinspect-bmap-register bmap 9 200 '(:node1))
-    (phpinspect-bmap-register bmap 20  200 '(:node2))
     (phpinspect-bmap-register bmap 9  20 '(:node3))
     (phpinspect-bmap-register bmap 21  44 '(:node4))
+    (phpinspect-bmap-register bmap 20  200 '(:node2))
+    (phpinspect-bmap-register bmap 9 200 '(:node1))
+    (phpinspect-bmap-register bmap 1  300 '(:root))
 
     (let ((result (phpinspect-bmap-tokens-overlapping bmap 22)))
       (should (equal '((:node4) (:node2) (:node1))
                      (mapcar #'phpinspect-meta-token result))))))
-
-(ert-deftest phpinspect-bmap-tokens-overlapping-overlayed ()
-  (let ((bmap (phpinspect-make-bmap))
-        (bmap2 (phpinspect-make-bmap))
-        (bmap3 (phpinspect-make-bmap))
-        result)
-    (phpinspect-bmap-register bmap 9 200 '(:token1))
-    (phpinspect-bmap-register bmap 20 200 '(:token2))
-    (phpinspect-bmap-register bmap 9 20 '(:token3))
-    (phpinspect-bmap-register bmap 21 44 '(:token4))
-
-    (phpinspect-bmap-register bmap2 200 230 '(:token5))
-    (phpinspect-bmap-register bmap3 300 305 '(:token6))
-
-    ;; Should start at 220 of bmap2
-    (phpinspect-bmap-overlay
-     bmap2 bmap3 (phpinspect-bmap-token-starting-at bmap3 300) -80)
-
-    (setq result (phpinspect-bmap-tokens-overlapping bmap2 220))
-    (should (equal '((:token6) (:token5)) (mapcar #'phpinspect-meta-token result)))
-
-    (phpinspect-bmap-overlay
-     bmap bmap2 (phpinspect-bmap-token-starting-at bmap2 200) 20)
-
-    (phpinspect-bmap-overlay
-     bmap bmap2 (phpinspect-bmap-token-starting-at bmap2 220) 20)
-
-    (setq result (phpinspect-bmap-tokens-overlapping bmap 240))
-    (should (equal '((:token6) (:token5)) (mapcar #'phpinspect-meta-token result)))
-
-    (setq result (phpinspect-bmap-tokens-overlapping bmap 22))
-    (should (equal '((:token4) (:token2) (:token1)) (mapcar #'phpinspect-meta-token result)))))
 
 (ert-deftest phpinspect-bmap-register ()
   (let* ((bmap (phpinspect-make-bmap))

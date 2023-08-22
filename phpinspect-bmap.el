@@ -130,39 +130,6 @@
      (and (> (phpinspect-overlay-end ,overlay) ,point)
           (<= (phpinspect-overlay-start ,overlay) ,point)))))
 
-(defmacro phpinspect-bmap-iterate-region (region place-and-bmap &rest body)
-  (declare (indent defun))
-  (let ((place (car place-and-bmap))
-        (bmap (gensym))
-        (bmap-stack (gensym))
-        (region-start (gensym))
-        (region-end (gensym)))
-    `(let ((,bmap)
-           ,(when (symbolp place) place)
-           (,bmap-stack (list ,(cadr place-and-bmap)))
-           (,region-start (car ,region))
-           (,region-end (cadr ,region)))
-       (while (setq ,bmap (pop ,bmap-stack))
-         (phpinspect-bmap-iterate (,place ,bmap)
-           (when (and (<= ,region-start
-                          (phpinspect-meta-start ,place))
-                      (>= ,region-end
-                          (phpinspect-meta-end ,place)))
-             ,@body))))))
-
-(defmacro phpinspect-bmap-iterate (place-and-bmap &rest body)
-  (declare (indent defun))
-  (let ((place (car place-and-bmap))
-        (bmap (gensym))
-        (ignored (gensym)))
-    `(let ((,bmap ,(cadr place-and-bmap)))
-       (maphash (lambda (,ignored ,place)
-                  ,@body
-                  (when (phpinspect-meta-overlay ,place)
-                    (phpinspect-splayt-traverse (,place (phpinspect-meta-children ,place))
-                      ,@body)))
-                (phpinspect-bmap-meta ,bmap)))))
-
 (defsubst phpinspect-bmap-register (bmap start end token &optional whitespace-before overlay)
   (let* ((starts (phpinspect-bmap-starts bmap))
          (ends (phpinspect-bmap-ends bmap))
@@ -254,14 +221,10 @@
         (phpinspect-bmap-tokens-ending-at overlay point)
       (gethash point (phpinspect-bmap-ends bmap)))))
 
-
 (defsubst phpinspect-bmap-tokens-overlapping (bmap point)
-  (let ((tokens))
-    (phpinspect-bmap-iterate (meta bmap)
-      (when (phpinspect-meta-overlaps-point meta point)
-        (push meta tokens)))
-
-    (sort tokens #'phpinspect-meta-sort-width)))
+  (sort
+   (phpinspect-meta-find-overlapping-children (phpinspect-bmap-root-meta bmap) point)
+   #'phpinspect-meta-sort-width))
 
 (defsubst phpinspect-overlay-encloses-meta (overlay meta)
   (and (>= (phpinspect-meta-start meta) (phpinspect-overlay-start overlay))
