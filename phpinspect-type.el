@@ -64,10 +64,10 @@ that the collection is expected to contain")
   ;; see https://www.php.net/manual/ja/language.types.declarations.php
   ;;;
   ;; However, this list does not need to be valid, it just needs to contain the
-  ;; list of type names that we should not attempt to resolve relatively.
+  ;; list of type names that we should not attempst to resolve relatively.
   '("array" "bool" "callable" "float" "int" "iterable" "mixed" "object" "string" "void" "self" "static" "this"))
 
-(defconst phpinspect-native-types
+(defvar phpinspect-native-types
   (phpinspect--make-types (mapcar (lambda (name) (concat "\\" name))
                                   phpinspect-native-typenames)))
 
@@ -75,11 +75,11 @@ that the collection is expected to contain")
   (phpinspect--make-types '("\\array" "\\iterable" "\\SplObjectCollection" "\\mixed"))
   "FQNs of types that should be treated as collecitons when inferring types.")
 
-(defconst phpinspect--object-type (phpinspect--make-type :name "\\object" :fully-qualified t))
-(defconst phpinspect--static-type (phpinspect--make-type :name "\\static" :fully-qualified t))
-(defconst phpinspect--self-type (phpinspect--make-type :name "\\self" :fully-qualified t))
-(defconst phpinspect--this-type (phpinspect--make-type :name "\\this" :fully-qualified t))
-(defconst phpinspect--null-type (phpinspect--make-type :name "\\null" :fully-qualified t))
+(defvar phpinspect--object-type (phpinspect--make-type :name "\\object" :fully-qualified t))
+(defvar phpinspect--static-type (phpinspect--make-type :name "\\static" :fully-qualified t))
+(defvar phpinspect--self-type (phpinspect--make-type :name "\\self" :fully-qualified t))
+(defvar phpinspect--this-type (phpinspect--make-type :name "\\this" :fully-qualified t))
+(defvar phpinspect--null-type (phpinspect--make-type :name "\\null" :fully-qualified t))
 
 (defun phpinspect-define-standard-types ()
   (setq phpinspect-native-types
