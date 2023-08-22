@@ -71,7 +71,7 @@
 
   ;; attempt to iterate over an empty queue
   (let ((have-iterated nil))
-    (phpinspect-doqueue (thing (phpinspect-make-queue))
+    (phpinspect-doqueue (_thing (phpinspect-make-queue))
       (setq have-iterated t))
 
     (should-not have-iterated)))
