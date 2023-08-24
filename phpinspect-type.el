@@ -55,6 +55,17 @@ that the collection is expected to contain")
   `(phpinspect--make-type-generated
     ,@(phpinspect--wrap-plist-name-in-symbol property-list)))
 
+(defun phpinspect-namespace-part-of-typename (typename)
+  (string-trim-right typename "\\\\?[^\\]+"))
+
+(defun phpinspect--type-namespace (type)
+  (phpinspect-intern-name
+   (phpinspect-namespace-part-of-typename (phpinspect--type-name type))))
+
+(defun phpinspect--type-short-name (type)
+  (phpinspect-intern-name
+   (phpinspect--get-bare-class-name-from-fqn (phpinspect--type-name type))))
+
 (defun phpinspect--make-types (type-names)
   (mapcar (lambda (name) (phpinspect--make-type :name name))
           type-names))
@@ -247,6 +258,12 @@ as first element and the type as second element.")
                :documentation
                "A phpinspect--type object representing the the
 return type of the function."))
+
+(defun phpinspect--function-namespace (func)
+  (let ((namespace (phpinspect-namespace-part-of-typename (phpinspect--function-name func))))
+    (when (string= "" namespace)
+      (setq namespace "\\"))
+    (phpinspect-intern-name namespace)))
 
 (defmacro phpinspect--make-function (&rest property-list)
   `(phpinspect--make-function-generated
