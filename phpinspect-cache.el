@@ -328,6 +328,7 @@ then returned."
   (groups (make-hash-table :test #'equal :size 2000 :rehash-size 1.2)))
 
 (cl-defstruct (phpinspect-cache-type  (:constructor phpinspect-make-cache-type))
+  (group nil)
   (category nil)
   (name nil)
   (methods nil)
@@ -353,6 +354,36 @@ then returned."
   (defconst phpinspect-cache-member-types '(method abstract-method function variable)
     "Types of entities that the cache can store as members."))
 
+(defun phpinspect-cache-type-get-extends (type)
+  (phpinspect-cache-group-get-extends
+   (phpinspect-cache-type-group type)
+   (phpinspect-cache-type-name type)))
+
+(defun phpinspect-cache-type-get-implements (type)
+  (phpinspect-cache-group-get-implements
+   (phpinspect-cache-type-group type)
+   (phpinspect-cache-type-name type)))
+
+(defun phpinspect-cache-group-get-extends (group type-name)
+  (phpinspect-bidi-graph-get-linking-from
+   (phpinspect-cache-group-extends group)
+   type-name))
+
+(defun phpinspect-cache-group-get-implements (group type-name)
+  (phpinspect-bidi-graph-get-linking-from
+   (phpinspect-cache-group-implements group)
+   type-name))
+
+(defun phpinspect-cache-group-get-extending (group type-name)
+  (phpinspect-bidi-graph-get-linking-to
+   (phpinspect-cache-group-extends group)
+   type-name))
+
+(defun phpinspect-cache-group-get-implementing (group type-name)
+  (phpinspect-bidi-graph-get-linking-to
+   (phpinspect-cache-group-implements group)
+   type-name))
+
 (defun phpinspect-cache-group-get-namespace (group namespace)
   (gethash namespace (phpinspect-cache-group-namespaces group)))
 
@@ -361,13 +392,15 @@ then returned."
       (puthash namespace (phpinspect-make-cache-namespace)
                (phpinspect-cache-group-namespaces group))))
 
-(defun phpinspect-cache-namespace-get-type-create (namespace type category)
+(defun phpinspect-cache-namespace-get-type-create (namespace type category group)
   (or (phpinspect-cache-namespace-get-type namespace type category)
-      (push (cons (phpinspect--type-short-name type)
-                  (phpinspect-make-cache-type
-                   :name (phpinspect--type-name-symbol type)
-                   :category category))
-            (phpinspect-cache-namespace-types namespace))))
+      (cdar
+       (push (cons (phpinspect--type-short-name type)
+                   (phpinspect-make-cache-type
+                    :name (phpinspect--type-name-symbol type)
+                    :category category
+                    :group group))
+             (phpinspect-cache-namespace-types namespace)))))
 
 (defun phpinspect-cache-namespace-get-type (namespace type category)
   (when-let ((entity
@@ -578,7 +611,8 @@ then returned."
                  ,(when implements
                     `(phpinspect-cache-group-register-implements ,group ,param ,implements))
 
-                 (phpinspect-cache-namespace-get-type-create namespace ,param (quote ,type))))))
+                 (phpinspect-cache-namespace-get-type-create
+                  namespace ,param (quote ,type) ,group)))))
        ((and (eq 'function type) (not member))
         (setq register-form
               (inline-quote
@@ -595,26 +629,67 @@ then returned."
 (define-inline phpinspect-cache-query--do-get-type
   (group param type member namespace implements extends)
   (inline-letevals (group param member namespace implements extends)
-    (if (and (inline-const-p param) (eq '* (inline-const-val param)))
-        (if namespace
+    (let ((form
+           (if (and (inline-const-p param) (eq '* (inline-const-val param)))
+               (if namespace
+                   (inline-quote
+                    (when-let ((namespace (phpinspect-cache-group-get-namespace
+                                           ,group ,namespace)))
+                      (cons 'phpinspect-cache-multiresult
+                            (mapcar #'cdr (phpinspect-cache-namespace-types namespace)))))
+                 (inline-quote
+                  (cons
+                   'phpinspect-cache-multiresult
+                   (mapcan
+                    (lambda (namespace)
+                      (mapcar #'cdr (phpinspect-cache-namespace-types namespace)))
+                    (hash-table-values (phpinspect-cache-group-namespaces ,group))))))
+             (inline-quote
+              (when-let* ((namespace (phpinspect-cache-group-get-namespace
+                                      ,group
+                                      (or ,namespace
+                                          (phpinspect--type-namespace ,param)))))
+                (phpinspect-cache-namespace-get-type namespace ,param (quote ,type)))))))
+
+      (setq form
             (inline-quote
-             (when-let ((namespace (phpinspect-cache-group-get-namespace
-                                    ,group ,namespace)))
-               (cons 'phpinspect-cache-multiresult
-                     (mapcar #'cdr (phpinspect-cache-namespace-types namespace)))))
-          (inline-quote
-           (cons
-            'phpinspect-cache-multiresult
-            (mapcan
-             (lambda (namespace)
-               (mapcar #'cdr (phpinspect-cache-namespace-types namespace)))
-             (hash-table-values (phpinspect-cache-group-namespaces ,group))))))
-      (inline-quote
-       (when-let* ((namespace (phpinspect-cache-group-get-namespace
-                               ,group
-                               (or ,namespace
-                                   (phpinspect--type-namespace ,param)))))
-         (phpinspect-cache-namespace-get-type namespace ,param (quote ,type)))))))
+             (if ,implements
+                 (let ((implementing (phpinspect-cache-group-get-implementing ,group ,implements))
+                       (result ,form)
+                       filtered)
+                   (when result
+                     (if (and (consp result)
+                              (eq 'phpinspect-cache-multiresult (car result)))
+                         (progn
+                           (dolist (res (cdr result))
+                             (when (memq (phpinspect-cache-type-name res) implementing)
+                               (push res filtered)))
+                           (setq filtered (cons 'phpinspect-cache-multiresult filtered)))
+                       (when (memq (phpinspect-cache-type-name result) implementing)
+                         (setq filtered result)))))
+               ,form)))
+
+        (setq form
+              (inline-quote
+               (if ,extends
+                   (let ((extending (phpinspect-cache-group-get-extending ,group ,extends))
+                         (result ,form)
+                         filtered)
+                     (when result
+                       (if (and (consp result)
+                                (eq 'phpinspect-cache-multiresult (car result)))
+                           (progn
+                             (dolist (res (cdr result))
+                               (when (memq (phpinspect-cache-type-name res) extending)
+                                 (push res filtered)))
+                             (setq filtered (cons 'phpinspect-cache-multiresult filtered)))
+                         (when (memq (phpinspect-cache-type-name result) extending)
+                           (setq filtered result)))))
+                 ,form)))
+      form)))
+
+
+
 
 (define-inline phpinspect-cache-query--do-get-function
   (group param type member namespace implements extends)

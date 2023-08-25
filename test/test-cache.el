@@ -41,7 +41,6 @@
     (should (= 1 (length result)))
     (should (phpinspect-cache-type-p (car result)))
 
-
     (phpinspect-cache-transact cache '((label test))
       :insert (phpinspect--make-type :name "\\TestInterface") :as 'interface)
 
@@ -273,3 +272,51 @@
                    :delete '* :as 'function))
     (should result)
     (should (= 3 (length result)))))
+
+(ert-deftest phpinspect-insert-type-extending/implementing ()
+  (let ((cache (phpinspect-make-cache))
+        result)
+
+    (setq result
+          (phpinspect-cache-transact cache '((label test))
+            :insert (phpinspect--make-type :name "\\Namespace1\\TestClass")
+            :as 'class
+            :extending (phpinspect--make-type :name "\\App\\TestClassAbstract")
+            :implementing (phpinspect--make-type :name "\\App\\TestInterface")))
+
+    (should result)
+    (should (= 1 (length result)))
+
+    (setq result (car result))
+
+    (should (phpinspect-cache-type-get-implements result))
+    (should (= 1 (length (phpinspect-cache-type-get-implements result))))
+    (should (eq (phpinspect-intern-name "\\App\\TestInterface")
+                (car (phpinspect-cache-type-get-implements result))))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get '*
+                   :implementing (phpinspect-intern-name "\\App\\TestInterface")
+                   :as 'type))
+
+    (should result)
+    (should (= 1 (length result)))
+    (should (eq (phpinspect-intern-name "\\Namespace1\\TestClass")
+                (phpinspect-cache-type-name (car result))))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get '*
+                   :extending (phpinspect-intern-name "\\App\\TestClassAbstract")
+                   :as 'type))
+
+    (should result)
+    (should (= 1 (length result)))
+    (should (eq (phpinspect-intern-name "\\Namespace1\\TestClass")
+                (phpinspect-cache-type-name (car result))))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get '*
+                   :extending (phpinspect-intern-name "\\App\\TestClass")
+                   :as 'type))
+
+    (should-not result)))
