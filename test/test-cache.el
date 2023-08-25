@@ -211,7 +211,15 @@
     (should (= 1 (length result)))
 
     (setq result (phpinspect-cache-transact cache '((label test))
-                   :get (phpinspect-intern-name "test_func")
+                   :insert (list (phpinspect--make-function :name "test_func")
+                                 (phpinspect--make-function :name "other_func"))
+                   :as 'function
+                   :in (phpinspect-intern-name "\\Namespace1")))
+    (should result)
+    (should (= 2 (length result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get (phpinspect-intern-name "\\test_func")
                    :as 'function))
 
     (should result)
@@ -219,8 +227,49 @@
     (should (= 1 (length result)))
 
     (setq result (phpinspect-cache-transact cache '((label test))
-                   :delete (phpinspect-intern-name "test_func")
+                   :delete (phpinspect-intern-name "\\test_func")
                    :as 'function))
 
+    (should result)
     (should (phpinspect--function-p (car result)))
-    (should (= 1 (length result)))))
+    (should (= 1 (length result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get '*
+                   :as 'function
+                   :in (phpinspect-intern-name "\\Namespace1")))
+    (should result)
+    (should (= 2 (length result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :delete '*
+                   :as 'function
+                   :in (phpinspect-intern-name "\\Namespace1")))
+    (should result)
+    (should (= 2 (length result)))
+
+    (phpinspect-cache-transact cache '((label test))
+      :insert (list (phpinspect--make-function :name "\\Ns\\test_func")
+                    (phpinspect--make-function :name "\\Ns\\other_func")
+                    (phpinspect--make-function :name "\\root_func"))
+      :as 'function)
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get '* :as 'function :in (phpinspect-intern-name "\\Ns")))
+    (should result)
+    (should (= 2 (length result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get '* :as 'function :in (phpinspect-intern-name "\\")))
+    (should result)
+    (should (= 1 (length result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get '* :as 'function))
+    (should result)
+    (should (= 3 (length result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :delete '* :as 'function))
+    (should result)
+    (should (= 3 (length result)))))

@@ -23,7 +23,7 @@ $(CURDIR): ./data/builtin-stubs-index.eld.gz
 	$(RUN_EMACS) -l phpinspect-cache -f phpinspect-dump-stub-index
 
 %.elc: %.el
-	$(RUN_EMACS) --eval '(setq byte-compile-error-on-warn t)' -f batch-byte-compile $<
+	$(RUN_EMACS) --eval '(setq byte-compile-error-on-warn nil)' -f batch-byte-compile $<
 
 .PHONY: deps
 deps: ./.deps

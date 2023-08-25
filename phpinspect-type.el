@@ -55,16 +55,19 @@ that the collection is expected to contain")
   `(phpinspect--make-type-generated
     ,@(phpinspect--wrap-plist-name-in-symbol property-list)))
 
-(defun phpinspect-namespace-part-of-typename (typename)
-  (string-trim-right typename "\\\\?[^\\]+"))
+(defun phpinspect-type-name-namespace (typename)
+  (let ((ns (string-trim-right typename "\\\\?[^\\]+")))
+    (if (string= "" ns)
+        "\\"
+      ns)))
 
 (defun phpinspect--type-namespace (type)
   (phpinspect-intern-name
-   (phpinspect-namespace-part-of-typename (phpinspect--type-name type))))
+   (phpinspect-type-name-namespace (phpinspect--type-name type))))
 
 (defun phpinspect--type-short-name (type)
   (phpinspect-intern-name
-   (phpinspect--get-bare-class-name-from-fqn (phpinspect--type-name type))))
+   (phpinspect-type-name-short (phpinspect--type-name type))))
 
 (defun phpinspect--make-types (type-names)
   (mapcar (lambda (name) (phpinspect--make-type :name name))
@@ -136,12 +139,12 @@ See https://wiki.php.net/rfc/static_return_type ."
 (cl-defmethod phpinspect--type-name ((type phpinspect--type))
   (phpinspect-name-string (phpinspect--type-name-symbol type)))
 
-(defun phpinspect--get-bare-class-name-from-fqn (fqn)
+(defun phpinspect-type-name-short (fqn)
   (car (last (split-string fqn "\\\\"))))
 
 (cl-defmethod phpinspect--type-bare-name ((type phpinspect--type))
   "Return just the name, without namespace part, of TYPE."
-  (phpinspect--get-bare-class-name-from-fqn (phpinspect--type-name type)))
+  (phpinspect-type-name-short (phpinspect--type-name type)))
 
 (cl-defmethod phpinspect--type= ((type1 phpinspect--type) (type2 phpinspect--type))
   (eq (phpinspect--type-name-symbol type1) (phpinspect--type-name-symbol type2)))
@@ -260,7 +263,7 @@ as first element and the type as second element.")
 return type of the function."))
 
 (defun phpinspect--function-namespace (func)
-  (let ((namespace (phpinspect-namespace-part-of-typename (phpinspect--function-name func))))
+  (let ((namespace (phpinspect-type-name-namespace (phpinspect--function-name func))))
     (when (string= "" namespace)
       (setq namespace "\\"))
     (phpinspect-intern-name namespace)))
@@ -274,6 +277,14 @@ return type of the function."))
 
 (define-inline phpinspect--function-name (func)
   (inline-quote (phpinspect-name-string (phpinspect--function-name-symbol ,func))))
+
+(define-inline phpinspect--function-short-name (func)
+  (inline-quote (phpinspect-type-name-short
+                 (phpinspect-name-string
+                  (phpinspect--function-name-symbol ,func)))))
+
+(defun phpinspect--function-short-name-symbol (func)
+  (phpinspect-intern-name (phpinspect--function-short-name func)))
 
 (cl-defstruct (phpinspect--variable (:constructor phpinspect--make-variable))
   "A PHP Variable."
