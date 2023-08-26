@@ -30,11 +30,11 @@
   (let ((cache (phpinspect-make-cache))
         result)
     (phpinspect-cache-transact cache '((label test))
-      :insert (phpinspect--make-type :name "\\TestClass") :as 'class)
+      :insert (phpinspect--make-type :name "\\TestClass") :as @class)
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :get (phpinspect--make-type :name "\\TestClass") :as 'class))
+            :get (phpinspect--make-type :name "\\TestClass") :as @class))
 
     (should result)
     (should (listp result))
@@ -42,11 +42,11 @@
     (should (phpinspect-cache-type-p (car result)))
 
     (phpinspect-cache-transact cache '((label test))
-      :insert (phpinspect--make-type :name "\\TestInterface") :as 'interface)
+      :insert (phpinspect--make-type :name "\\TestInterface") :as @interface)
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :get (phpinspect--make-type :name "\\TestInterface") :as 'interface))
+            :get (phpinspect--make-type :name "\\TestInterface") :as @interface))
 
     (should result)
     (should (listp result))
@@ -57,13 +57,13 @@
     ;; entity was inserted as, nothing should be returned.
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :get (phpinspect--make-type :name "\\TestInterface") :as 'class))
+            :get (phpinspect--make-type :name "\\TestInterface") :as @class))
 
     (should-not result)
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :get (phpinspect--make-type :name "\\TestInterface") :as 'type))
+            :get (phpinspect--make-type :name "\\TestInterface") :as @type))
 
     (should result)
 
@@ -71,7 +71,7 @@
           (phpinspect-cache-transact cache '((label test))
             :get `(,(phpinspect--make-type :name "\\TestInterface")
                    ,(phpinspect--make-type :name "\\TestClass"))
-            :as 'type))
+            :as @type))
     (should result)
     (should (= 2 (length result)))
     (should (seq-every-p #'phpinspect-cache-type-p result))
@@ -80,64 +80,64 @@
           (phpinspect-cache-transact cache '((label test))
             :get `(,(phpinspect--make-type :name "\\TestInterface")
                    ,(phpinspect--make-type :name "\\TestClass"))
-            :as 'interface))
+            :as @interface))
     (should result)
     (should (= 1 (length result)))
     (should (seq-every-p #'phpinspect-cache-type-p result))
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :get '* :as 'type))
+            :get * :as @type))
     (should result)
     (should (= 2 (length result)))
     (should (seq-every-p #'phpinspect-cache-type-p result))
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :get (phpinspect--make-type :name "\\TestClass") :as 'type))
+            :get (phpinspect--make-type :name "\\TestClass") :as @type))
 
     (should result)
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :delete (phpinspect--make-type :name "\\TestClass") :as 'type))
+            :delete (phpinspect--make-type :name "\\TestClass") :as @type))
 
     (should result)
     (should (phpinspect-cache-type-p (car result)))
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :get (phpinspect--make-type :name "\\TestClass") :as 'type))
+            :get (phpinspect--make-type :name "\\TestClass") :as @type))
     (should-not result)
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :delete (phpinspect--make-type :name "\\TestClass") :as 'type))
+            :delete (phpinspect--make-type :name "\\TestClass") :as @type))
     (should-not result)
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :get (phpinspect--make-type :name "\\TestInterface") :as 'type))
+            :get (phpinspect--make-type :name "\\TestInterface") :as @type))
     (should result)
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :delete (phpinspect--make-type :name "\\TestInterface") :as 'class))
+            :delete (phpinspect--make-type :name "\\TestInterface") :as @class))
     (should-not result)
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :get (phpinspect--make-type :name "\\TestInterface") :as 'type))
+            :get (phpinspect--make-type :name "\\TestInterface") :as @type))
     (should result)
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :delete (phpinspect--make-type :name "\\TestInterface") :as 'interface))
+            :delete (phpinspect--make-type :name "\\TestInterface") :as @interface))
     (should result)
 
     (setq result
           (phpinspect-cache-transact cache '((label test))
-            :get (phpinspect--make-type :name "\\TestInterface") :as 'type))
+            :get (phpinspect--make-type :name "\\TestInterface") :as @type))
     (should-not result)))
 
 (ert-deftest phpinspect-cache-namespace-query ()
@@ -147,18 +147,18 @@
       :insert (list (phpinspect--make-type :name "\\Namespace1\\TestClass")
                     (phpinspect--make-type :name "\\Namespace2\\TestClass")
                     (phpinspect--make-type :name "\\Namespace2\\TestClass1"))
-      :as 'class)
+      :as @class)
 
     (setq result (phpinspect-cache-transact cache '((label test))
-                   :get '* :as 'class :in (phpinspect-intern-name "\\Namespace1")))
+                   :get * :as @class :in (phpinspect-intern-name "\\Namespace1")))
 
     (should result)
     (should (= 1 (length result)))
     (should (eq (phpinspect-intern-name "\\Namespace1\\TestClass")
                 (phpinspect-cache-type-name (car result))))
 
-        (setq result (phpinspect-cache-transact cache '((label test))
-                   :get '* :as 'class :in (phpinspect-intern-name "\\Namespace2")))
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get * :as @class :in (phpinspect-intern-name "\\Namespace2")))
 
     (should result)
     (should (= 2 (length result)))))
@@ -170,14 +170,14 @@
       :insert (list (phpinspect--make-type :name "\\Namespace1\\TestClass")
                     (phpinspect--make-type :name "\\Namespace2\\TestClass")
                     (phpinspect--make-type :name "\\Namespace2\\TestClass1"))
-      :as 'class)
+      :as @class)
 
 
     (phpinspect-cache-transact cache '((label test))
-      :delete '* :as 'class)
+      :delete * :as @class)
 
     (should-not (phpinspect-cache-transact cache '((label test))
-                  :get '* :as 'class))))
+                  :get * :as @class))))
 
 (ert-deftest phpinspect-cache-delete-wildcard-namespace-types ()
   (let ((cache (phpinspect-make-cache))
@@ -186,13 +186,13 @@
       :insert (list (phpinspect--make-type :name "\\Namespace1\\TestClass")
                     (phpinspect--make-type :name "\\Namespace2\\TestClass")
                     (phpinspect--make-type :name "\\Namespace2\\TestClass1"))
-      :as 'class)
+      :as @class)
 
 
     (phpinspect-cache-transact cache '((label test))
-      :delete '* :as 'class :in (phpinspect-intern-name "\\Namespace2"))
+      :delete * :as @class :in (phpinspect-intern-name "\\Namespace2"))
 
-    (setq result (phpinspect-cache-transact cache '((label test)) :get '* :as 'class))
+    (setq result (phpinspect-cache-transact cache '((label test)) :get * :as @class))
     (should result)
     (should (= 1 (length result)))
     (should (eq (phpinspect-intern-name "\\Namespace1\\TestClass")
@@ -203,7 +203,7 @@
         result)
     (setq result (phpinspect-cache-transact cache '((label test))
                    :insert (phpinspect--make-function :name "test_func")
-                   :as 'function))
+                   :as @function))
 
     (should result)
     (should (phpinspect--function-p (car result)))
@@ -212,14 +212,15 @@
     (setq result (phpinspect-cache-transact cache '((label test))
                    :insert (list (phpinspect--make-function :name "test_func")
                                  (phpinspect--make-function :name "other_func"))
-                   :as 'function
+                   :as @function
                    :in (phpinspect-intern-name "\\Namespace1")))
+
     (should result)
     (should (= 2 (length result)))
 
     (setq result (phpinspect-cache-transact cache '((label test))
                    :get (phpinspect-intern-name "\\test_func")
-                   :as 'function))
+                   :as @function))
 
     (should result)
     (should (phpinspect--function-p (car result)))
@@ -227,22 +228,22 @@
 
     (setq result (phpinspect-cache-transact cache '((label test))
                    :delete (phpinspect-intern-name "\\test_func")
-                   :as 'function))
+                   :as @function))
 
     (should result)
     (should (phpinspect--function-p (car result)))
     (should (= 1 (length result)))
 
     (setq result (phpinspect-cache-transact cache '((label test))
-                   :get '*
-                   :as 'function
+                   :get *
+                   :as @function
                    :in (phpinspect-intern-name "\\Namespace1")))
     (should result)
     (should (= 2 (length result)))
 
     (setq result (phpinspect-cache-transact cache '((label test))
-                   :delete '*
-                   :as 'function
+                   :delete *
+                   :as @function
                    :in (phpinspect-intern-name "\\Namespace1")))
     (should result)
     (should (= 2 (length result)))
@@ -251,25 +252,25 @@
       :insert (list (phpinspect--make-function :name "\\Ns\\test_func")
                     (phpinspect--make-function :name "\\Ns\\other_func")
                     (phpinspect--make-function :name "\\root_func"))
-      :as 'function)
+      :as @function)
 
     (setq result (phpinspect-cache-transact cache '((label test))
-                   :get '* :as 'function :in (phpinspect-intern-name "\\Ns")))
+                   :get * :as @function :in (phpinspect-intern-name "\\Ns")))
     (should result)
     (should (= 2 (length result)))
 
     (setq result (phpinspect-cache-transact cache '((label test))
-                   :get '* :as 'function :in (phpinspect-intern-name "\\")))
+                   :get * :as @function :in (phpinspect-intern-name "\\")))
     (should result)
     (should (= 1 (length result)))
 
     (setq result (phpinspect-cache-transact cache '((label test))
-                   :get '* :as 'function))
+                   :get * :as @function))
     (should result)
     (should (= 3 (length result)))
 
     (setq result (phpinspect-cache-transact cache '((label test))
-                   :delete '* :as 'function))
+                   :delete * :as @function))
     (should result)
     (should (= 3 (length result)))))
 
@@ -280,7 +281,7 @@
     (setq result
           (phpinspect-cache-transact cache '((label test))
             :insert (phpinspect--make-type :name "\\Namespace1\\TestClass")
-            :as 'class
+            :as @class
             :extending (phpinspect--make-type :name "\\App\\TestClassAbstract")
             :implementing (phpinspect--make-type :name "\\App\\TestInterface")))
 
@@ -295,9 +296,9 @@
                 (car (phpinspect-cache-type-get-implements result))))
 
     (setq result (phpinspect-cache-transact cache '((label test))
-                   :get '*
+                   :get *
                    :implementing (phpinspect-intern-name "\\App\\TestInterface")
-                   :as 'type))
+                   :as @type))
 
     (should result)
     (should (= 1 (length result)))
@@ -305,9 +306,9 @@
                 (phpinspect-cache-type-name (car result))))
 
     (setq result (phpinspect-cache-transact cache '((label test))
-                   :get '*
+                   :get *
                    :extending (phpinspect-intern-name "\\App\\TestClassAbstract")
-                   :as 'type))
+                   :as @type))
 
     (should result)
     (should (= 1 (length result)))
@@ -315,8 +316,201 @@
                 (phpinspect-cache-type-name (car result))))
 
     (setq result (phpinspect-cache-transact cache '((label test))
-                   :get '*
+                   :get *
                    :extending (phpinspect-intern-name "\\App\\TestClass")
-                   :as 'type))
+                   :as @type))
+
+    (should-not result)
+
+    (setq result  (phpinspect-cache-transact cache '((label test))
+                    :delete (phpinspect--make-type :name "\\Namespace1\\TestClass")
+                    :as @type))
+
+    (should result)
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get *
+                   :extending (phpinspect-intern-name "\\App\\TestClassAbstract")
+                   :as @type))
+
+    (should-not  result)
+
+    (phpinspect-cache-transact cache '((label test))
+      :insert (phpinspect--make-type :name "\\Namespace1\\TestClass")
+      :as @class)
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get *
+                   :extending (phpinspect-intern-name "\\App\\TestClassAbstract")
+                   :as @type))
+
+    (should-not result)
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get *
+                   :implementing (phpinspect-intern-name "\\App\\TestInterface")
+                   :as @type))
 
     (should-not result)))
+
+(ert-deftest phpinspect-cache-insert-method ()
+  (let ((cache (phpinspect-make-cache))
+        result)
+
+
+    (phpinspect-cache-transact cache '((label test))
+      :insert (phpinspect--make-type :name "\\TestClass")
+      :as @class)
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :insert (phpinspect--make-function :name "testMethod")
+                   :as @method
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+
+    (should result)
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get (phpinspect-intern-name "testMethod")
+                   :as @method
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+
+    (should result)
+    (should (= 1 (length result)))
+    (should (phpinspect--function-p (car result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get (phpinspect-intern-name "testMethod")
+                   :as @method
+                   :member-of (phpinspect--make-type :name "\\Banana")))
+
+    (should-not result)
+
+
+    (phpinspect-cache-transact cache '((label test))
+      :insert (phpinspect--make-function :name "newTestMethod")
+      :as @method
+      :member-of (phpinspect--make-type :name "\\TestClass"))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get (phpinspect-intern-name "testMethod")
+                   :as @method
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+
+    (should result)
+    (should (= 1 (length result)))
+    (should (phpinspect--function-p (car result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get *
+                   :as @method
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+    (should result)
+    (should (= 2 (length result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :delete (phpinspect-intern-name "testMethod")
+                   :as @method
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+
+    (should result)
+    (should (= 1 (length result)))
+
+    (phpinspect-cache-transact cache '((label test))
+                   :insert (phpinspect--make-function :name "testMethod")
+                   :as @method
+                   :member-of (phpinspect--make-type :name "\\TestClass"))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :delete *
+                   :as @function
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+
+    (should result)
+    (should (= 2 (length result)))
+
+    (should-not
+     (phpinspect-cache-transact cache '((label test))
+       :get *
+       :as @method
+       :member-of (phpinspect--make-type :name "\\TestClass")))))
+
+(ert-deftest phpinspect-cache-delete-method-multi ()
+  (let ((cache (phpinspect-make-cache))
+        result)
+
+    (phpinspect-cache-transact cache '((label test))
+      :insert (phpinspect--make-type :name "\\TestClass") :as @class)
+
+    (phpinspect-cache-transact cache '((label test))
+      :insert (list (phpinspect--make-function :name "test1")
+                    (phpinspect--make-function :name "test3")
+                    (phpinspect--make-function :name "test2"))
+      :as @method
+      :member-of (phpinspect--make-type :name "\\TestClass"))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :delete (list (phpinspect-intern-name "test1")
+                                 (phpinspect-intern-name "test2"))
+                   :as @method
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+    (should result)
+    (should (= 2 (length result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get *
+                   :as @method
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+
+    (should result)
+    (should (= 1 (length result)))
+    (should (string= "test3" (phpinspect--function-name (car result))))))
+
+(ert-deftest phpinspect-cache-insert-variable ()
+  (let ((cache (phpinspect-make-cache))
+        result)
+
+    (phpinspect-cache-transact cache '((label test))
+      :insert (phpinspect--make-type :name "\\TestClass") :as @class)
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :insert (list (phpinspect--make-variable :name "test1")
+                                 (phpinspect--make-variable :name "test3")
+                                 (phpinspect--make-variable :name "test2"))
+                   :as @variable
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+
+    (should result)
+    (should (= 3 (length result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get *
+                   :as @variable
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+    (should result)
+    (should (= 3 (length result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :get (phpinspect-intern-name "test2")
+                   :as @variable
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+    (should result)
+    (should (= 1 (length result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :delete (phpinspect-intern-name "test2")
+                   :as @variable
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+    (should result)
+    (should (= 1 (length result)))
+
+    (setq result (phpinspect-cache-transact cache '((label test))
+                   :delete *
+                   :as @variable
+                   :member-of (phpinspect--make-type :name "\\TestClass")))
+    (should result)
+    (should (= 2 (length result)))
+
+    (should-not (phpinspect-cache-transact cache '((label test))
+                   :get *
+                   :as @variable
+                   :member-of (phpinspect--make-type :name "\\TestClass")))))

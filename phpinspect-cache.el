@@ -21,6 +21,8 @@
 
 ;;; Commentary:
 
+;; FIXME: Storage mechanism for abstract methods is missing (@abstract-method)
+
 ;;; Code:
 
 (require 'phpinspect-project)
@@ -308,14 +310,14 @@ then returned."
 (defun phpinspect-bidi-graph-unlink-between (graph obj1 obj2)
   (when-let ((rel (gethash obj1 (phpinspect-bidi-graph-rel graph)))
              (back-rel (gethash obj2 (phpinspect-bidi-graph-rel-back graph))))
-    (delq obj2 rel)
-    (delq obj1 back-rel)))
+    (puthash obj1 (delq obj2 rel) (phpinspect-bidi-graph-rel graph))
+    (puthash obj2 (delq obj1 back-rel) (phpinspect-bidi-graph-rel-back graph))))
 
 (defun phpinspect-bidi-graph-unlink (graph obj)
   (when-let ((obj-link (gethash obj (phpinspect-bidi-graph-rel graph))))
     (dolist (back-rel obj-link)
       (when-let ((back-link (gethash back-rel (phpinspect-bidi-graph-rel-back graph))))
-        (delq obj back-link) (phpinspect-bidi-graph-rel-back graph)))
+        (puthash back-rel (delq obj back-link) (phpinspect-bidi-graph-rel-back graph))))
     (remhash obj (phpinspect-bidi-graph-rel graph))))
 
 (defun phpinspect-bidi-graph-get-linking-from (graph obj)
@@ -339,19 +341,20 @@ then returned."
   (functions nil))
 
 (cl-defstruct (phpinspect-cache-group (:constructor phpinspect-make-cache-group))
+  (spec nil)
   (namespaces (make-hash-table :test #'eq :size 2000 :rehash-size 2.0))
   (extends (phpinspect-make-bidi-graph))
   (implements (phpinspect-make-bidi-graph)))
 
 (eval-and-compile
-  (defconst phpinspect-cache-types '(interface trait class method type
-                                               abstract-method function variable namespace)
+  (defconst phpinspect-cache-types '(@interface @trait @class @method @type
+                                               @abstract-method @function @variable @namespace)
     "Types of entities that the cache can store.")
 
-  (defconst phpinspect-cache-containing-types '(class trait interface)
+  (defconst phpinspect-cache-containing-types '(@class @trait @interface)
     "Types of entities that the cache can store members for.")
 
-  (defconst phpinspect-cache-member-types '(method abstract-method function variable)
+  (defconst phpinspect-cache-member-types '(@method @abstract-method @function @variable)
     "Types of entities that the cache can store as members."))
 
 (defun phpinspect-cache-type-get-extends (type)
@@ -363,6 +366,11 @@ then returned."
   (phpinspect-cache-group-get-implements
    (phpinspect-cache-type-group type)
    (phpinspect-cache-type-name type)))
+
+(defun phpinspect-cache-type-add-method (type method)
+  (push (cons (phpinspect--function-short-name-symbol method)
+              method)
+        (phpinspect-cache-type-methods type)))
 
 (defun phpinspect-cache-group-get-extends (group type-name)
   (phpinspect-bidi-graph-get-linking-from
@@ -406,7 +414,7 @@ then returned."
   (when-let ((entity
               (cdr (assq (phpinspect--type-short-name type)
                          (phpinspect-cache-namespace-types namespace)))))
-    (and (or (eq 'type category)
+    (and (or (eq '@type category)
              (eq category (phpinspect-cache-type-category entity)))
          entity)))
 
@@ -418,7 +426,7 @@ then returned."
       (while types
         (let ((type-cell (car types)))
           (when (eq (car type-cell) name)
-            (when (or (eq 'type category)
+            (when (or (eq '@type category)
                       (eq category
                           (phpinspect-cache-type-category (cdr type-cell))))
               (if cell-before
@@ -456,11 +464,16 @@ then returned."
   (phpinspect-bidi-graph-unlink
    (phpinspect-cache-group-implements group) name))
 
+(defmacro phpinspect--inline-wildcard-param-p (param)
+  `(let ((param ,param))
+     (and (inline-const-p param) (eq '* (inline-const-val param)))))
 
 (define-inline phpinspect-cache-query--do-delete-type
-  (group param type member namespace implements extends)
-  (inline-letevals (group param member namespace implements extends)
-    (if (and (inline-const-p param) (eq '* (inline-const-val param)))
+  (group param type _member namespace _implements _extends)
+  (setq type (inline-const-val type))
+
+  (inline-letevals (group param namespace)
+    (if (phpinspect--inline-wildcard-param-p param)
         (if namespace
             (inline-quote
              (when-let ((namespace (phpinspect-cache-group-get-namespace
@@ -469,7 +482,7 @@ then returned."
                  (setf (phpinspect-cache-namespace-types namespace)
                        (seq-filter
                         (lambda (type-cell)
-                          (if ,(if (eq type 'type)
+                          (if ,(if (eq type '@type)
                                    t
                                  `(eq (phpinspect-cache-type-category (cdr type-cell))
                                       (quote ,type)))
@@ -487,7 +500,7 @@ then returned."
                                  (phpinspect-cache-group-namespaces ,group)))
                (let (new-types)
                  (dolist (type-cell (phpinspect-cache-namespace-types namespace))
-                   (if ,(if (eq type 'type)
+                   (if ,(if (eq type '@type)
                             t
                           `(eq (phpinspect-cache-type-category
                                 (cdr type-cell))
@@ -512,9 +525,10 @@ then returned."
          result)))))
 
 (define-inline phpinspect-cache-query--do-delete-function
-  (group param type member namespace implements extends)
-  (inline-letevals (group param member namespace implements extends)
-    (if (and (inline-const-p param) (eq '* (inline-const-val param)))
+  (group param _type _member namespace _implements _extends)
+
+  (inline-letevals (group param namespace)
+    (if (phpinspect--inline-wildcard-param-p param)
         (if namespace
             (inline-quote
              (when-let ((namespace (phpinspect-cache-group-get-namespace
@@ -538,36 +552,126 @@ then returned."
                       resultset)))
              (cons 'phpinspect-cache-multiresult resultset))))
       (inline-quote
-       (progn
-         (when-let ((namespace
-                     (phpinspect-cache-group-get-namespace
-                      ,group (or ,namespace
-                                 (phpinspect-intern-name
-                                  (phpinspect-type-name-namespace
-                                   (phpinspect-name-string ,param)))))))
-           (phpinspect-cache-namespace-delete-function
-            namespace ,param)))))))
+       (when-let ((namespace
+                   (phpinspect-cache-group-get-namespace
+                    ,group (or ,namespace
+                               (phpinspect-intern-name
+                                (phpinspect-type-name-namespace
+                                 (phpinspect-name-string ,param)))))))
+         (phpinspect-cache-namespace-delete-function
+          namespace ,param))))))
 
-(define-inline phpinspect-cache-query--do-delete
+(defun phpinspect--assq-delete (key alist)
+  (let* ((result (cons nil nil))
+         (result-rear result)
+         deleted)
+    (catch 'break
+      (while alist
+        (if (eq key (caar alist))
+            (progn
+              (setcdr result-rear (cdr alist))
+              (setq deleted (car alist))
+              (throw 'break nil))
+          (setq result-rear (setcdr result-rear (cons (car alist) nil)))
+          (setq alist (cdr alist)))))
+
+    (list deleted (cdr result))))
+
+;; OPTIMIZE: this is probably not optimal for large numbers of keys
+(defun phpinspect--assq-delete-multi (keys alist)
+  (let (all-deleted)
+    (dolist (key keys)
+      (pcase-let ((`(,deleted ,filtered) (phpinspect--assq-delete key alist)))
+        (push deleted all-deleted)
+        (setq alist filtered)))
+
+    (list all-deleted alist)))
+
+(defun phpinspect--alist-values (alist)
+  (let* ((vals (cons nil nil))
+         (vals-rear vals))
+    (dolist (cell alist)
+      (setq vals-rear (setcdr vals-rear (cons (cdr cell) nil))))
+
+    (cdr vals)))
+
+(defun phpinspect-cache-query--do-delete-method (cache group param type member)
+  (when-let ((member-type
+              (car
+               (phpinspect-cache-transact cache (list (phpinspect-cache-group-spec group))
+                 :get member :as @type))))
+    (cond ((eq '* param)
+           (let ((deleted (phpinspect--alist-values
+                           (phpinspect-cache-type-methods member-type))))
+             (setf (phpinspect-cache-type-methods member-type) nil)
+             (cons 'phpinspect-cache-multiresult deleted)))
+          ((and (listp param) (not (phpinspect-name-p param)))
+           (pcase-let ((`(,deleted ,filtered)
+                        (phpinspect--assq-delete-multi
+                         param (phpinspect-cache-type-methods member-type))))
+             (setf (phpinspect-cache-type-methods member-type) filtered)
+             (cons 'phpinspect-cache-multiresult deleted)))
+          (t
+           (pcase-let ((`(,deleted ,filtered)
+                        (phpinspect--assq-delete
+                         param (phpinspect-cache-type-methods member-type))))
+
+             (setf (phpinspect-cache-type-methods member-type) filtered)
+             deleted)))))
+
+(defun phpinspect-cache-query--do-delete-variable (cache group param type member)
+  (when-let ((member-type
+              (car
+               (phpinspect-cache-transact cache (list (phpinspect-cache-group-spec group))
+                 :get member :as @type))))
+    (cond ((eq '* param)
+           (let ((deleted (phpinspect--alist-values
+                           (phpinspect-cache-type-variables member-type))))
+             (setf (phpinspect-cache-type-variables member-type) nil)
+             (cons 'phpinspect-cache-multiresult deleted)))
+          ((and (listp param) (not (phpinspect-name-p param)))
+           (pcase-let ((`(,deleted ,filtered)
+                        (phpinspect--assq-delete-multi
+                         param (phpinspect-cache-type-variables member-type))))
+             (setf (phpinspect-cache-type-variables member-type) filtered)
+             (cons 'phpinspect-cache-multiresult deleted)))
+          (t
+           (pcase-let ((`(,deleted ,filtered)
+                        (phpinspect--assq-delete
+                         param (phpinspect-cache-type-variables member-type))))
+
+             (setf (phpinspect-cache-type-variables member-type) filtered)
+             deleted)))))
+
+(define-inline phpinspect-cache-query--do-delete-member
   (cache group param type member namespace implements extends)
-  (cl-assert (and (inline-const-p type) (symbolp (inline-const-val type))))
+  (inline-letevals (cache group param member)
+    (setq type (inline-const-val type))
 
-  (let ((type (inline-const-val type))
-        delete-form)
-    (inline-letevals (group param member namespace implements extends)
-      (cond
-       ((memq type (cons 'type phpinspect-cache-containing-types))
-            (setq delete-form
-                  (inline-quote
-                   (phpinspect-cache-query--do-delete-type
-                    ,group ,param ,type ,member ,namespace ,implements ,extends))))
-       ((and (eq 'function type) (not member))
-        (setq delete-form
-              (inline-quote
-               (phpinspect-cache-query--do-delete-function
-                ,group ,param ,type ,member ,namespace ,implements ,extends))))
-       (t (inline-error "Delete not supported for entity type %s" type))))
-    delete-form))
+    (pcase type
+      ((or '@function '@method)
+       (inline-quote
+        (phpinspect-cache-query--do-delete-method ,cache ,group ,param (quote ,type) ,member)))
+      ('@variable
+       (inline-quote
+        (phpinspect-cache-query--do-delete-variable ,cache ,group ,param (quote ,type) ,member)))
+      (_ (error "Delete not supported for member type %s" type)))))
+
+(defmacro phpinspect-cache-query--do-delete
+  (cache group param type member namespace implements extends)
+  (cl-assert (symbolp type))
+
+  (cond
+   ((memq type (cons '@type phpinspect-cache-containing-types))
+    `(phpinspect-cache-query--do-delete-type
+      ,group ,param (quote ,type) ,member ,namespace ,implements ,extends))
+   ((and (eq '@function type) (not member))
+    `(phpinspect-cache-query--do-delete-function
+      ,group ,param (quote ,type) ,member ,namespace ,implements ,extends))
+   ((and (memq type phpinspect-cache-member-types) member)
+    `(phpinspect-cache-query--do-delete-member
+      ,cache ,group ,param (quote ,type) ,member ,namespace ,implements ,extends))
+   (t (error "Delete not supported for entity type %s" type))))
 
 (defun phpinspect-cache-namespace-get-function (namespace func-name)
   (cdr (assq func-name (phpinspect-cache-namespace-functions namespace))))
@@ -590,111 +694,148 @@ then returned."
      (phpinspect--type-name-symbol type)
      (phpinspect--type-name-symbol implements))))
 
-(define-inline phpinspect-cache-query--do-insert
+(defun phpinspect-cache-type-add-variable (type variable)
+  (push (cons (phpinspect--variable-name-symbol variable)
+              variable)
+        (phpinspect-cache-type-variables type)))
+
+(define-inline phpinspect-cache-query--do-insert-method
+  (cache group param type member namespace)
+  (setq type (inline-const-val type))
+  (inline-letevals (cache group param member namespace)
+    (inline-quote
+     (let ((member-type
+            (car
+             (phpinspect-cache-transact ,cache (list (phpinspect-cache-group-spec ,group))
+               :get ,member
+               :in ,namespace
+               :as @type)))
+           resultset)
+       ,(pcase type
+          ((or '@function '@method)
+           `(if (listp ,param)
+                (progn
+                  (dolist (method ,param)
+                    (push method resultset)
+                    (phpinspect-cache-type-add-method member-type method))
+                  (cons 'phpinspect-cache-multiresult resultset))
+              (cdar (phpinspect-cache-type-add-method member-type ,param))))
+          ('@variable
+           `(if (listp ,param)
+                (progn
+                  (dolist (variable ,param)
+                    (push variable resultset)
+                    (phpinspect-cache-type-add-variable member-type variable))
+                  (cons 'phpinspect-cache-multiresult resultset))
+              (cdar (phpinspect-cache-type-add-variable member-type ,param))))
+          (_ (error "Insert not supported for member type %s" type)))))))
+
+(defun phpinspect-cache-query--do-insert-function (cache group param namespace)
+  (let ((namespace
+         (phpinspect-cache-group-get-namespace-create
+          group (or namespace
+                     (phpinspect--function-namespace param)))))
+    (or (when-let ((existing (assq (phpinspect--function-name-symbol param)
+                                   (phpinspect-cache-namespace-functions namespace))))
+          (cdar (setcdr existing (cons param (cdr existing)))))
+        (cdar (push (cons (phpinspect--function-short-name-symbol param) param)
+                    (phpinspect-cache-namespace-functions namespace))))))
+
+(define-inline phpinspect-cache-query--do-insert-member
+    (cache group param type member namespace implements extends)
+    (if member
+        (inline-quote
+         (phpinspect-cache-query--do-insert-method
+          ,cache ,group ,param ,type ,member ,namespace))
+
+      ;; Else: insert function in namespace
+      (inline-quote
+       (phpinspect-cache-query--do-insert-function ,cache ,group ,param ,namespace))))
+
+(defmacro phpinspect-cache-query--do-insert
   (cache group param type member namespace implements extends)
-  (cl-assert (and (inline-const-p type) (symbolp (inline-const-val type))))
+  (cl-assert (symbolp type))
 
-  (let ((type (inline-const-val type))
-        register-form)
-    (inline-letevals (group param member namespace implements extends)
-      (cond
-       ((memq type (cons 'type phpinspect-cache-containing-types))
+  (cond
+   ((memq type (cons '@type phpinspect-cache-containing-types))
+    `(let* ((namespace (phpinspect-cache-group-get-namespace-create
+                        ,group
+                        (or ,namespace (phpinspect--type-namespace ,param)))))
+       ,(when extends
+          `(phpinspect-cache-group-register-extends ,group ,param ,extends))
 
-        (setq register-form
-              (inline-quote
-               (let* ((namespace (phpinspect-cache-group-get-namespace-create
-                                  ,group
-                                  (or ,namespace (phpinspect--type-namespace ,param)))))
-                 ,(when extends
-                    `(phpinspect-cache-group-register-extends ,group ,param ,extends))
+       ,(when implements
+          `(phpinspect-cache-group-register-implements ,group ,param ,implements))
 
-                 ,(when implements
-                    `(phpinspect-cache-group-register-implements ,group ,param ,implements))
+       (phpinspect-cache-namespace-get-type-create
+        namespace ,param (quote ,type) ,group)))
+   ((memq type phpinspect-cache-member-types)
+    `(phpinspect-cache-query--do-insert-member
+      ,cache ,group ,param (quote ,type) ,member ,namespace ,implements ,extends))
+   (t (error "Insert not supported for entity type %s" type))))
 
-                 (phpinspect-cache-namespace-get-type-create
-                  namespace ,param (quote ,type) ,group)))))
-       ((and (eq 'function type) (not member))
-        (setq register-form
-              (inline-quote
-               (let ((namespace (phpinspect-cache-group-get-namespace-create
-                                 ,group (or ,namespace (phpinspect--function-namespace ,param)))))
-                 (or (when-let ((existing (assq (phpinspect--function-name-symbol ,param)
-                                                (phpinspect-cache-namespace-functions namespace))))
-                       (setcdr existing ,param))
-                     (cdar (push (cons (phpinspect--function-short-name-symbol ,param) ,param)
-                                 (phpinspect-cache-namespace-functions namespace))))))))
-       (t (inline-error "Insert not supported for entity type %s" type))))
-    register-form))
+(defun phpinspect-cache-query--do-get-type-wildcard (group param type namespace)
+  (if namespace
+      (when-let ((namespace (phpinspect-cache-group-get-namespace group namespace)))
+        (cons 'phpinspect-cache-multiresult
+              (mapcar #'cdr (phpinspect-cache-namespace-types namespace))))
+    (cons
+     'phpinspect-cache-multiresult
+     (mapcan
+      (lambda (namespace)
+        (mapcar #'cdr (phpinspect-cache-namespace-types namespace)))
+      (hash-table-values (phpinspect-cache-group-namespaces group))))))
 
-(define-inline phpinspect-cache-query--do-get-type
+
+(defun phpinspect-cache-query--do-get-type
   (group param type member namespace implements extends)
-  (inline-letevals (group param member namespace implements extends)
-    (let ((form
-           (if (and (inline-const-p param) (eq '* (inline-const-val param)))
-               (if namespace
-                   (inline-quote
-                    (when-let ((namespace (phpinspect-cache-group-get-namespace
-                                           ,group ,namespace)))
-                      (cons 'phpinspect-cache-multiresult
-                            (mapcar #'cdr (phpinspect-cache-namespace-types namespace)))))
-                 (inline-quote
-                  (cons
-                   'phpinspect-cache-multiresult
-                   (mapcan
-                    (lambda (namespace)
-                      (mapcar #'cdr (phpinspect-cache-namespace-types namespace)))
-                    (hash-table-values (phpinspect-cache-group-namespaces ,group))))))
-             (inline-quote
-              (when-let* ((namespace (phpinspect-cache-group-get-namespace
-                                      ,group
-                                      (or ,namespace
-                                          (phpinspect--type-namespace ,param)))))
-                (phpinspect-cache-namespace-get-type namespace ,param (quote ,type)))))))
+    (let ((result
+           (if (eq '* param)
+               (phpinspect-cache-query--do-get-type-wildcard group param type namespace)
+             (when-let* ((namespace (phpinspect-cache-group-get-namespace
+                                     group
+                                     (or namespace
+                                         (phpinspect--type-namespace param)))))
+               (phpinspect-cache-namespace-get-type namespace param type)))))
 
-      (setq form
-            (inline-quote
-             (if ,implements
-                 (let ((implementing (phpinspect-cache-group-get-implementing ,group ,implements))
-                       (result ,form)
-                       filtered)
-                   (when result
-                     (if (and (consp result)
-                              (eq 'phpinspect-cache-multiresult (car result)))
-                         (progn
-                           (dolist (res (cdr result))
-                             (when (memq (phpinspect-cache-type-name res) implementing)
-                               (push res filtered)))
-                           (setq filtered (cons 'phpinspect-cache-multiresult filtered)))
-                       (when (memq (phpinspect-cache-type-name result) implementing)
-                         (setq filtered result)))))
-               ,form)))
+      ;; OPTIMIZE: Performance of these filters won't be very good when using
+      ;; wildcards without namespace parameter. Probably worth optimizing when
+      ;; this becomes a frequent use case.
+      (when implements
+        (setq result
+              (let ((implementing (phpinspect-cache-group-get-implementing group implements))
+                    filtered)
+                (when result
+                  (if (and (consp result)
+                           (eq 'phpinspect-cache-multiresult (car result)))
+                      (progn
+                        (dolist (res (cdr result))
+                          (when (memq (phpinspect-cache-type-name res) implementing)
+                            (push res filtered)))
+                        (cons 'phpinspect-cache-multiresult filtered))
+                    (when (memq (phpinspect-cache-type-name result) implementing)
+                      result))))))
 
-        (setq form
-              (inline-quote
-               (if ,extends
-                   (let ((extending (phpinspect-cache-group-get-extending ,group ,extends))
-                         (result ,form)
-                         filtered)
-                     (when result
-                       (if (and (consp result)
-                                (eq 'phpinspect-cache-multiresult (car result)))
-                           (progn
-                             (dolist (res (cdr result))
-                               (when (memq (phpinspect-cache-type-name res) extending)
-                                 (push res filtered)))
-                             (setq filtered (cons 'phpinspect-cache-multiresult filtered)))
-                         (when (memq (phpinspect-cache-type-name result) extending)
-                           (setq filtered result)))))
-                 ,form)))
-      form)))
-
-
-
+      (when extends
+        (setq result
+              (let ((extending (phpinspect-cache-group-get-extending group extends))
+                    filtered)
+                (when result
+                  (if (and (consp result)
+                           (eq 'phpinspect-cache-multiresult (car result)))
+                      (progn
+                        (dolist (res (cdr result))
+                          (when (memq (phpinspect-cache-type-name res) extending)
+                            (push res filtered)))
+                        (cons 'phpinspect-cache-multiresult filtered))
+                    (when (memq (phpinspect-cache-type-name result) extending)
+                      result))))))
+      result))
 
 (define-inline phpinspect-cache-query--do-get-function
   (group param type member namespace implements extends)
   (inline-letevals (group param member namespace implements extends)
-    (if (and (inline-const-p param) (eq '* (inline-const-val param)))
+    (if (phpinspect--inline-wildcard-param-p param)
         (if namespace
             (inline-quote
              (when-let ((namespace (phpinspect-cache-group-get-namespace
@@ -735,50 +876,64 @@ then returned."
                    (push func resultset)))
                (cons 'phpinspect-cache-multiresult resultset)))))))))
 
-(define-inline phpinspect-cache-query--do-get
-  (cache group param type member namespace implements extends)
-  (cl-assert (and (inline-const-p type) (symbolp (inline-const-val type))))
+(defun phpinspect-cache-type-get-method (type method-name)
+  (cdr (assq method-name (phpinspect-cache-type-methods type))))
 
-  (let ((type (inline-const-val type))
-        get-form)
-    (inline-letevals (group param member namespace implements extends)
-      (cond
-       ((memq type (cons 'type phpinspect-cache-containing-types))
-        (setq get-form
-              (inline-quote
-               (phpinspect-cache-query--do-get-type
-                ,group ,param ,type ,member ,namespace ,implements ,extends))))
-       ((and (eq 'function type) (not member))
-        (setq get-form
-              (inline-quote
-               (phpinspect-cache-query--do-get-function
-                ,group ,param ,type ,member ,namespace ,implements ,extends))))
-       (t (inline-error "Get not supported for entity type %s" type))))
-    get-form))
+(defun phpinspect-cache-type-get-variable (type method-name)
+  (cdr (assq method-name (phpinspect-cache-type-variables type))))
+
+(define-inline phpinspect-cache-query--do-get-member (cache group param type member namespace)
+  (inline-letevals (cache group param member namespace)
+    (setq type (inline-const-val type))
+
+    (inline-quote
+     (when-let ((member-type
+                 (car
+                  (phpinspect-cache-transact ,cache (list (phpinspect-cache-group-spec ,group))
+                    :get ,member
+                    :as @type
+                    :in ,namespace))))
+
+       ,(pcase type
+          ((or '@function '@method)
+           (if (phpinspect--inline-wildcard-param-p param)
+               `(cons 'phpinspect-cache-multiresult
+                      (phpinspect--alist-values (phpinspect-cache-type-methods member-type)))
+             `(phpinspect-cache-type-get-method member-type ,param)))
+          ('@variable
+           (if (phpinspect--inline-wildcard-param-p param)
+               `(cons 'phpinspect-cache-multiresult
+                      (phpinspect--alist-values (phpinspect-cache-type-variables member-type)))
+             `(phpinspect-cache-type-get-variable member-type ,param)))
+          (_ (error "Get not supported for member entity type %s" type)))))))
+
+(defmacro phpinspect-cache-query--do-get
+  (cache group param type member namespace implements extends)
+  (cl-assert (symbolp type))
+
+  (cond
+   ((memq type (cons '@type phpinspect-cache-containing-types))
+    `(phpinspect-cache-query--do-get-type
+      ,group ,param (quote ,type) ,member ,namespace ,implements ,extends))
+   ((and (eq '@function type) (not member))
+    `(phpinspect-cache-query--do-get-function
+      ,group ,param ,type ,member ,namespace ,implements ,extends))
+   ((and (memq type phpinspect-cache-member-types) member)
+    `(phpinspect-cache-query--do-get-member
+      ,cache ,group ,param (quote ,type) ,member ,namespace))
+   (t (error "Get not supported for entity type %s" type))))
 
 (defmacro phpinspect-cache-query--wrap-action
     (action cache group param type member namespace implements extends)
-  (let ((cache-sym (gensym "cache"))
-        (group-sym (gensym "group"))
-        (param-sym (gensym "param"))
-        (member-sym (gensym "member"))
-        (namespace-sym (gensym "namespace"))
-        (implements-sym (gensym "implements"))
-        (extends-sym (gensym "extends")))
+  (let* ((param-sym (gensym "param")))
     `(let ((,param-sym ,param))
        (if (and (sequencep ,param-sym) (not (phpinspect-name-p ,param-sym)))
-           (let* ((,cache-sym ,cache)
-                  (,group-sym ,group)
-                  (,member-sym ,member)
-                  (,namespace-sym ,namespace)
-                  (,implements-sym ,implements)
-                  (,extends-sym ,extends)
-                  (result (cons 'phpinspect-cache-multiresult nil))
+           (let* ((result (cons 'phpinspect-cache-multiresult nil))
                   (result-rear result))
              (seq-doseq (p ,param-sym)
                (when-let ((action-result
-                           (,action ,cache-sym ,group-sym p ,type ,member-sym
-                                    ,namespace-sym ,implements-sym ,extends-sym)))
+                           (,action ,cache ,group p ,type ,member
+                                    ,namespace ,implements ,extends)))
                  (setq result-rear
                        (setcdr result-rear
                                (cons action-result nil)))))
@@ -796,7 +951,7 @@ then returned."
                      t "Spec car must be the symbol `project' or `label'")
           (let ((group (gethash spec (phpinspect-cache-groups cache))))
             (when (and (eq :insert intent) (not group))
-              (setq group (puthash spec (phpinspect-make-cache-group)
+              (setq group (puthash spec (phpinspect-make-cache-group :spec spec)
                                    (phpinspect-cache-groups cache))))
             (push group groups)))
       (if (eq :insert intent)
@@ -805,77 +960,106 @@ then returned."
 
     groups))
 
-(define-inline phpinspect-cache-transact (cache group-specs &rest query)
+(defmacro phpinspect-cache-transact (cache group-specs &rest query)
   (declare (indent 2))
   (cl-assert (listp query))
 
   (let (type intent intent-param member namespace implements extends key value)
-    (condition-case err
-        (progn
-          (while (setq key (pop query))
-            (cl-assert (keywordp key) t "Query keys must be keywords, %s provided" key)
-            (setq value (pop query))
-            (cl-assert value t "Key %s has no value" key)
+    (while (setq key (pop query))
+      (cl-assert (keywordp key) t "Query keys must be keywords, %s provided" key)
+      (setq value (pop query))
 
-            (pcase key
-              ((or :insert :get :delete)
-               (when intent
-                 (inline-error "Defined duplicate intent: %s, %s" intent key))
-               (setq intent key
-                     intent-param value))
-              (:as (cl-assert (and (inline-const-p value)
-                                   (memq (inline-const-val value) phpinspect-cache-types))
-                              t ":type must be one of %s" phpinspect-cache-types)
-                   (setq type (inline-const-val value)))
-              (:member-of (setq member value))
-              (:in (setq namespace value))
-              (:implementing (setq implements value))
-              (:extending (setq extends value))
-              (_ (error "Unexpected query keyword %s" key))))
+      ;; Namespace is allowed to be dynamic/nil
+      (unless (eq :in key)
+        (cl-assert value t "Key %s has no value" key))
 
-          ;; Query validation
-          (unless type
-            (error "Providing entity type with keyword :as is required."))
+      (pcase key
+        ((or :insert :get :delete)
+         (when intent
+           (error "Defined duplicate intent: %s, %s" intent key))
+         (setq intent key
+               intent-param value))
+        (:as (unless (and (symbolp value)
+                          (memq value phpinspect-cache-types))
+               (error ":type must be one of %s, %s provided"
+                      phpinspect-cache-types value))
+             (setq type value))
+        (:member-of (setq member value))
+        (:in (setq namespace value))
+        (:implementing (setq implements value))
+        (:extending (setq extends value))
+        (_ (error "Unexpected query keyword %s" key))))
 
-          (when (and member (not (memq type phpinspect-cache-member-types)))
-            (error "Keyword :member-of can only be used for types %s"
-                   phpinspect-cache-member-types))
+    ;; Query validation
+    (unless type
+      (error "Providing entity type with keyword :as is required."))
 
-          (when (and extends (not (memq type '(class trait interface type))))
-            (error "Keyword :extending cannot be used for types other than %s"
-                   '(class trait interface)))
+    (when (and member (not (memq type phpinspect-cache-member-types)))
+      (error "Keyword :member-of can only be used for types %s"
+             phpinspect-cache-member-types))
 
-          (when (eq :insert intent)
-            (when (and (memq type '(variable method abstract-method)) (not member))
-              (error "Variable and methods must be member of %s."
-                     phpinspect-cache-containing-types))
+    (when (and extends (not (memq type '(@class @trait @interface @type))))
+      (error "Keyword :extending cannot be used for types other than %s"
+             '(class trait interface)))
 
-            (when (eq 'type type)
-              (error ":as 'type cannot be used for insertions.")))
+    (when (eq :insert intent)
+      (when (and (memq type '(@variable @method @abstract-method)) (not member))
+        (error "Variable and methods must be member of %s."
+               phpinspect-cache-containing-types))
 
-          (when (and intent (not intent-param))
-            (error "Intent %s must have a parameter %s" intent)))
-      (t (inline-error "phpinspect-cache-transact: %s" err)))
+      (when (eq '@type type)
+        (error ":as @type cannot be used for insertions.")))
 
+    (when (and intent (not intent-param))
+      (error "Intent %s must have a parameter %s" intent))
 
-    (inline-letevals (group-specs intent-param cache type member namespace implements extends)
-      (let* ((action-args `(,intent-param (quote ,type) ,member ,namespace ,implements ,extends))
+    (let ((group-specs-sym (make-symbol "group-specs"))
+          (intent-param-sym (make-symbol "intent-param"))
+          (cache-sym (make-symbol "cache"))
+          (member-sym (make-symbol "member"))
+          (namespace-sym (make-symbol "namespace"))
+          (implements-sym (make-symbol "implements"))
+          (extends-sym (make-symbol "extends"))
+          (resultset-sym (make-symbol "resultset"))
+          (groups-sym (make-symbol "groups")))
+      (let* ((action-args
+              `(,(if (eq '* intent-param) `(quote ,intent-param) intent-param-sym)
+                ,type
+                ,(if member member-sym nil)
+                ,(if namespace namespace-sym nil)
+                ,(if implements implements-sym nil)
+                ,(if extends extends-sym nil)))
+             (validate-args
+              `(,(if (eq '* intent-param) `(quote ,intent-param) intent-param-sym)
+                (quote ,type)
+                ,(if member member-sym nil)
+                ,(if namespace namespace-sym nil)
+                ,(if implements implements-sym nil)
+                ,(if extends extends-sym nil)))
              (action (pcase intent
                        (:insert 'phpinspect-cache-query--do-insert)
                        (:delete 'phpinspect-cache-query--do-delete)
                        (:get 'phpinspect-cache-query--do-get)
-                       (_ (inline-error "Invalid intent %s" intent)))))
-        (inline-quote
-         (let ((groups (phpinspect-cache-query--compile-groups ,cache ,group-specs ,intent))
-               resultset)
-           ,(cons 'phpinspect-cache-query--validate (cons intent action-args))
-           (dolist (group groups)
+                       (_ (error "Invalid intent %s" intent)))))
+        `(let* ,(seq-filter
+                 (lambda (val) val)
+                 `((,group-specs-sym ,group-specs)
+                   ,(unless (eq '* intent-param) `(,intent-param-sym ,intent-param))
+                   ,(when cache `(,cache-sym ,cache))
+                   ,(when member `(,member-sym ,member))
+                   ,(when namespace `(,namespace-sym ,namespace))
+                   ,(when implements `(,implements-sym ,implements))
+                   ,(when extends `(,extends-sym ,extends))
+                   (,groups-sym (phpinspect-cache-query--compile-groups ,cache ,group-specs ,intent))
+                   ,resultset-sym))
+           ,(cons 'phpinspect-cache-query--validate (cons intent validate-args))
+           (dolist (group ,groups-sym)
              (when-let ((result ,(cons 'phpinspect-cache-query--wrap-action
                                        (cons action (cons cache (cons 'group action-args))))))
                (if (and (listp result) (eq 'phpinspect-cache-multiresult (car result)))
-                   (setq resultset (nconc resultset (cdr result)))
-                 (push result resultset))))
-           resultset))))))
+                   (setq ,resultset-sym (nconc ,resultset-sym (cdr result)))
+                 (push result ,resultset-sym))))
+           ,resultset-sym)))))
 
 (defun phpinspect-cache-query--validate
     (intent intent-param type member namespace implements extends)
@@ -884,7 +1068,7 @@ then returned."
    (cond
     ((phpinspect--type-p intent-param)
      (cond
-      ((not (memq type '(class trait interface type)))
+      ((not (memq type '(@class @trait @interface @type)))
        (error "Cannot use intent-param of type phpinspect--type when querying for %s" type))
       ((and (phpinspect--type-fully-qualified intent-param)
             namespace)
@@ -893,7 +1077,7 @@ then returned."
      t)
     ((phpinspect-name-p intent-param) t)
     ((listp intent-param)
-     (if (memq type '(class trait interface type))
+     (if (memq type '(@class @trait @interface @type))
          (unless (seq-every-p #'phpinspect--type-p intent-param)
            (error "Each intent param must be of type `phpinspect--type'. Got: %s" intent-param))
        (pcase intent
@@ -905,9 +1089,7 @@ then returned."
           (unless (seq-every-p #'phpinspect-name-p intent-param)
             (error "Each intent param must be a name, got: %s" intent-param)))
          (:delete
-          (unless (or (seq-every-p #'phpinspect-name-p intent-param)
-                      (seq-every-p #'phpinspect--variable-p intent-param)
-                      (seq-every-p #'phpinspect--function-p intent-param))
+          (unless (or (seq-every-p #'phpinspect-name-p intent-param))
             (error "Each intent param must be an instance of `phpinspect--function', `phpinspect--variable' or `phpinspect-name'")))))
      t)
     ((eq '* intent-param)
@@ -917,7 +1099,7 @@ then returned."
      (cond
       ((not (memq intent '(:insert :delete)))
        (error "`phpinspect--function' can only be used as parameter for :insert and :delete intents."))
-      ((not (memq type '(function method abstract-method)))
+      ((not (memq type '(@function @method @abstract-method)))
        (error "Inserting/deleting `phpinspect--function' as type %s is not supported" type)))
      t)
     (t (error "Unsupported intent-param %s" intent-param)))

@@ -321,6 +321,9 @@ mutability of the variable")
   (not (or (phpinspect--variable-static-p variable)
            (phpinspect--variable-const-p variable))))
 
+(defun phpinspect--variable-name-symbol (variable)
+  (phpinspect-intern-name (phpinspect--variable-name variable)))
+
 (defun phpinspect--use-to-type (use)
   (let* ((fqn (cadr (cadr use)))
          (type (phpinspect--make-type :name (if (string-match "^\\\\" fqn)
