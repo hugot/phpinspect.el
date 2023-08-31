@@ -224,7 +224,8 @@ Example configuration for `company-mode':
     (add-hook \\='php-mode-hook #\\='my-php-personal-hook)
 
     ;; End example configuration."
-  :after-hook (phpinspect--mode-function))
+  :after-hook (phpinspect--mode-function)
+  :keymap  (list (cons (kbd "C-c u") #'phpinspect-fix-imports)))
 
 (defun phpinspect--suggest-at-point ()
   (phpinspect--log "Entering suggest at point. Point: %d" (point))
