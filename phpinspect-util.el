@@ -238,8 +238,8 @@ it evaluates to a non-nil value."
             (,match-sym (cons nil nil))
             (,match-rear-sym ,match-sym))
        (and (= ,sequence-length (length ,sequence))
-            ,@checkers)
-       (cdr ,match-sym))))
+            ,@checkers
+            (cdr ,match-sym)))))
 
 (defun phpinspect--pattern-concat (pattern1 pattern2)
   (let* ((pattern1-sequence-length (/ (length (phpinspect--pattern-code pattern1)) 2)))

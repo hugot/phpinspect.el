@@ -48,3 +48,10 @@
     (should (equal '(:m "a" :m * :m "b" :f stringp :m * :m "D") (phpinspect--pattern-code result)))
 
     (should (phpinspect--pattern-match result '("a" "anything" "b" "astring" nil "D")))))
+
+(ert-deftest phpinspect--pattern-match-partially ()
+  (let ((result (phpinspect--match-sequence '((:variable "this") (:object-attrib (:word "em")))
+                  :m '(:variable "this")
+                  :m '(:object-attrib (:word "not-a-match")))))
+
+    (should-not result)))
