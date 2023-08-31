@@ -275,38 +275,38 @@ Returns list of `phpinspect--completion'."
 
 
 (defun phpinspect-complete-at-point ()
-  (let ((comp-list (phpinspect-completion-query-execute (phpinspect--get-completion-query)))
-        strings)
-    (obarray-map (lambda (sym) (push (symbol-name sym) strings)) (phpinspect--completion-list-completions comp-list))
-    (and (phpinspect--completion-list-has-candidates comp-list)
-         (list (phpinspect--completion-list-completion-start comp-list)
-               (phpinspect--completion-list-completion-end comp-list)
-               strings
-               :affixation-function
-               (lambda (completions)
-                 (let (affixated completion)
-                   (dolist (comp completions)
-                     (setq completion (phpinspect--completion-list-get-metadata comp-list comp))
-                     (push (list comp (phpinspect--prefix-for-completion completion)
-                                 (phpinspect--completion-meta completion))
-                           affixated))
-                   (nreverse affixated)))
-               :exit-function
-               (lambda (comp-name state)
-                 (let ((comp (phpinspect--completion-list-get-metadata
-                              phpinspect--last-completion-list
-                              comp-name)))
-                 (when (and (eq 'finished state)
-                            (eq 'function (phpinspect--completion-kind comp)))
-                   (insert "(")
-                   (when (= 0 (length (phpinspect--function-arguments
-                                       (phpinspect--completion-target comp))))
-                     (insert ")")))))
-               :company-kind (lambda (comp-name)
-                               (phpinspect--completion-kind
-                                (phpinspect--completion-list-get-metadata
-                                 phpinspect--last-completion-list
-                                 comp-name)))))))
-
+  (catch 'phpinspect-parse-interrupted
+    (let ((comp-list (phpinspect-completion-query-execute (phpinspect--get-completion-query)))
+          strings)
+      (obarray-map (lambda (sym) (push (symbol-name sym) strings)) (phpinspect--completion-list-completions comp-list))
+      (and (phpinspect--completion-list-has-candidates comp-list)
+           (list (phpinspect--completion-list-completion-start comp-list)
+                 (phpinspect--completion-list-completion-end comp-list)
+                 strings
+                 :affixation-function
+                 (lambda (completions)
+                   (let (affixated completion)
+                     (dolist (comp completions)
+                       (setq completion (phpinspect--completion-list-get-metadata comp-list comp))
+                       (push (list comp (phpinspect--prefix-for-completion completion)
+                                   (phpinspect--completion-meta completion))
+                             affixated))
+                     (nreverse affixated)))
+                 :exit-function
+                 (lambda (comp-name state)
+                   (let ((comp (phpinspect--completion-list-get-metadata
+                                phpinspect--last-completion-list
+                                comp-name)))
+                     (when (and (eq 'finished state)
+                                (eq 'function (phpinspect--completion-kind comp)))
+                       (insert "(")
+                       (when (= 0 (length (phpinspect--function-arguments
+                                           (phpinspect--completion-target comp))))
+                         (insert ")")))))
+                 :company-kind (lambda (comp-name)
+                                 (phpinspect--completion-kind
+                                  (phpinspect--completion-list-get-metadata
+                                   phpinspect--last-completion-list
+                                   comp-name))))))))
 
 (provide 'phpinspect-completion)
