@@ -93,7 +93,7 @@ Conditionally executes BODY depending on
 (cl-defmethod phpinspect--class-update-declaration
   ((class phpinspect--class) declaration imports namespace-name)
   (phpinspect--class-edit class
-    (pcase-let ((`(,class-name ,extends ,implements ,_used-types)
+    (pcase-let ((`(,_ign ,class-name ,extends ,implements ,_used-types)
                  (phpinspect--index-class-declaration
                   declaration (phpinspect--make-type-resolver
                                (phpinspect--uses-to-types imports) nil namespace-name))))

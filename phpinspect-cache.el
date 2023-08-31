@@ -595,6 +595,14 @@ then returned."
 
     (cdr vals)))
 
+(defun phpinspect--alist-keys (alist)
+  (let* ((keys (cons nil nil))
+         (keys-rear keys))
+    (dolist (cell alist)
+      (setq keys-rear (setcdr keys-rear (cons (car cell) nil))))
+
+    (cdr keys)))
+
 (defun phpinspect-cache-query--do-delete-method (cache group param type member)
   (when-let ((member-type
               (car
@@ -775,17 +783,62 @@ then returned."
    (t (error "Insert not supported for entity type %s" type))))
 
 (defun phpinspect-cache-query--do-get-type-wildcard (group param type namespace)
-  (if namespace
-      (when-let ((namespace (phpinspect-cache-group-get-namespace group namespace)))
-        (cons 'phpinspect-cache-multiresult
-              (mapcar #'cdr (phpinspect-cache-namespace-types namespace))))
-    (cons
-     'phpinspect-cache-multiresult
-     (mapcan
-      (lambda (namespace)
-        (mapcar #'cdr (phpinspect-cache-namespace-types namespace)))
-      (hash-table-values (phpinspect-cache-group-namespaces group))))))
+  (let* ((all
+          (if namespace
+              (when-let ((namespace (phpinspect-cache-group-get-namespace group namespace)))
 
+                (phpinspect--alist-values (phpinspect-cache-namespace-types namespace)))
+             (mapcan
+              (lambda (namespace)
+                (mapcar #'cdr (phpinspect-cache-namespace-types namespace)))
+              (hash-table-values (phpinspect-cache-group-namespaces group)))))
+         filtered)
+
+    (if (eq '@type type)
+        (setq filtered all)
+      (dolist (row all)
+        (when (eq (phpinspect-cache-type-category row) type)
+          (push row filtered))))
+
+    (cons 'phpinspect-cache-multiresult filtered)))
+
+(defun phpinspect-cache-insert-index (cache group-spec index)
+  (cl-assert (eq 'phpinspect--root-index (car index)))
+
+  (phpinspect-cache-transact cache group-spec
+    :insert (alist-get 'functions index)
+    :as @function)
+
+  (dolist (class (alist-get 'classes index))
+    (let ((class-name (alist-get 'class-name class)))
+      (pcase (alist-get 'type class)
+        ('@trait
+         (phpinspect-cache-transact cache group-spec
+           :insert class-name :as @trait))
+        ('@interface
+         (phpinspect-cache-transact cache group-spec
+           :insert class-name :as @interface))
+        ('@class
+         (phpinspect-cache-transact cache group-spec
+           :insert class-name
+           :implementing (alist-get 'implements class)
+           :extending (alist-get 'extending class)
+           :as @class))
+        (_ (error "Unexpected class type: %s" (alist-get 'type class))))
+
+
+      (phpinspect-cache-transact cache group-spec
+        :insert (append (alist-get 'methods class)
+                        (alist-get 'static-methods class))
+        :as @method
+        :member-of class-name)
+
+      (phpinspect-cache-transact cache group-spec
+        :insert (append (alist-get 'variables class)
+                        (alist-get 'constants class)
+                        (alist-get 'static-variabes class))
+        :as @variable
+        :member-of class-name))))
 
 (defun phpinspect-cache-query--do-get-type
   (group param type member namespace implements extends)

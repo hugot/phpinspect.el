@@ -221,7 +221,7 @@ linked with."
             (unless (memq (cdr class) indexed)
               (let (imports namespace-name class-name class-obj)
                 (pcase-setq `(,imports ,namespace-name) (phpinspect-get-token-index-context namespaces buffer-imports (cdr class))
-                            `(,class-name) (phpinspect--index-class-declaration
+                            `(,_ign ,class-name) (phpinspect--index-class-declaration
                                             (car class)
                                             (phpinspect--make-type-resolver
                                              (phpinspect--uses-to-types imports)
@@ -236,7 +236,7 @@ linked with."
       (phpinspect-splayt-traverse (class classes)
         (pcase-let* ((declaration (phpinspect-toc-token-at-or-after-point declarations (phpinspect-meta-start class)))
                      (`(,imports ,namespace-name) (phpinspect-get-token-index-context namespaces buffer-imports class))
-                     (`(,class-name) (phpinspect--index-class-declaration
+                     (`(,_type ,class-name) (phpinspect--index-class-declaration
                                       (phpinspect-meta-token declaration)
                                       (phpinspect--make-type-resolver
                                        (phpinspect--uses-to-types imports)

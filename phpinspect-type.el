@@ -352,7 +352,7 @@ mutability of the variable")
 (defun phpinspect--index-class-declaration (decl type-resolver)
   ;; Find out what the class extends or implements
   (let (encountered-extends encountered-implements encountered-class
-        class-name extends implements used-types)
+                            class-name extends implements used-types class-type)
     (dolist (word decl)
       (if (phpinspect-word-p word)
           (cond ((string= (cadr word) "extends")
@@ -362,10 +362,11 @@ mutability of the variable")
                  (setq encountered-extends nil)
                  (phpinspect--log "Class %s implements in interface" class-name)
                  (setq encountered-implements t))
-                ((string-match-p
-                  (eval-when-compile
-                    (concat "^" (phpinspect--class-keyword-handler-regexp) "?$"))
-                  (cadr word))
+                ((and (not encountered-class)
+                      (setq class-type (pcase (cadr word)
+                                         ("class" '@class)
+                                         ("interface" '@interface)
+                                         ("trait" '@trait))))
                  (setq encountered-class t))
                 (t
                  (phpinspect--log "Calling Resolver from index-class on %s" (cadr word))
@@ -383,7 +384,7 @@ mutability of the variable")
                         (setq class-name (funcall type-resolver (phpinspect--make-type :name (cadr word)))
                               encountered-class nil)))))))
 
-    (list class-name extends implements used-types)))
+    (list class-type class-name extends implements used-types)))
 
 (defun phpinspect-namespace-name (namespace)
   (or (and (phpinspect-namespace-p namespace)

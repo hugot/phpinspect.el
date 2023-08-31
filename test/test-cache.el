@@ -514,3 +514,97 @@
                    :get *
                    :as @variable
                    :member-of (phpinspect--make-type :name "\\TestClass")))))
+
+(ert-deftest phpinspect-cache-insert-index ()
+  (let ((cache (phpinspect-make-cache))
+        (index (phpinspect--index-tokens
+                (phpinspect-parse-string
+                 "<?php
+function foo() {};
+
+namespace Bar;
+
+class Baz {
+private $boo;
+const BEE;
+function baa() {}
+}
+
+interface Banana {
+function shouldImplement(): void;
+}
+
+trait Atrait {
+function isOftenEvil() {}
+}"))))
+
+    (phpinspect-cache-insert-index cache '((label test)) index)
+
+    (let ((result (phpinspect-cache-transact cache '((label test))
+                    :get * :as @interface)))
+      (should result)
+      (should (= 1 (length result)))
+      (should (phpinspect--type= (phpinspect--make-type :name "\\Bar\\Banana")
+                                 (phpinspect--make-type
+                                  :name-symbol
+                                  (phpinspect-cache-type-name (car result)))))
+
+      (setq result (phpinspect-cache-transact cache '((label test))
+                     :get * :as @class))
+      (should result)
+      (should (= 1 (length result)))
+      (should (phpinspect--type= (phpinspect--make-type :name "\\Bar\\Baz")
+                                 (phpinspect--make-type
+                                  :name-symbol
+                                  (phpinspect-cache-type-name (car result)))))
+
+      (setq result (phpinspect-cache-transact cache '((label test))
+                     :get * :as @trait))
+      (should result)
+      (should (= 1 (length result)))
+      (should (phpinspect--type= (phpinspect--make-type :name "\\Bar\\Atrait")
+                                 (phpinspect--make-type
+                                  :name-symbol
+                                  (phpinspect-cache-type-name (car result)))))
+
+      (setq result (phpinspect-cache-transact cache '((label test))
+                     :get *
+                     :as @variable
+                     :member-of (phpinspect--make-type :name "\\Bar\\Baz")))
+
+      (should result)
+      (should (= 2 (length result)))
+
+
+      (setq result (phpinspect-cache-transact cache '((label test))
+                     :get *
+                     :as @method
+                     :member-of (phpinspect--make-type :name "\\Bar\\Baz")))
+
+      (should result)
+      (should (= 1 (length result)))
+
+      (setq result (phpinspect-cache-transact cache '((label test))
+                     :get *
+                     :as @method
+                     :member-of (phpinspect--make-type :name "\\Bar\\Banana")))
+
+      (should result)
+      (should (= 1 (length result)))
+
+      (should (string= "shouldImplement"
+                       (phpinspect--function-name (car result))))
+
+      (setq result (phpinspect-cache-transact cache '((label test))
+                     :get * :as @type :in (phpinspect-intern-name "\\Bar")))
+
+      (should result)
+      (should (= 3 (length result)))
+
+      (setq result (phpinspect-cache-transact cache '((label test))
+                     :get * :as @function))
+
+      (should result)
+      (should (= 1 (length result)))
+      (should (string= "foo"
+                       (phpinspect--function-name (car result)))))))

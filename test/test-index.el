@@ -53,6 +53,7 @@
             (classes
              (,(phpinspect--make-type :name "\\Potato" :fully-qualified t)
               phpinspect--indexed-class
+              (type . @class)
               (complete . t)
               (class-name . ,(phpinspect--make-type :name "\\Potato" :fully-qualified t))
               (declaration . (:declaration (:word "class") (:word "Potato")))

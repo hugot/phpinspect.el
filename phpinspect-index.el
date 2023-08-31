@@ -227,14 +227,15 @@ function (think \"new\" statements, return types etc.)."
         (comment-before)
         ;; The types that are used within the code of this class' methods.
         (used-types)
-        (add-used-types))
+        (add-used-types)
+        (class-type))
     (setq add-used-types
           (lambda (additional-used-types)
             (if used-types
                 (nconc used-types additional-used-types)
               (setq used-types additional-used-types))))
 
-    (pcase-setq `(,class-name ,extends ,implements ,used-types)
+    (pcase-setq `(,class-type ,class-name ,extends ,implements ,used-types)
                 (phpinspect--index-class-declaration (cadr class) type-resolver))
 
 
@@ -337,6 +338,7 @@ function (think \"new\" statements, return types etc.)."
 
     `(,class-name .
                   (phpinspect--indexed-class
+                   (type . ,class-type)
                    (complete . ,(not (phpinspect-incomplete-class-p class)))
                    (class-name . ,class-name)
                    (declaration . ,(seq-find #'phpinspect-declaration-p class))
