@@ -60,6 +60,27 @@ of TYPE, if available."
   (or (not type)
       (phpinspect--type= type phpinspect--object-type)))
 
+(defun phpinspect--index-function-declaration (declaration type-resolver add-used-types)
+  (let (current name function-args return-type)
+    (catch 'break
+      (while (setq current (pop declaration))
+        (cond ((and (phpinspect-word-p current)
+                    (phpinspect-word-p (car declaration))
+                    (string= "function" (cadr current)))
+               (setq name (cadr (pop declaration))))
+              ((phpinspect-list-p current)
+               (setq function-args
+                     (phpinspect--index-function-arg-list
+                      type-resolver current add-used-types))
+
+               (when (setq return-type (seq-find #'phpinspect-word-p declaration))
+                 (setq return-type (funcall type-resolver
+                                            (phpinspect--make-type :name (cadr return-type)))))
+
+               (throw 'break nil)))))
+
+    (list name function-args return-type)))
+
 (defun phpinspect--index-function-from-scope (type-resolver scope comment-before &optional add-used-types namespace)
   "Index a function inside SCOPE token using phpdoc metadata in COMMENT-BEFORE.
 
@@ -69,9 +90,16 @@ function (think \"new\" statements, return types etc.)."
   (phpinspect--log "Indexing function")
   (let* ((php-func (cadr scope))
          (declaration (cadr php-func))
-         (type (if (phpinspect-word-p (car (last declaration)))
-                   (funcall type-resolver
-                            (phpinspect--make-type :name (cadar (last declaration)))))))
+         name type arguments)
+
+    (pcase-setq `(,name ,arguments ,type)
+                (phpinspect--index-function-declaration
+                 declaration type-resolver add-used-types))
+
+    ;; FIXME: Anonymous functions should not be indexed! (or if they are, they
+    ;; should at least not be visible from various UIs unless assigned to a
+    ;; variable as a closure).
+    (unless name (setq name "anonymous"))
 
     (phpinspect--log "Checking function return annotations")
 
@@ -114,12 +142,9 @@ function (think \"new\" statements, return types etc.)."
     (phpinspect--make-function
      :scope `(,(car scope))
      :token php-func
-     :name (concat (if namespace (concat namespace "\\") "") (cadadr (cdr declaration)))
+     :name (concat (if namespace (concat namespace "\\") "") name)
      :return-type (or type phpinspect--null-type)
-     :arguments (phpinspect--index-function-arg-list
-                 type-resolver
-                 (phpinspect-function-argument-list php-func)
-                 add-used-types))))
+     :arguments arguments)))
 
 (define-inline phpinspect--safe-cadr (list)
   (inline-letevals (list)
