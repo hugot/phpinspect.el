@@ -218,9 +218,7 @@ Conditionally executes BODY depending on
     (let ((existing (gethash (phpinspect--function-name-symbol method)
                              (phpinspect--class-static-methods class))))
       (if existing
-          (phpinspect--merge-method
-           (alist-get 'class-name (phpinspect--class-index class))
-           existing method extended)
+          (phpinspect--merge-method (phpinspect--class-name class) existing method extended)
         (setf (phpinspect--function--inherited method) extended)
         (phpinspect--class-set-static-method class method)))))
 
@@ -232,9 +230,7 @@ Conditionally executes BODY depending on
                               (phpinspect--class-methods class))))
 
       (if existing
-          (phpinspect--merge-method
-           (alist-get 'class-name (phpinspect--class-index class))
-           existing method extended)
+          (phpinspect--merge-method (phpinspect--class-name class) existing method extended)
         (setf (phpinspect--function--inherited method) extended)
         (phpinspect--class-set-method class method)))))
 
