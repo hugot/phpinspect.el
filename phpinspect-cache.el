@@ -337,10 +337,16 @@ then returned."
   (variables nil))
 
 (cl-defstruct (phpinspect-cache-namespace (:constructor phpinspect-make-cache-namespace))
+  (name nil
+        :type phpinspect-name)
+  (group nil
+         :type phpinspect-cache-group)
   (types nil)
   (functions nil))
 
 (cl-defstruct (phpinspect-cache-group (:constructor phpinspect-make-cache-group))
+  (autoloader nil
+              :type phpinspect-autoloader)
   (spec nil)
   (namespaces (make-hash-table :test #'eq :size 2000 :rehash-size 2.0))
   (extends (phpinspect-make-bidi-graph))
@@ -395,9 +401,12 @@ then returned."
 (defun phpinspect-cache-group-get-namespace (group namespace)
   (gethash namespace (phpinspect-cache-group-namespaces group)))
 
-(defun phpinspect-cache-group-get-namespace-create (group namespace)
-  (or (phpinspect-cache-group-get-namespace group namespace)
-      (puthash namespace (phpinspect-make-cache-namespace)
+(defun phpinspect-cache-group-get-namespace-create (group name)
+  "Retrieve namespace by NAME from GROUP.
+
+Name must be of type phpinspect-name (see `phpinspect-intern-name`)."
+  (or (phpinspect-cache-group-get-namespace group name)
+      (puthash name (phpinspect-make-cache-namespace :name name :group group)
                (phpinspect-cache-group-namespaces group))))
 
 (defun phpinspect-cache-namespace-get-type-create (namespace type category group)
@@ -411,14 +420,42 @@ then returned."
              (phpinspect-cache-namespace-types namespace)))))
 
 (defun phpinspect-cache-namespace-get-type (namespace type category)
-  (when-let ((entity
-              (cdr (assq (phpinspect--type-short-name type)
-                         (phpinspect-cache-namespace-types namespace)))))
-    (and (or (eq '@type category)
+  "Retrieve cached type metadata for TYPE attributed to CATEGORY from NAMESPACE.
+
+If an autoloader is available for the cache group that NAMESPACE
+belongs to and no in-memory match is found, the autoloader is
+queried and any resulting locations are indexed, after which the
+resulting metadata is returned."
+  (let* ((short-name (phpinspect--type-short-name type))
+         (namespace-name (phpinspect-cache-namespace-name namespace))
+         (autoloader (phpinspect-cache-group-autoloader
+                      (phpinspect-cache-namespace-group namespace)))
+         (entity (cdr (assq short-name
+                            (phpinspect-cache-namespace-types namespace)))))
+
+    ;; No entity was found in-memory, attempt to query autoloader when
+    ;; available.
+    (when (and (not entity) autoloader)
+      (let ((names (phpinspect-autoloader-get-fqn-bag autoloader namespace-name)))
+        (when (memq short-name names)
+          ;; ... parse/index type
+          (setq entity nil))))
+
+    ;; Only return types of the requested category
+    (and entity
+         (or (eq '@type category)
              (eq category (phpinspect-cache-type-category entity)))
          entity)))
 
+  ;; (when-let ((entity
+  ;;             (cdr (assq (phpinspect--type-short-name type)
+  ;;                        (phpinspect-cache-namespace-types namespace)))))
+  ;;   (and (or (eq '@type category)
+  ;;            (eq category (phpinspect-cache-type-category entity)))
+  ;;        entity)))
+
 (defun phpinspect-cache-namespace-delete-type (namespace type category)
+  "Delete TYPE attributed to CATEGORY from the in-memory cache of NAMESPACE."
   (let ((types (phpinspect-cache-namespace-types namespace))
         (name (phpinspect--type-short-name type))
         cell-before)
@@ -783,6 +820,11 @@ then returned."
    (t (error "Insert not supported for entity type %s" type))))
 
 (defun phpinspect-cache-query--do-get-type-wildcard (group param type namespace)
+  "Retrieve all type metadata matching TYPE and NAMESPACE available
+in the in-memory cache.
+
+This function does not query an autoloader even if it is
+available for the cache group."
   (let* ((all
           (if namespace
               (when-let ((namespace (phpinspect-cache-group-get-namespace group namespace)))

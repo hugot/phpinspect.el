@@ -93,6 +93,9 @@
 qualified names congruent with a bareword type name. Keyed by
 bareword typenames."))
 
+(cl-defmethod phpinspect-autoloader-get-fqn-bag ((autoloader phpinspect-autoloader) name)
+  (gethash name (phpinspect-autoloader-type-name-fqn-bags autoloader)))
+
 (cl-defmethod phpinspect--read-json-file (fs file)
   (with-temp-buffer
     (phpinspect-fs-insert-file-contents fs file)
