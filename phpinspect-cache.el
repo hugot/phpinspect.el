@@ -1038,24 +1038,33 @@ available for the cache group."
 (defun phpinspect-cache-query--compile-groups (cache group-specs intent)
   (cl-assert (phpinspect-cache-p cache))
   (let (groups)
+    (if (phpinspect-cache-group-p cache)
+        (list cache)
+      (if group-specs
+          (dolist (spec group-specs)
+            (cl-assert (listp spec))
+            (cl-assert (memq (car spec) '(project label))
+                       t "Spec car must be the symbol `project' or `label'")
+            (let ((group (gethash spec (phpinspect-cache-groups cache))))
+              (when (and (eq :insert intent) (not group))
+                (setq group (puthash spec (phpinspect-make-cache-group :spec spec)
+                                     (phpinspect-cache-groups cache))))
+              (push group groups)))
+        (if (eq :insert intent)
+            (error "Cannot insert without defining cache group")
+          (setq groups (hash-table-values (phpinspect-cache-groups cache)))))
 
-    (if group-specs
-        (dolist (spec group-specs)
-          (cl-assert (listp spec))
-          (cl-assert (memq (car spec) '(project label))
-                     t "Spec car must be the symbol `project' or `label'")
-          (let ((group (gethash spec (phpinspect-cache-groups cache))))
-            (when (and (eq :insert intent) (not group))
-              (setq group (puthash spec (phpinspect-make-cache-group :spec spec)
-                                   (phpinspect-cache-groups cache))))
-            (push group groups)))
-      (if (eq :insert intent)
-          (error "Cannot insert without defining cache group")
-        (setq groups (hash-table-values (phpinspect-cache-groups cache)))))
-
-    groups))
+      groups)))
 
 (defmacro phpinspect-cache-transact (cache group-specs &rest query)
+  "Execute QUERY on CACHE, filtering by GROUP-SPECS.
+
+CACHE must be an instance of `phpinspect-cache' or
+`phpinspect-cache-group'. If CACHE is a cache group, the query is
+only executed on this group and GROUP-SPECS is
+ignored. Otherwise, the groups in CACHE are filtered by
+GROUP-SPECS and each group in the resulting list of groups is
+subject of QUERY."
   (declare (indent 2))
   (cl-assert (listp query))
 
@@ -1110,7 +1119,6 @@ available for the cache group."
 
     (let ((group-specs-sym (make-symbol "group-specs"))
           (intent-param-sym (make-symbol "intent-param"))
-          (cache-sym (make-symbol "cache"))
           (member-sym (make-symbol "member"))
           (namespace-sym (make-symbol "namespace"))
           (implements-sym (make-symbol "implements"))
@@ -1140,7 +1148,6 @@ available for the cache group."
                  (lambda (val) val)
                  `((,group-specs-sym ,group-specs)
                    ,(unless (eq '* intent-param) `(,intent-param-sym ,intent-param))
-                   ,(when cache `(,cache-sym ,cache))
                    ,(when member `(,member-sym ,member))
                    ,(when namespace `(,namespace-sym ,namespace))
                    ,(when implements `(,implements-sym ,implements))
