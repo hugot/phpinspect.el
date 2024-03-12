@@ -438,7 +438,7 @@ The PLACE is assigned the value of each node.
 
         (phpinspect-splayt-node-traverse-lr (sibling (phpinspect-splayt-node-right first))
           (when (>= (phpinspect-splayt-node-key sibling) key-max)
-            (throw 'return all))
+            (throw 'return (cdr all)))
           (setq all-rear (setcdr all-rear (cons (phpinspect-splayt-node-value sibling) nil))))
 
         (if (and (phpinspect-splayt-node-parent first)

@@ -467,3 +467,27 @@ class YYY {
                                  (phpinspect-buffer-project buffer)
                                  (phpinspect--make-type :name "\\TestClass"))
                                 "banana"))))))
+
+(ert-deftest phpinspect-buffer-map-imports ()
+  (with-temp-buffer
+    (let ((buffer (phpinspect-make-buffer :buffer (current-buffer))))
+      (insert "<?php
+declare(strict_types=1);
+
+namespace App\\Controller\\Api\\V1;
+
+use Illuminate\\Database\\Eloquent\\Model;
+use Illuminate\\Database\\Eloquent\\Relations\\Relation;
+use Illuminate\\Support\\Facades\\Auth;
+
+class AccountStatisticsController {
+
+    function __construct(){}
+}")
+      (let ((bmap (phpinspect-buffer-parse-map buffer)))
+        (should (equal
+                 `((:use (:word "Illuminate\\Database\\Eloquent\\Model") (:terminator ";"))
+                   (:use (:word "Illuminate\\Database\\Eloquent\\Relations\\Relation") (:terminator ";"))
+                   (:use (:word "Illuminate\\Support\\Facades\\Auth") (:terminator ";")))
+                 (mapcar #'phpinspect-meta-token
+                         (phpinspect-splayt-to-list (phpinspect-bmap-imports bmap)))))))))

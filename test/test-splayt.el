@@ -172,3 +172,15 @@
 
 
     (should (equal '("one" "two" "three") (phpinspect-splayt-to-list tree)))))
+
+(ert-deftest phpinspect-splayt-find-all-between ()
+  (let ((tree (phpinspect-make-splayt)))
+    (phpinspect-splayt-insert tree 9 "nine")
+    (phpinspect-splayt-insert tree 3 "three")
+    (phpinspect-splayt-insert tree 11 "eleven")
+    (phpinspect-splayt-insert tree 8 "eight")
+    (phpinspect-splayt-insert tree 12 "twelve")
+    (phpinspect-splayt-insert tree 4 "four")
+    (phpinspect-splayt-insert tree 1 "one")
+
+    (should (equal '("three" "four") (phpinspect-splayt-find-all-between tree 1 5)))))

@@ -48,4 +48,10 @@
       (should (= 1 (length result-deleted)))
 
       (should (eq tok1 (car result-deleted)))
-      (should (eq tok4 (car result-new))))))
+      (should (eq tok4 (car result-new))))
+
+    (should (equal '(token2 token3)
+                   (mapcar #'phpinspect-meta-token (phpinspect-toc-tokens-in-region toc 0 70))))
+
+    (should (equal '(token2 token3 token4)
+                   (mapcar #'phpinspect-meta-token (phpinspect-toc-tokens-in-region toc 0 91))))))
