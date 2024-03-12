@@ -69,11 +69,14 @@ candidate. Candidates can be indexed functions and variables.")
 (cl-defmethod phpinspect--completion-list-add
   ((comp-list phpinspect--completion-list) (completion phpinspect--completion))
   (setf (phpinspect--completion-list-has-candidates comp-list) t)
-  (unless (intern-soft (phpinspect--completion-value completion)
-                      (phpinspect--completion-list-completions comp-list))
-    (set (intern (phpinspect--completion-value completion)
-                 (phpinspect--completion-list-completions comp-list))
-         completion)))
+
+  ;; Ignore completions in an invalid state (nil values)
+  (when (phpinspect--completion-value completion)
+    (unless (intern-soft (phpinspect--completion-value completion)
+                         (phpinspect--completion-list-completions comp-list))
+      (set (intern (phpinspect--completion-value completion)
+                   (phpinspect--completion-list-completions comp-list))
+           completion))))
 
 (cl-defmethod phpinspect--completion-list-get-metadata
   ((comp-list phpinspect--completion-list) (completion-name string))
