@@ -160,10 +160,8 @@ function (think \"new\" statements, return types etc.)."
 (defun phpinspect--var-annotations-from-token (token)
   (seq-filter #'phpinspect-var-annotation-p token))
 
-(defun phpinspect--index-variable-from-scope (type-resolver scope comment-before &optional static)
-  "Index the variable inside `scope`."
-  (let* ((var-annotations (phpinspect--var-annotations-from-token comment-before))
-         (variable-name (cadr (cadr scope)))
+(defun phpinspect--variable-type-string-from-comment (comment variable-name)
+  (let* ((var-annotations (phpinspect--var-annotations-from-token comment))
          (type (if var-annotations
                    ;; Find the right annotation by variable name
                    (or (cadr (cadr (seq-find (lambda (annotation)
@@ -171,6 +169,15 @@ function (think \"new\" statements, return types etc.)."
                                              var-annotations)))
                        ;; Give up and just use the last one encountered
                        (cadr (cadr (car (last var-annotations))))))))
+    ;; If type is not a string, the annotation is probably invalid and we should
+    ;; return nil.
+    (when (stringp type) type)))
+
+(defun phpinspect--index-variable-from-scope (type-resolver scope comment-before &optional static)
+  "Index the variable inside `scope`."
+  (let* ((variable-name (cadr (cadr scope)))
+         (type
+          (phpinspect--variable-type-string-from-comment comment-before variable-name)))
     (phpinspect--log "calling resolver from index-variable-from-scope")
     (phpinspect--make-variable
      ;; Static class variables are always prefixed with dollar signs when
