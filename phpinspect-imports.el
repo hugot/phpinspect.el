@@ -96,15 +96,13 @@ buffer position to insert the use statement at."
 
 (defun phpinspect-add-use-interactive (typename buffer project &optional namespace-token)
   (let* ((autoloader (phpinspect-project-autoload project))
-         (fqn-bags (phpinspect-autoloader-type-name-fqn-bags autoloader)))
-
-    (let ((fqns (gethash typename fqn-bags)))
-      (cond ((= 1 (length fqns))
-             (phpinspect-add-use (phpinspect-name-string (car fqns)) buffer namespace-token))
-            ((> (length fqns) 1)
-             (phpinspect-add-use (completing-read "Class: " fqns)
-                                 buffer namespace-token))
-            (t (phpinspect-message "No import found for type %s" typename))))))
+         (fqns (phpinspect-autoloader-get-type-bag autoloader typename)))
+    (cond ((= 1 (length fqns))
+           (phpinspect-add-use (phpinspect-name-string (car fqns)) buffer namespace-token))
+          ((> (length fqns) 1)
+           (phpinspect-add-use (completing-read "Class: " fqns)
+                               buffer namespace-token))
+          (t (phpinspect-message "No import found for type %s" typename)))))
 
 (defun phpinspect-namespace-part-of-typename (typename)
   (string-trim-right typename "\\\\?[^\\]+"))

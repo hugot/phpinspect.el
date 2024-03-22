@@ -173,9 +173,12 @@ bareword typenames."))
                      (car (last (split-string (phpinspect-name-string type-fqn) "\\\\")))))
          (bag (gethash type-name (phpinspect-autoloader-type-name-fqn-bags al))))
     (if bag
-        (push type-fqn bag)
+        (setcdr bag (cons type-fqn (cdr bag)))
       (push type-fqn bag)
       (puthash type-name bag (phpinspect-autoloader-type-name-fqn-bags al)))))
+
+(cl-defmethod phpinspect-autoloader-get-type-bag ((al phpinspect-autoloader) (type-name (head phpinspect-name)))
+  (gethash type-name (phpinspect-autoloader-type-name-fqn-bags al)))
 
 (cl-defmethod phpinspect-iterate-composer-jsons
   ((al phpinspect-autoloader) file)

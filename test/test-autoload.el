@@ -100,6 +100,15 @@
     (should (= 2 (length (seq-filter #'phpinspect-psr0-p result))))
     (should (= 2 (length (seq-filter #'phpinspect-psr4-p result))))))
 
+(ert-deftest phpinspect-al-put-type-bag ()
+  (let ((al (phpinspect-make-autoloader)))
+    (phpinspect-autoloader-put-type-bag al (phpinspect-intern-name "\\App\\Place\\Mountain"))
+    (phpinspect-autoloader-put-type-bag al (phpinspect-intern-name "\\App\\Earth\\Mountain"))
+
+    (should (equal `(,(phpinspect-intern-name "\\App\\Place\\Mountain")
+                     ,(phpinspect-intern-name "\\App\\Earth\\Mountain"))
+                   (phpinspect-autoloader-get-type-bag al (phpinspect-intern-name "Mountain"))))))
+
 (ert-deftest phpinspect-al-strategy-execute ()
   (let* ((fs (phpinspect-make-virtual-fs))
          (project (phpinspect--make-project :root "/project/root" :fs fs))
