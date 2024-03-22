@@ -307,9 +307,13 @@ Returns list of `phpinspect--completion'."
                                            (phpinspect--completion-target comp))))
                          (insert ")")))))
                  :company-kind (lambda (comp-name)
-                                 (phpinspect--completion-kind
-                                  (phpinspect--completion-list-get-metadata
-                                   phpinspect--last-completion-list
-                                   comp-name))))))))
+                                 (let ((comp
+                                        (phpinspect--completion-list-get-metadata
+                                         phpinspect--last-completion-list
+                                         comp-name)))
+                                   (if comp
+                                       (phpinspect--completion-kind comp)
+                                     (phpinspect--log  "Unable to find matching completion for name %s" comp-name)
+                                     nil))))))))
 
 (provide 'phpinspect-completion)
