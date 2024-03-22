@@ -113,6 +113,19 @@ resolved to provide completion candidates.
 
 If STATIC is non-nil, candidates are provided for constants,
 static variables and static methods."
+  ;; Strip away the existing (incomplete) attribute token. Otherwise, resolving
+  ;; a type from this context while the user has already typed part of an
+  ;; attribute name could return the type of an existing attribute that matches
+  ;; the incomplete name. (this could for example result in methods of the type
+  ;; of $this->entity to be suggested when we really want more suggestions for
+  ;; attributes of the type $this like $this->entityRepository). Essentially, we
+  ;; convert the subject $this->entity into $this so that only the type of $this
+  ;; (or whatever comes before the attribute accessor token (-> or ::)) is
+  ;; actually resolved.
+  (when (phpinspect-attrib-p (car (last (phpinspect--resolvecontext-subject resolvecontext))))
+    (setf (phpinspect--resolvecontext-subject resolvecontext)
+          (butlast (phpinspect--resolvecontext-subject resolvecontext))))
+
   (let* ((type-resolver (phpinspect--make-type-resolver-for-resolvecontext
                          resolvecontext))
          (method-lister (phpinspect--make-method-lister
