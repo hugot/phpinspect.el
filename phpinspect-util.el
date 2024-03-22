@@ -25,7 +25,7 @@
 
 (defvar phpinspect-names (make-hash-table :test #'equal :size 5000 :rehash-size 1.2)
   "An hash-table containing cons cells representing encountered names in
-PHP code. Used to optimize string comparison. See also `phpinspect-indern-name'")
+PHP code. Used to optimize string comparison. See also `phpinspect-intern-name'")
 
 (defun phpinspect-make-name-hash ()
   (make-hash-table :test #'equal :size 5000 :rehash-size 1.2))
@@ -69,8 +69,6 @@ PHP code. Used to optimize string comparison. See also `phpinspect-indern-name'"
   (seq-find (lambda (cons)
               (eq group (cdr cons)))
             phpinspect-enabled-log-groups))
-
-(phpinspect--declare-log-group 'bam)
 
 (defmacro phpinspect--log (&rest args)
   (let ((log-group (alist-get (macroexp-file-name)
@@ -124,9 +122,14 @@ level of START-FILE in stead of `default-directory`."
               (phpinspect--find-project-root parent-without-vendor))))))))
 
 (defun phpinspect-intern-name (name)
-  (setq name (cons 'phpinspect-name name))
   (or (gethash name phpinspect-names)
-      (puthash name name phpinspect-names)))
+      (puthash name (cons 'phpinspect-name name) phpinspect-names)))
+
+(defun phpinspect-names-to-alist (names)
+  (let ((alist))
+    (dolist (name names)
+      (push (cons (phpinspect-name-string name) name) alist))
+    alist))
 
 (defsubst phpinspect--wrap-plist-name-in-symbol (property-list)
   (let ((new-plist)

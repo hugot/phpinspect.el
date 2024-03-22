@@ -100,7 +100,7 @@ buffer position to insert the use statement at."
     (cond ((= 1 (length fqns))
            (phpinspect-add-use (phpinspect-name-string (car fqns)) buffer namespace-token))
           ((> (length fqns) 1)
-           (phpinspect-add-use (completing-read "Class: " fqns)
+           (phpinspect-add-use (completing-read "Class: " (phpinspect-names-to-alist fqns))
                                buffer namespace-token))
           (t (phpinspect-message "No import found for type %s" typename)))))
 
