@@ -173,6 +173,8 @@
       :as @class)
 
 
+    (should (phpinspect-cache-transact cache '((label test)) :get * :as @class))
+
     (phpinspect-cache-transact cache '((label test))
       :delete * :as @class)
 

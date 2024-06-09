@@ -505,9 +505,44 @@ resulting metadata is returned."
   `(let ((param ,param))
      (and (inline-const-p param) (eq '* (inline-const-val param)))))
 
+(define-inline phpinspect-cache-query--match-cell-of-type (type type-cell)
+  (setq type (inline-const-val type))
+  (if (eq type '@type)
+      (inline-quote t)
+    (inline-quote
+     (eq (phpinspect-cache-type-category (cdr ,type-cell))
+         (quote ,type)))))
+
+(define-inline phpinspect-cache-query--do-delete-type-from-namespaces
+  (group type namespaces)
+  (inline-letevals (group namespaces)
+    (inline-quote
+     (let (resultsets)
+       (dolist (namespace ,namespaces)
+         (push
+          (phpinspect-cache-query--do-delete-type-from-namespace ,group ,type namespace)
+          resultsets))
+
+       (apply 'append resultsets)))))
+
+(define-inline phpinspect-cache-query--do-delete-type-from-namespace
+  (group type namespace)
+  (inline-letevals (group namespace)
+    (inline-quote
+     (let (new-types resultset)
+       (dolist (type-cell (phpinspect-cache-namespace-types namespace))
+         (if (phpinspect-cache-query--match-cell-of-type ,type type-cell)
+             (progn
+               (push (cdr type-cell) resultset)
+               (phpinspect-cache-group-unlink-type-dependencies
+                ,group (car type-cell))
+               nil)
+           (push type-cell new-types)))
+       (setf (phpinspect-cache-namespace-types namespace) new-types)
+       resultset))))
+
 (define-inline phpinspect-cache-query--do-delete-type
   (group param type _member namespace _implements _extends)
-  (setq type (inline-const-val type))
 
   (inline-letevals (group param namespace)
     (if (phpinspect--inline-wildcard-param-p param)
@@ -515,41 +550,15 @@ resulting metadata is returned."
             (inline-quote
              (when-let ((namespace (phpinspect-cache-group-get-namespace
                                     ,group ,namespace)))
-               (let (resultset)
-                 (setf (phpinspect-cache-namespace-types namespace)
-                       (seq-filter
-                        (lambda (type-cell)
-                          (if ,(if (eq type '@type)
-                                   t
-                                 `(eq (phpinspect-cache-type-category (cdr type-cell))
-                                      (quote ,type)))
-                              (progn
-                                (push (cdr type-cell) resultset)
-                                (phpinspect-cache-group-unlink-type-dependencies
-                                 ,group (car type-cell))
-                                     nil)
-                            t))
-                        (phpinspect-cache-namespace-types namespace)))
-                 (cons 'phpinspect-cache-multiresult resultset))))
+               (cons 'phpinspect-cache-multiresult
+                     (phpinspect-cache-query--do-delete-type-from-namespace
+                      ,group ,type namespace))))
           (inline-quote
-           (let (resultset)
-             (dolist (namespace (hash-table-values
-                                 (phpinspect-cache-group-namespaces ,group)))
-               (let (new-types)
-                 (dolist (type-cell (phpinspect-cache-namespace-types namespace))
-                   (if ,(if (eq type '@type)
-                            t
-                          `(eq (phpinspect-cache-type-category
-                                (cdr type-cell))
-                               (quote ,type)))
-                       (progn
-                         (push (cdr type-cell) resultset)
-                         (phpinspect-cache-group-unlink-type-dependencies
-                          ,group (car type-cell))
-                         nil)
-                     (push type-cell new-types)))
-                 (setf (phpinspect-cache-namespace-types namespace) new-types)))
-             (cons 'phpinspect-cache-multiresult resultset))))
+             (cons 'phpinspect-cache-multiresult
+                   (phpinspect-cache-query--do-delete-type-from-namespaces
+                    ,group ,type (hash-table-values
+                                  (phpinspect-cache-group-namespaces ,group))))))
+      (setq type (inline-const-val type))
       (inline-quote
        (when-let* ((namespace (phpinspect-cache-group-get-namespace-create
                           ,group
