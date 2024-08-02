@@ -190,33 +190,43 @@ function (think \"new\" statements, return types etc.)."
 (defun phpinspect-doc-block-p (token)
   (phpinspect-token-type-p token :doc-block))
 
-
 (defsubst phpinspect--index-method-annotations (type-resolver comment)
   (let ((annotations (seq-filter #'phpinspect-method-annotation-p comment))
+        (static-methods)
         (methods))
     (dolist (annotation annotations)
-      (let ((return-type) (name) (arg-list))
-        (when (> (length annotation) 2)
-          (cond ((and (phpinspect-word-p (nth 1 annotation))
-                      (phpinspect-word-p (nth 2 annotation))
-                      (phpinspect-list-p (nth 3 annotation)))
-                 (setq return-type (cadr (nth 1 annotation)))
-                 (setq name (cadr (nth 2 annotation)))
-                 (setq arg-list (nth 3 annotation)))
-                ((and (phpinspect-word-p (nth 1 annotation))
-                      (phpinspect-list-p (nth 2 annotation)))
-                 (setq return-type "void")
-                 (setq name (cadr (nth 1 annotation)))
-                 (setq arg-list (nth 2 annotation))))
+      (let ((return-type) (name) (arg-list) (static))
+        ;; Annotation is static
+        (when (phpinspect--match-sequence (take 2 annotation)
+                :m :method-annotation :m '(:word "static"))
+          (setcdr annotation (cddr annotation))
+          (setq static t))
 
-          (when name
+        (cond
+         ((phpinspect--match-sequence annotation
+            :m :method-annotation
+            :f #'phpinspect-word-p
+            :f #'phpinspect-word-p
+            :f #'phpinspect-list-p)
+          (setq return-type (cadr (nth 1 annotation)))
+          (setq name (cadr (nth 2 annotation)))
+          (setq arg-list (nth 3 annotation)))
+         ((phpinspect--match-sequence annotation
+            :m :method-annotation
+            :f #'phpinspect-word-p
+            :f #'phpinspect-list-p)
+          (setq return-type "void")
+          (setq name (cadr (nth 1 annotation)))
+          (setq arg-list (nth 2 annotation))))
+
+        (when name
             (push (phpinspect--make-function
                    :scope '(:public)
                    :name name
                    :return-type (funcall type-resolver (phpinspect--make-type :name return-type))
                    :arguments (phpinspect--index-function-arg-list type-resolver arg-list))
-                  methods)))))
-    methods))
+                  (if static static-methods methods)))))
+    (list static-methods methods)))
 
 (defun phpinspect--index-class (imports type-resolver location-resolver class &optional doc-block)
   "Create an alist with relevant attributes of a parsed class."
@@ -317,7 +327,11 @@ function (think \"new\" statements, return types etc.)."
     ;; Dirty hack that assumes the constructor argument names to be the same as the object
     ;; attributes' names.
     ;;;
-    ;; TODO: actually check the types of the variables assigned to object attributes
+    ;; TODO: actually check the types of the variables assigned to object properties
+    ;;
+    ;; Note: The indexing code in phpinspect-buffer does check the variable
+    ;; types which are actually assigned to object properties for classes opened
+    ;; in buffers.
     (let* ((constructor-sym (phpinspect-intern-name "__construct"))
            (constructor (seq-find (lambda (method)
                                     (eq (phpinspect--function-name-symbol method)
@@ -339,8 +353,11 @@ function (think \"new\" statements, return types etc.)."
 
     ;; Add method annotations to methods
     (when doc-block
-      (setq methods
-            (nconc methods (phpinspect--index-method-annotations type-resolver doc-block))))
+      (let ((result-tuple (phpinspect--index-method-annotations type-resolver doc-block)))
+        (setq static-methods
+              (nconc static-methods (car result-tuple)))
+        (setq methods
+              (nconc methods (cadr result-tuple)))))
 
     `(,class-name .
                   (phpinspect--indexed-class

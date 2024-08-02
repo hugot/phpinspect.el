@@ -107,7 +107,7 @@
 
 (defun phpinspect--serialize-import (import)
   `(cons
-    (phpinspect-intern-name ,(symbol-name (car import)))
+    (phpinspect-intern-name ,(phpinspect-name-string (car import)))
     ,(phpinspect--serialize-type (cdr import))))
 
 (provide 'phpinspect-serialize)

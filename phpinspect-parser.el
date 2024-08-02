@@ -483,7 +483,7 @@ nature like argument lists"
                        (phpinspect--parse-annotation-parameters 2)))
               ((string= annotation-name "method")
                (cons :method-annotation
-                     (phpinspect--parse-annotation-parameters 3)))
+                     (phpinspect--parse-annotation-parameters 4)))
               (t
                (list :annotation annotation-name))))
     (list :annotation nil)))
