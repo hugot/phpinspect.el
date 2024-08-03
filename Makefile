@@ -49,4 +49,4 @@ compile-native: ./.deps
 
 .PHONY: test
 test: deps
-	$(RUN_EMACS) -L ./test -l ./test/phpinspect-test e -f ert-run-tests-batch
+	$(RUN_EMACS) -L ./test -l ./test/phpinspect-test -f ert-run-tests-batch

@@ -339,27 +339,38 @@ linked with."
       (setf (phpinspect-buffer-class-variables buffer) (phpinspect-make-toc class-variables)))
 
     (dolist (var to-be-indexed)
+      ;; We have left the class we were previously indexing properties
+      ;; for.
       (when (and class (> (phpinspect-meta-start var) (phpinspect-meta-end class)))
         (setq class nil))
 
+      ;; Retrieve the class that the property belongs to. In a lot of cases only
+      ;; one class will be in the current buffer. But PHP allows the definition
+      ;; of multiple classes in the same file so this should be supported.
       (unless class
         (setq class (phpinspect-toc-token-at-point classes (phpinspect-meta-start var))))
 
+      ;; Fetch the index for the current class
       (setq class-obj (phpinspect-buffer-get-index-for-token buffer (phpinspect-meta-token class)))
 
       (let (scope static indexed index-env comment-before)
         (if (phpinspect-static-p (phpinspect-meta-token (phpinspect-meta-parent var)))
+            ;; Variable is defined as [scope?] static [type?] $variable
             (progn
               (setq static (phpinspect-meta-parent var))
               (when (phpinspect-scope-p (phpinspect-meta-token (phpinspect-meta-parent static)))
+                ;; Variable is defined as scope static [type?] $variable
                 (setq scope `(,(car (phpinspect-meta-token (phpinspect-meta-parent static)))
-                              ,(phpinspect-meta-token var))
+                              ,@(phpinspect-meta-token-with-left-siblings var))
                       comment-before (phpinspect-meta-find-left-sibling (phpinspect-meta-parent static)))))
           (when (phpinspect-scope-p (phpinspect-meta-token (phpinspect-meta-parent var)))
+            ;; Variable is defined as scope [type?] $variable
             (setq scope (phpinspect-meta-token (phpinspect-meta-parent var))
                   comment-before (phpinspect-meta-find-left-sibling (phpinspect-meta-parent var)))))
 
-        (unless scope (setq scope `(:public ,(phpinspect-meta-token var))))
+        (unless scope
+          (setq scope `(:public ,@(mapcar #'phpinspect-meta-token (phpinspect-meta-left-siblings var))
+                                ,(phpinspect-meta-token var))))
 
         (unless (setq index-env (alist-get class class-environments nil nil #'eq))
           (setq index-env (phpinspect-get-token-index-context namespaces imports class))
@@ -419,6 +430,16 @@ linked with."
   (phpinspect-buffer-parse buffer 'no-interrupt))
 
 (cl-defmethod phpinspect-buffer-update-project-index ((buffer phpinspect-buffer))
+  "Update project index using the last parsed token map of this
+buffer. When `phpinspect-buffer-parse' has been executed before
+and a map is available from the previous parse, this is used. If
+none is available `phpinspect-buffer-parse' is called before
+continuing execution."
+
+  ;; Parse buffer if no map is available.
+  (unless (phpinspect-buffer-map buffer)
+    (phpinspect-buffer-parse buffer))
+
   ;; Use inhibit-quit to prevent index corruption though partial index
   ;; application.
   (let ((inhibit-quit t))

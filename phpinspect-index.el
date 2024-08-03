@@ -174,10 +174,29 @@ function (think \"new\" statements, return types etc.)."
     (when (stringp type) type)))
 
 (defun phpinspect--index-variable-from-scope (type-resolver scope comment-before &optional static)
-  "Index the variable inside `scope`."
-  (let* ((variable-name (cadr (cadr scope)))
-         (type
-          (phpinspect--variable-type-string-from-comment comment-before variable-name)))
+  "Index the variable inside SCOPE, use doc in COMMENT-BEFORE if missing typehint.
+
+Provide STATIC if the variable was defined as static.
+
+SCOPE should be a scope token (`phpinspect-scope-p')."
+  (setq scope (take 5 (seq-filter #'phpinspect-not-comment-p scope)))
+  (let (variable-name type)
+    (cond
+     ((phpinspect--match-sequence (take 3 scope)
+        ;; Sequence: scope-type, typehint, variable [ = value ]
+        :m * :f #'phpinspect-word-p :f #'phpinspect-variable-p)
+      (setq variable-name (cadr (nth 2 scope)))
+      (setq type (cadr (nth 1 scope))))
+     ((phpinspect--match-sequence (take 2 scope)
+        ;; Sequence: variable [ = value ]
+        :m * :f #'phpinspect-variable-p)
+      (setq variable-name (cadr (nth 1 scope))
+            ;; Since no typehint is available, attempt extracting one from a
+            ;; docstring.
+            type (phpinspect--variable-type-string-from-comment
+                  comment-before variable-name)))
+     (t (error (format "Failed to determine variable from scope %s" scope))))
+
     (phpinspect--log "calling resolver from index-variable-from-scope")
     (phpinspect--make-variable
      ;; Static class variables are always prefixed with dollar signs when
@@ -260,7 +279,7 @@ function (think \"new\" statements, return types etc.)."
              (cond ((phpinspect-const-p (cadr token))
                     (push (phpinspect--index-const-from-scope token) constants))
 
-                   ((phpinspect-variable-p (cadr token))
+                   ((seq-find #'phpinspect-variable-p token)
                     (push (phpinspect--index-variable-from-scope type-resolver
                                                                  token
                                                                  comment-before)
@@ -275,10 +294,9 @@ function (think \"new\" statements, return types etc.)."
                                                                         add-used-types)
                                  static-methods))
 
-                          ((phpinspect-variable-p (cadadr token))
+                          ((seq-find #'phpinspect-variable-p (cdadr token))
                            (push (phpinspect--index-variable-from-scope type-resolver
-                                                                        (list (car token)
-                                                                              (cadadr token))
+                                                                        `(,(car token) ,@(cdadr token))
                                                                         comment-before
                                                                         'static)
                                  static-variables))))
@@ -298,11 +316,11 @@ function (think \"new\" statements, return types etc.)."
                                                                  add-used-types)
                           static-methods))
 
-                   ((phpinspect-variable-p (cadr token))
+                   ((seq-find #'phpinspect-variable-p (cdr token))
                     (push (phpinspect--index-variable-from-scope type-resolver
-                                                                 `(:public
-                                                                   ,(cadr token))
-                                                                 comment-before)
+                                                                 `(:public ,@(cdr token))
+                                                                 comment-before
+                                                                 'static)
                           static-variables))))
             ((phpinspect-const-p token)
              ;; Bare constants are always public

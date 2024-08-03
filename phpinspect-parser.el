@@ -760,19 +760,19 @@ Returns the consumed text string without face properties."
 (phpinspect-defparser scope-public
   :tree-keyword "public"
   :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
-                               string terminator tag comment)
+                               string terminator tag comment word)
   :delimiter-predicate #'phpinspect--scope-terminator-p)
 
 (phpinspect-defparser scope-private
   :tree-keyword "private"
   :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
-                               string terminator tag comment)
+                               string terminator tag comment word)
   :delimiter-predicate #'phpinspect--scope-terminator-p)
 
 (phpinspect-defparser scope-protected
   :tree-keyword "protected"
   :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
-                               string terminator tag comment)
+                               string terminator tag comment word)
   :delimiter-predicate #'phpinspect--scope-terminator-p)
 
 (phpinspect-defhandler scope-keyword (start-token max-point)

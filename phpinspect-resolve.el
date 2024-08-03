@@ -46,6 +46,11 @@
   (or (phpinspect-assignment-p token)
       (equal '(:word "as") token)))
 
+(define-inline phpinspect-not-assignment-p (token)
+  "Inverse of applying `phpinspect-assignment-p to TOKEN."
+  (inline-quote
+   (not (phpinspect-maybe-assignment-p ,token))))
+
 (cl-defgeneric phpinspect--find-assignments-in-token (token)
   "Find any assignments that are in TOKEN, at top level or nested in blocks"
   (when (keywordp (car token))
@@ -70,13 +75,6 @@
     (phpinspect--log "Found assignments in token: %s" assignments)
     (phpinspect--log "Found statements in token: %s" statements)
     assignments))
-
-(defsubst phpinspect-not-assignment-p (token)
-  "Inverse of applying `phpinspect-assignment-p to TOKEN."
-  (not (phpinspect-maybe-assignment-p token)))
-
-(defsubst phpinspect-not-comment-p (token)
-  (not (phpinspect-comment-p token)))
 
 (defun phpinspect--find-assignments-by-predicate (token predicate)
   (let ((variable-assignments)

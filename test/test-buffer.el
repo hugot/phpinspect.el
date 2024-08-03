@@ -491,3 +491,61 @@ class AccountStatisticsController {
                    (:use (:word "Illuminate\\Support\\Facades\\Auth") (:terminator ";")))
                  (mapcar #'phpinspect-meta-token
                          (phpinspect-splayt-to-list (phpinspect-bmap-imports bmap)))))))))
+
+
+(ert-deftest phpinspect-buffer-index-typehinted-class-variables ()
+  (with-temp-buffer
+    (let ((buffer (phpinspect-make-buffer
+                   :buffer (current-buffer)
+                   :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader)))))
+      (insert "<?php
+declare(strict_types=1);
+
+namespace App\\Controller\\Api\\V1;
+
+use Illuminate\\Database\\Eloquent\\Model;
+use Illuminate\\Database\\Eloquent\\Relations\\Relation;
+use Illuminate\\Support\\Facades\\Auth;
+
+class AccountStatisticsController {
+
+    public Model $model;
+    private Model $privModel;
+    static Relation $relation;
+    public static Relation $staticRelation;
+}")
+
+      (phpinspect-buffer-update-project-index buffer)
+
+      (let ((class (phpinspect-project-get-class
+                    (phpinspect-buffer-project buffer)
+                    (phpinspect--make-type
+                     :name "\\App\\Controller\\Api\\V1\\AccountStatisticsController"
+                     :fully-qualified t))))
+        (should class)
+
+        (let ((model (phpinspect--class-get-variable class "model"))
+              (priv-model (phpinspect--class-get-variable class "privModel"))
+              ;; Static variables are stored with "$" prefix
+              (relation (phpinspect--class-get-variable class "$relation"))
+              (static-relation (phpinspect--class-get-variable class "$staticRelation")))
+          (should model)
+          (should priv-model)
+          (should relation)
+          (should static-relation)
+
+          (let ((model-type (phpinspect--make-type
+                             :name "\\Illuminate\\Database\\Eloquent\\Model"
+                             :fully-qualified t))
+                (relation-type (phpinspect--make-type
+                             :name "\\Illuminate\\Database\\Eloquent\\Relations\\Relation"
+                             :fully-qualified t)))
+
+            (should (phpinspect--variable-type model))
+            (should (phpinspect--type= model-type (phpinspect--variable-type model)))
+            (should (phpinspect--variable-type priv-model))
+            (should (phpinspect--type= model-type (phpinspect--variable-type priv-model)))
+            (should (phpinspect--variable-type relation))
+            (should (phpinspect--type= relation-type (phpinspect--variable-type relation)))
+            (should (phpinspect--variable-type static-relation))
+            (should (phpinspect--type= relation-type (phpinspect--variable-type static-relation)))))))))

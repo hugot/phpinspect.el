@@ -149,6 +149,22 @@
     (phpinspect-meta-children (phpinspect-meta-parent meta)) (phpinspect-meta-parent-offset meta))
    #'phpinspect-meta-sort-start))
 
+(defun phpinspect-meta-left-sibling-tokens (meta)
+  (let* ((tokens (cons nil nil))
+         (rear tokens))
+    (dolist (sibling (phpinspect-meta-left-siblings meta))
+      (setq rear (setcdr rear (cons (phpinspect-meta-token sibling) nil))))
+    (cdr tokens)))
+
+(defun phpinspect-meta-token-with-left-siblings (meta)
+  (nconc (phpinspect-meta-left-sibling-tokens meta) (list (phpinspect-meta-token meta))))
+
+(defun phpinspect-meta-left-siblings (meta)
+  (sort
+   (phpinspect-splayt-find-all-before
+    (phpinspect-meta-children (phpinspect-meta-parent meta)) (phpinspect-meta-parent-offset meta))
+   #'phpinspect-meta-sort-start))
+
 (defun phpinspect-meta-wrap-token-pred (predicate)
   (lambda (meta) (funcall predicate (phpinspect-meta-token meta))))
 

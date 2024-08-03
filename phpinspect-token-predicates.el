@@ -251,4 +251,9 @@ Type can be any of the token types returned by
   (and (listp token)
        (keywordp (car token))))
 
+(define-inline phpinspect-not-comment-p (token)
+  (inline-quote
+   (not (phpinspect-comment-p ,token))))
+
+
 (provide 'phpinspect-token-predicates)
