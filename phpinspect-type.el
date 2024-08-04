@@ -358,8 +358,9 @@ mutability of the variable")
   "Extract NAMESPACE name as a string.
 
 NAMESPACE should be a namespace token (`phpinspect-namespace-p')."
-  (or (and (phpinspect-namespace-p namespace)
-           (phpinspect-word-p (cadr namespace))
+  (cl-assert (phpinspect-namespace-p namespace))
+
+  (or (and (phpinspect-word-p (cadr namespace))
            (cadadr namespace))
       ""))
 

@@ -31,6 +31,7 @@
 (require 'phpinspect-buffer)
 (require 'phpinspect-cache)
 (require 'phpinspect-util)
+(require 'phpinspect-type)
 
 (defun phpinspect-insert-at-point (point data)
   (save-excursion
@@ -115,12 +116,15 @@ buffer position to insert the use statement at."
     (dolist (type types)
       (setq namespace (phpinspect-meta-find-parent-matching-token
                        parent-token #'phpinspect-namespace-p)
-            namespace-name (phpinspect-namespace-name namespace))
+            namespace-name (if namespace
+                               (phpinspect-namespace-name (phpinspect-meta-token namespace))
+                             ""))
       ;; Add use statements for types that aren't imported or already referenced
       ;; with a fully qualified name.
       (unless (or (or (alist-get type imports))
                   (gethash (phpinspect-intern-name
-                            (concat namespace-name "\\" (phpinspect-name-string type)))
+                            (phpinspect--resolve-type-name
+                             nil namespace-name (phpinspect-name-string type)))
                            (phpinspect-autoloader-types
                             (phpinspect-project-autoload project))))
         (phpinspect-add-use-interactive type buffer project namespace)
