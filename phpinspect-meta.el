@@ -20,7 +20,35 @@
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
-
+;;
+;; IMPLEMENTATION CONTEXT
+;;
+;; This file contains code for the storing and reading of metadata related to
+;; the tokens in a parsed syntax tree.
+;;
+;; Phpinspect's parser uses basic lists as datastructure for its parsing
+;; result.  The simplicity of the datastructure makes it performant as the amount
+;; of GC's triggered by simple lists is not as large as when using more complex
+;; datastructures.
+;;
+;; A drawback of this simplicity is that attaching additional metadata to the
+;; parsed tokens is nontrivial.  A list is a list: There is no way to store
+;; additional metadata in a separate slot that is not part of its overall
+;; members.  This is fine when parsing entire files and indexing their
+;; contents.  Efficiently maintaining the state of code in a buffer, however, is
+;; a more involved process.  It requires the storage of more metadata than just
+;; the parsed tokens.
+;;
+;; For this reason, phpinspect uses a metadata tree for live buffers.  The
+;; metadata tree can be interacted with through functions prefixed with
+;; "phpinspect-meta".  It is an n-ary tree that can be navigated and searched
+;; through using the start position of parsed tokens.  Each metadata object
+;; stores its direct children in a binary search tree (see phpinspect-splayt.el).
+;;
+;; The metadata tree makes it easy to dig down in a buffer's syntax tree and
+;; determine the context from which a user is interacting with the PHP code in
+;; it.
+;;
 ;;; Code:
 
 (require 'phpinspect-splayt)
@@ -104,6 +132,7 @@
               (<= (phpinspect-meta-start ,meta) ,point)))))
 
 (defun phpinspect-meta-find-parent-matching-token (meta predicate)
+  "Find a parent metadata node of META, the token of which matches PREDICATE."
   (if (funcall predicate (phpinspect-meta-token meta))
       meta
     (catch 'found
