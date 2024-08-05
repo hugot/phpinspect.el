@@ -235,8 +235,8 @@ indexation, but indexed synchronously before returning."
         (unless no-enqueue
           (phpinspect-project-enqueue-if-not-present project class-fqn))))
 
-    (phpinspect--log "Got project class, no-index is set to: %s, initial-index is: %s"
-                     no-index (phpinspect--class-initial-index class))
+    (phpinspect--log "Got project class, no-enqueue is set to: %s, initial-index is: %s"
+                     no-enqueue (phpinspect--class-initial-index class))
 
     (phpinspect-project-edit project
       (when  (and no-enqueue (phpinspect--class-initial-index class))
