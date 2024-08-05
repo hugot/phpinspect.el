@@ -220,12 +220,28 @@ serious performance hits. Enable at your own risk (:")
 
 (cl-defmethod phpinspect-project-get-class-create
   ((project phpinspect-project) (class-fqn phpinspect--type) &optional no-enqueue)
+  "Get class object belonging to CLASS-FQN from PROJECT.
+
+If the class does exist on the filesystem but has not yet been
+indexed, it will be queued for indexation and an empty class
+object (awaiting indedaxation) is returned.
+
+If NO-ENQUEUE is non-nil, the class will not be queued for
+indexation, but indexed synchronously before returning."
   (let ((class (phpinspect-project-get-class project class-fqn)))
     (unless class
       (phpinspect-project-edit project
         (setq class (phpinspect-project-create-class project class-fqn))
         (unless no-enqueue
           (phpinspect-project-enqueue-if-not-present project class-fqn))))
+
+    (phpinspect--log "Got project class, no-index is set to: %s, initial-index is: %s"
+                     no-index (phpinspect--class-initial-index class))
+
+    (phpinspect-project-edit project
+      (when  (and no-enqueue (phpinspect--class-initial-index class))
+        (phpinspect--log "Indexing type file for %s" class-fqn)
+        (phpinspect-project-index-type-file project class-fqn)))
     class))
 
 (cl-defmethod phpinspect-project-get-class-extra-or-create
@@ -233,7 +249,6 @@ serious performance hits. Enable at your own risk (:")
   (or (phpinspect-project-get-class-or-extra project class-fqn)
       (phpinspect-project-get-class-create project class-fqn no-enqueue)))
 
-(defalias 'phpinspect-project-add-class-if-missing #'phpinspect-project-get-class-create)
 
 (cl-defmethod phpinspect-project-get-class
   ((project phpinspect-project) (class-fqn phpinspect--type))

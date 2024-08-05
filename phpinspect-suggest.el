@@ -71,7 +71,7 @@
     (when project-root
       (let ((class (phpinspect-get-or-create-cached-project-class
                     project-root
-                    class-fqn)))
+                    class-fqn 'no-enqueue)))
         (phpinspect--log (if class
                              "Retrieved class index, starting method collection %s (%s)"
                            "No class index found in %s for %s")
@@ -93,7 +93,7 @@
 (defun phpinspect--get-variables-for-class (class-name &optional static)
   (let ((class (phpinspect-get-or-create-cached-project-class
                 (phpinspect-current-project-root)
-                class-name)))
+                class-name 'no-enqueue)))
     (when class
       (if static
           (append (phpinspect--class-get-static-variables class) (phpinspect--class-get-constants class))
@@ -113,6 +113,7 @@ resolved to provide completion candidates.
 
 If STATIC is non-nil, candidates are provided for constants,
 static variables and static methods."
+  (phpinspect--log "Suggesting attributes at point")
   ;; Strip away the existing (incomplete) attribute token. Otherwise, resolving
   ;; a type from this context while the user has already typed part of an
   ;; attribute name could return the type of an existing attribute that matches
@@ -134,6 +135,7 @@ static variables and static methods."
     (let ((statement-type (phpinspect-resolve-type-from-context
                            resolvecontext
                            type-resolver)))
+      (phpinspect--log "Statement type: %s" statement-type)
       (when statement-type
         (let ((type (funcall type-resolver statement-type)))
           (append (phpinspect--get-variables-for-class

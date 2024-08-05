@@ -163,12 +163,12 @@ currently opened projects."
 
     project))
 
-(defun phpinspect-get-or-create-cached-project-class (project-root class-fqn)
+(defun phpinspect-get-or-create-cached-project-class (project-root class-fqn &optional no-enqueue)
   (when project-root
     (let ((project (phpinspect--cache-get-project-create
                     (phpinspect--get-or-create-global-cache)
                     project-root)))
-      (phpinspect-project-get-class-extra-or-create project class-fqn))))
+      (phpinspect-project-get-class-extra-or-create project class-fqn no-enqueue))))
 
 (cl-defmethod phpinspect--cache-get-project-create
   ((cache phpinspect--cache) (project-root string))
