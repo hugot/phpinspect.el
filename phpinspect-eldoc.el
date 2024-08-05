@@ -70,7 +70,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
     (when type-before
       (let ((class (phpinspect-project-get-class-extra-or-create
                     (phpinspect--resolvecontext-project rctx)
-                    type-before))
+                    type-before 'no-enqueue))
             (attribute-name (cadadr attrib))
             variable method result)
         (when attribute-name
@@ -177,7 +177,8 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                     (method-name-sym (phpinspect-intern-name (cadadr (phpinspect-meta-token (car match-result)))))
                     (class (phpinspect-project-get-class-extra-or-create
                             (phpinspect--resolvecontext-project rctx)
-                            type-of-previous-statement))
+                            type-of-previous-statement
+                            'no-enqueue))
                     (method (if static
                                 (phpinspect--class-get-static-method class method-name-sym)
                               (phpinspect--class-get-method class method-name-sym))))
