@@ -179,32 +179,40 @@ function (think \"new\" statements, return types etc.)."
 Provide STATIC if the variable was defined as static.
 
 SCOPE should be a scope token (`phpinspect-scope-p')."
-  (setq scope (take 5 (seq-filter #'phpinspect-not-comment-p scope)))
-  (let (variable-name type)
-    (cond
-     ((phpinspect--match-sequence (take 3 scope)
-        ;; Sequence: scope-type, typehint, variable [ = value ]
-        :m * :f #'phpinspect-word-p :f #'phpinspect-variable-p)
-      (setq variable-name (cadr (nth 2 scope)))
-      (setq type (cadr (nth 1 scope))))
-     ((phpinspect--match-sequence (take 2 scope)
-        ;; Sequence: variable [ = value ]
-        :m * :f #'phpinspect-variable-p)
-      (setq variable-name (cadr (nth 1 scope))
-            ;; Since no typehint is available, attempt extracting one from a
-            ;; docstring.
-            type (phpinspect--variable-type-string-from-comment
-                  comment-before variable-name)))
-     (t (error (format "Failed to determine variable from scope %s" scope))))
+  (let (readonly)
+    (when (and (phpinspect-word-p (cadr scope))
+               (equal (cadr scope) `(:word "readonly")))
+      (setq readonly t)
+      (setcdr scope (cddr scope)))
 
-    (phpinspect--log "calling resolver from index-variable-from-scope")
-    (phpinspect--make-variable
-     ;; Static class variables are always prefixed with dollar signs when
-     ;; referenced.
-     :name (if static (concat "$" variable-name) variable-name)
-     :scope `(,(car scope))
-     :lifetime (when static '(:static))
-     :type (if type (funcall type-resolver (phpinspect--make-type :name type))))))
+    (setq scope (take 5 (seq-filter #'phpinspect-not-comment-p scope)))
+    (let (variable-name type)
+      (cond
+       ((phpinspect--match-sequence (take 3 scope)
+          ;; Sequence: scope-type, typehint, variable [ = value ]
+          :m * :f #'phpinspect-word-p :f #'phpinspect-variable-p)
+        (setq variable-name (cadr (nth 2 scope)))
+        (setq type (cadr (nth 1 scope))))
+       ((phpinspect--match-sequence (take 2 scope)
+          ;; Sequence: variable [ = value ]
+          :m * :f #'phpinspect-variable-p)
+        (setq variable-name (cadr (nth 1 scope))
+              ;; Since no typehint is available, attempt extracting one from a
+              ;; docstring.
+              type (phpinspect--variable-type-string-from-comment
+                    comment-before variable-name)))
+       (t
+        (setq variable-name (cadr (seq-find #'phpinspect-variable-p scope)))))
+
+      (phpinspect--log "calling resolver from index-variable-from-scope")
+      (phpinspect--make-variable
+       ;; Static class variables are always prefixed with dollar signs when
+       ;; referenced.
+       :readonly readonly
+       :name (if static (concat "$" variable-name) variable-name)
+       :scope `(,(car scope))
+       :lifetime (when static '(:static))
+       :type (if type (funcall type-resolver (phpinspect--make-type :name type)))))))
 
 (defun phpinspect-doc-block-p (token)
   (phpinspect-token-type-p token :doc-block))
