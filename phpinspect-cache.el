@@ -172,7 +172,7 @@ currently opened projects."
 
 (cl-defmethod phpinspect--cache-get-project-create
   ((cache phpinspect--cache) (project-root string))
-    "Get a project that is located in PROJECT-ROOT from CACHE.
+  "Get a project that is located in PROJECT-ROOT from CACHE.
 If no such project exists in the cache yet, it is created and
 then returned."
   (let ((project (phpinspect--cache-get-project cache project-root)))

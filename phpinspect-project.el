@@ -241,29 +241,37 @@ indexation, but indexed synchronously before returning."
     (phpinspect-project-edit project
       (when  (and no-enqueue (phpinspect--class-initial-index class))
         (phpinspect--log "Indexing type file for %s" class-fqn)
-        (phpinspect-project-index-type-file project class-fqn)))
+        (phpinspect-project-add-index
+         project
+         (phpinspect-project-index-type-file project class-fqn))))
     class))
 
 (cl-defmethod phpinspect-project-get-class-extra-or-create
   ((project phpinspect-project) (class-fqn phpinspect--type) &optional no-enqueue)
-  (or (phpinspect-project-get-class-or-extra project class-fqn)
+  (or (phpinspect-project-get-class-or-extra project class-fqn no-enqueue)
       (phpinspect-project-get-class-create project class-fqn no-enqueue)))
 
 
 (cl-defmethod phpinspect-project-get-class
-  ((project phpinspect-project) (class-fqn phpinspect--type))
+  ((project phpinspect-project) (class-fqn phpinspect--type) &optional index)
   "Get indexed class by name of CLASS-FQN stored in PROJECT."
   (let ((class (gethash (phpinspect--type-name-symbol class-fqn)
                         (phpinspect-project-class-index project))))
-    (when (and class (phpinspect-project-read-only-p project)
-               (not (phpinspect--class-read-only-p class)))
-      (setf (phpinspect--class-read-only-p class) t))
+    (when class
+      (when (and (phpinspect-project-read-only-p project)
+                 (not (phpinspect--class-read-only-p class)))
+        (setf (phpinspect--class-read-only-p class) t))
+
+      (when (and index (not (phpinspect--class-initial-index class)))
+        (phpinspect-project-add-index
+         project
+         (phpinspect-project-index-type-file project class-fqn))))
 
     class))
 
 (cl-defmethod phpinspect-project-get-class-or-extra
-  ((project phpinspect-project) (class-fqn phpinspect--type))
-  (or (phpinspect-project-get-class project class-fqn)
+  ((project phpinspect-project) (class-fqn phpinspect--type) &optional index)
+  (or (phpinspect-project-get-class project class-fqn index)
       (and (phpinspect-project-extra-class-retriever project)
            (funcall (phpinspect-project-extra-class-retriever project)
                     class-fqn))))

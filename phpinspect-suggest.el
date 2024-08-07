@@ -30,6 +30,8 @@
 (require 'phpinspect-project)
 (require 'phpinspect-class)
 
+(phpinspect--declare-log-group 'suggest)
+
 (defun phpinspect-suggest-functions (rctx)
   (let* ((project (phpinspect--resolvecontext-project rctx)))
     (phpinspect-project-get-functions-with-extra project)))
@@ -76,7 +78,6 @@
                              "Retrieved class index, starting method collection %s (%s)"
                            "No class index found in %s for %s")
                          project-root class-fqn)
-
         (when class
           (if static
               (phpinspect--class-get-static-method-list class)
@@ -138,9 +139,12 @@ static variables and static methods."
       (phpinspect--log "Statement type: %s" statement-type)
       (when statement-type
         (let ((type (funcall type-resolver statement-type)))
-          (append (phpinspect--get-variables-for-class
-                   type
-                   static)
-                  (funcall method-lister type)))))))
+          (when-let ((result
+                      (append (phpinspect--get-variables-for-class
+                               type
+                               static)
+                              (funcall method-lister type))))
+            (phpinspect--log "Returning attributes %s" result)
+            result))))))
 
 (provide 'phpinspect-suggest)

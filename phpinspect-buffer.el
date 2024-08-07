@@ -33,6 +33,8 @@
 (require 'phpinspect-resolve)
 (require 'phpinspect-util)
 
+(phpinspect--declare-log-group 'buffer)
+
 (defvar-local phpinspect-current-buffer nil
   "An instance of `phpinspect-buffer' local to the active
 buffer. This variable is only set for buffers where
@@ -106,11 +108,13 @@ linked with."
   (gethash token (phpinspect-buffer-token-index buffer)))
 
 (cl-defmethod phpinspect-buffer-set-index-reference-for-token ((buffer phpinspect-buffer) token index)
+  (phpinspect--log "Setting index reference for token %s" token)
   (unless (phpinspect-probably-token-p token)
     (error "%s does not seem to be a token" token))
   (puthash token index (phpinspect-buffer-token-index buffer)))
 
 (cl-defmethod phpinspect-buffer-update-index-reference-for-token ((buffer phpinspect-buffer) old new)
+  (phpinspect--log "Updating index reference for old  token %s to new token %s" old new)
   (unless (and (phpinspect-probably-token-p old) (phpinspect-probably-token-p new))
     (when (and old new)
       (error "old and new parameters should be tokens")))
@@ -123,6 +127,7 @@ linked with."
   (unless (phpinspect-probably-token-p token)
     (error "%s does not seem to be a token" token))
 
+  (phpinspect--log "Deleting index for token %s" token)
   (cond ((phpinspect-class-p token)
          (when-let ((class (gethash token (phpinspect-buffer-token-index buffer))))
            (remhash token (phpinspect-buffer-token-index buffer))
@@ -299,9 +304,10 @@ linked with."
                              type-resolver
                              scope
                              (and (phpinspect-comment-p comment-before) comment-before)))
-              (if static
-                  (phpinspect--class-set-static-method class-obj indexed)
-                (phpinspect--class-set-method class-obj indexed))
+              (unless (phpinspect--function-anonyous-p indexed)
+                (if static
+                    (phpinspect--class-set-static-method class-obj indexed)
+                  (phpinspect--class-set-method class-obj indexed)))
 
               (phpinspect-buffer-set-index-reference-for-token
                buffer (phpinspect-meta-token func)
@@ -421,6 +427,10 @@ linked with."
   (setf (phpinspect-buffer-map buffer) (phpinspect-make-bmap))
   (setf (phpinspect-buffer-declarations buffer) nil)
   (setf (phpinspect-buffer-imports buffer) nil)
+  (setf (phpinspect-buffer-namespaces buffer) nil)
+  (setf (phpinspect-buffer-classes buffer) nil)
+  (setf (phpinspect-buffer-class-variables buffer) nil)
+  (setf (phpinspect-buffer-functions buffer) nil)
   (setf (phpinspect-buffer-token-index buffer)
         (make-hash-table :test 'eq :size 100 :rehash-size 1.5))
   (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer)))
@@ -428,6 +438,13 @@ linked with."
 (cl-defmethod phpinspect-buffer-reparse ((buffer phpinspect-buffer))
   (phpinspect-buffer-reset buffer)
   (phpinspect-buffer-parse buffer 'no-interrupt))
+
+(cl-defmethod phpinspect-buffer-reindex ((buffer phpinspect-buffer))
+  (dolist (token (hash-table-keys (phpinspect-buffer-token-index buffer)))
+    (phpinspect-buffer-delete-index-for-token buffer token))
+
+  (phpinspect-buffer-reparse buffer)
+  (phpinspect-buffer-update-project-index buffer))
 
 (cl-defmethod phpinspect-buffer-update-project-index ((buffer phpinspect-buffer))
   "Update project index using the last parsed token map of this
@@ -440,12 +457,14 @@ continuing execution."
   (unless (phpinspect-buffer-map buffer)
     (phpinspect-buffer-parse buffer))
 
+  (phpinspect--log "Preparing to update project index")
   ;; Use inhibit-quit to prevent index corruption though partial index
   ;; application.
   (let ((inhibit-quit t))
     (when (phpinspect-buffer-project buffer)
       (let ((map (phpinspect-buffer-map buffer)))
         (unless (eq map (phpinspect-buffer--last-indexed-bmap buffer))
+          (phpinspect--log "Updating project index")
           (phpinspect-buffer-index-imports buffer (phpinspect-bmap-imports map))
           (phpinspect-buffer-index-declarations buffer (phpinspect-bmap-declarations map))
           (phpinspect-buffer-index-namespaces buffer (phpinspect-bmap-namespaces map))

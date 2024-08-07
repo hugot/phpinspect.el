@@ -248,6 +248,9 @@ as first element and the type as second element.")
                "A phpinspect--type object representing the the
 return type of the function."))
 
+(defun phpinspect--function-anonyous-p (fn)
+  (eq (phpinspect-intern-name "anonymous") (phpinspect--function-name-symbol fn)))
+
 (defmacro phpinspect--make-function (&rest property-list)
   `(phpinspect--make-function-generated
     ,@(phpinspect--wrap-plist-name-in-symbol property-list)))
@@ -269,6 +272,9 @@ return type of the function."))
          "When the variable is an object attribute, this should
 contain the scope of the variable as returned by
 `phpinspect-parse-scope'")
+  (readonly nil
+            :documentation
+            "Whether or not the variable is readonly")
   (lifetime nil
             :documentation
             "The lifetime of the variable (e.g. whether it is static or not). Will

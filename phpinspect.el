@@ -112,7 +112,7 @@
 
 Reparses the entire buffer without token reuse."
   (when (and (boundp 'phpinspect-mode) phpinspect-mode)
-    (phpinspect-buffer-reparse phpinspect-current-buffer)))
+    (phpinspect-buffer-reindex phpinspect-current-buffer)))
 
 (defun phpinspect--disable-mode ()
   "Clean up the buffer environment for the mode to be disabled."
