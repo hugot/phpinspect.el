@@ -30,6 +30,8 @@
 (require 'phpinspect-resolvecontext)
 (require 'phpinspect-suggest)
 
+(phpinspect--declare-log-group 'completion)
+
 (defvar phpinspect--last-completion-list nil
   "Used internally to save metadata about completion options
   between company backend calls")
@@ -131,6 +133,7 @@ and CONTEXT. All strategies must implement this method.")
                        (phpinspect-completion-query-buffer q)
                        (phpinspect-completion-query-point q)
                        #'phpinspect-variable-p)))
+    (phpinspect--log "Returning region for variable subject %s" (phpinspect-meta-string subject))
     (list (+ (phpinspect-meta-start subject) 1) (phpinspect-meta-end subject))))
 
 
@@ -159,6 +162,7 @@ belonging to a token that conforms with `phpinspect-attrib-p'"
                        (phpinspect-completion-query-buffer q)
                        (phpinspect-completion-query-point q)
                        #'phpinspect-object-attrib-p)))
+    (phpinspect--log "Returning region for attribute access subject %s" (phpinspect-meta-string subject))
     (list (phpinspect-attrib-start subject) (phpinspect-meta-end subject))))
 
 (cl-defmethod phpinspect-comp-strategy-execute
@@ -176,6 +180,7 @@ belonging to a token that conforms with `phpinspect-attrib-p'"
                        (phpinspect-completion-query-buffer q)
                        (phpinspect-completion-query-point q)
                        #'phpinspect-static-attrib-p)))
+    (phpinspect--log "Returning region for attribute access subject %s" (phpinspect-meta-string subject))
     (list (phpinspect-attrib-start subject) (phpinspect-meta-end subject))))
 
 (cl-defmethod phpinspect-comp-strategy-execute
@@ -234,6 +239,8 @@ Returns list of `phpinspect--completion'."
         (dolist (candidate (phpinspect-comp-strategy-execute strategy query rctx))
           (phpinspect--completion-list-add
            completion-list (phpinspect--make-completion candidate)))))
+
+    (phpinspect--log "Returning completion list %s" completion-list)
     (setq phpinspect--last-completion-list completion-list)))
 
 (cl-defmethod phpinspect--make-completion
@@ -281,6 +288,7 @@ Returns list of `phpinspect--completion'."
   (catch 'phpinspect-parse-interrupted
     (let ((comp-list (phpinspect-completion-query-execute (phpinspect--get-completion-query)))
           strings)
+      (phpinspect--log "Completion list: %s" comp-list)
       (obarray-map (lambda (sym) (push (symbol-name sym) strings)) (phpinspect--completion-list-completions comp-list))
       (and (phpinspect--completion-list-has-candidates comp-list)
            (list (phpinspect--completion-list-completion-start comp-list)

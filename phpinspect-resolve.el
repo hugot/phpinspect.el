@@ -28,6 +28,8 @@
 (require 'phpinspect-type)
 (require 'phpinspect-token-predicates)
 
+(phpinspect--declare-log-group 'resolve)
+
 (cl-defstruct (phpinspect--assignment
                (:constructor phpinspect--make-assignment))
   (to nil
