@@ -356,56 +356,37 @@ class YYY {
       (should (= 1 (hash-table-count (phpinspect-project-class-index (phpinspect-buffer-project buffer))))))))
 
 (ert-deftest phpinspect-buffer-index-functions ()
-  (let ((buffer (phpinspect-make-buffer :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))
-        (namespaces (phpinspect-make-splayt))
-        (declarations  (phpinspect-make-splayt))
-        (classes (phpinspect-make-splayt))
-        (functions (phpinspect-make-splayt)))
+  (with-temp-buffer
+    (let ((buffer (phpinspect-make-buffer
+                   :buffer (current-buffer)
+                   :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader)))))
+      (insert "<?php
+namespace NS;
 
-    (phpinspect-splayt-insert
-     namespaces 10
-     (phpinspect-make-meta nil 10 200 "" '(:namespace (:word "NS") (:terminator ";"))))
-
-
-    (phpinspect-splayt-insert
-     declarations 20
-     (phpinspect-make-meta nil 20 30 "" '(:declaration (:word "class") (:word "TestClass"))))
-    (phpinspect-splayt-insert
-     classes 20
-     (phpinspect-make-meta nil 20 70 "" '(:class (:declaration (:word "class") (:word "TestClass")))))
+class TestClass
+{
+    function testMethod(): RelativeType {}
+}")
+      (phpinspect-buffer-update-project-index buffer)
 
 
-    (phpinspect-splayt-insert
-     declarations 40
-     (phpinspect-make-meta nil 40 45 "" '(:declaration (:word "testMethod") (:list) (:word "RelativeType"))))
+      (should (phpinspect-project-get-class
+               (phpinspect-buffer-project buffer)
+               (phpinspect--make-type :name "\\NS\\TestClass")))
 
-    (phpinspect-splayt-insert
-     functions 40
-     (phpinspect-make-meta nil 40 50 "" '(:function (:declaration (:word "testMethod") (:list) (:word "RelativeType")))))
+      (should (= 1 (hash-table-count (phpinspect--class-methods
+                                      (phpinspect-project-get-class
+                                       (phpinspect-buffer-project buffer)
+                                       (phpinspect--make-type :name "\\NS\\TestClass"))))))
 
-    (phpinspect-buffer-index-declarations buffer declarations)
-    (phpinspect-buffer-index-namespaces buffer namespaces)
-    (phpinspect-buffer-index-classes buffer classes)
+      (setf (phpinspect-buffer-map buffer) (phpinspect-make-bmap :-root-meta (phpinspect-make-meta nil 1 400 "" 'root)))
 
-    (phpinspect-buffer-index-functions buffer functions)
+      (phpinspect-buffer-index-functions buffer (phpinspect-make-splayt))
 
-    (should (phpinspect-project-get-class
-             (phpinspect-buffer-project buffer)
-             (phpinspect--make-type :name "\\NS\\TestClass")))
-
-    (should (= 1 (hash-table-count (phpinspect--class-methods
-                                    (phpinspect-project-get-class
-                                     (phpinspect-buffer-project buffer)
-                                     (phpinspect--make-type :name "\\NS\\TestClass"))))))
-
-    (setf (phpinspect-buffer-map buffer) (phpinspect-make-bmap :-root-meta (phpinspect-make-meta nil 1 400 "" 'root)))
-
-    (phpinspect-buffer-index-functions buffer (phpinspect-make-splayt))
-
-    (should (= 0 (hash-table-count (phpinspect--class-methods
-                                    (phpinspect-project-get-class
-                                     (phpinspect-buffer-project buffer)
-                                     (phpinspect--make-type :name "\\NS\\TestClass"))))))))
+      (should (= 0 (hash-table-count (phpinspect--class-methods
+                                      (phpinspect-project-get-class
+                                       (phpinspect-buffer-project buffer)
+                                       (phpinspect--make-type :name "\\NS\\TestClass")))))))))
 
 (ert-deftest phpinspect-buffer-index-class-variables ()
   (let ((buffer (phpinspect-make-buffer :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))
