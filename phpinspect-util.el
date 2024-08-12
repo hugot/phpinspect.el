@@ -170,6 +170,13 @@ pattern. See `phpinspect--match-sequence'."
   "Match SEQUENCE to PATTERN."
   (funcall (phpinspect--pattern-matcher pattern) sequence))
 
+(defun phpinspect--list-all-equal (val sequence)
+  (catch 'not-equal
+    (dolist (item sequence)
+      (unless (equal val item)
+        (throw 'not-equal nil)))
+    t))
+
 (defmacro phpinspect--match-sequence (sequence &rest pattern)
   "Match SEQUENCE to positional matchers defined in PATTERN.
 
@@ -201,7 +208,7 @@ it evaluates to a non-nil value."
          (match-rear-sym (gensym))
          (checkers (cons nil nil))
          (checkers-rear checkers)
-         key value)
+         rest key value)
 
     (while (setq key (pop pattern))
       (unless (keywordp key)
@@ -224,6 +231,8 @@ it evaluates to a non-nil value."
                          `(,value (elt ,sequence-sym ,sequence-pos))
                        `(funcall ,value (elt ,sequence-sym ,sequence-pos)))
                      nil))))
+            ((eq key :rest)
+             (setq rest value))
             (t (error "Invalid keyword: %s" key)))
 
       (setq checkers-rear
@@ -240,9 +249,15 @@ it evaluates to a non-nil value."
     `(let* ((,sequence-sym ,sequence)
             (,match-sym (cons nil nil))
             (,match-rear-sym ,match-sym))
-       (and (= ,sequence-length (length ,sequence))
-            ,@checkers
-            (cdr ,match-sym)))))
+       ,(if rest
+            `(and ,@checkers
+                  (cdr ,match-sym)
+                  ,(if (eq rest '*)
+                       't
+                     `(phpinspect--list-all-equal ,rest (nthcdr ,sequence-length ,sequence-sym))))
+          `(and (= ,sequence-length (length ,sequence))
+                ,@checkers
+                (cdr ,match-sym))))))
 
 (defun phpinspect--pattern-concat (pattern1 pattern2)
   (let* ((pattern1-sequence-length (/ (length (phpinspect--pattern-code pattern1)) 2)))

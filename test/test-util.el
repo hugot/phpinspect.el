@@ -55,3 +55,31 @@
                   :m '(:object-attrib (:word "not-a-match")))))
 
     (should-not result)))
+
+(ert-deftest phpinspect--pattern-match-rest ()
+  (should (phpinspect--match-sequence '((:variable "this") (:object-attrib (:word "em")) (:list))
+            :m '(:variable "this")
+            :m *
+            :rest '(:list)))
+
+  (should (phpinspect--match-sequence '((:variable "this") (:object-attrib (:word "em")) (:list))
+            :m '(:variable "this")
+            :m *
+            :rest *))
+
+  (should (phpinspect--match-sequence '((:variable "this") (:object-attrib (:word "em")) (:list))
+            :m '(:variable "this")
+            :m *
+            :rest '(:list)))
+
+  (should (phpinspect--match-sequence '((:variable "this") (:object-attrib (:word "em")) (:list))
+            :m '(:variable "this")
+            :rest *))
+
+  (should-not (phpinspect--match-sequence '((:variable "this") (:object-attrib (:word "em")) (:variable "ba") (:list))
+                :m '(:variable "this")
+                :rest '(:list)))
+
+  (should-not (phpinspect--match-sequence '((:variable "this") (:object-attrib (:word "em")) (:list))
+                :m '(:variable "this")
+                :m *)))

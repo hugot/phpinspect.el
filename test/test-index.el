@@ -127,7 +127,7 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
                    "<?php
 
 /* @method int peel(bool $fast, array $loose)
-                           * @method Banana duplicate()
+                           * @method Banana duplicate() Words after annotation
                             @method hold() **/
                            class Banana {}")))
          (class (car (alist-get 'classes result)))

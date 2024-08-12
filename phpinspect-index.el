@@ -224,24 +224,28 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
     (dolist (annotation annotations)
       (let ((return-type) (name) (arg-list) (static))
         ;; Annotation is static
-        (when (phpinspect--match-sequence (take 2 annotation)
-                :m :method-annotation :m '(:word "static"))
+        (when (phpinspect--match-sequence annotation
+                :m :method-annotation :m '(:word "static") :rest *)
           (setcdr annotation (cddr annotation))
           (setq static t))
 
         (cond
+         ;; Sequence is: return-type, method-name, method signature
          ((phpinspect--match-sequence annotation
             :m :method-annotation
             :f #'phpinspect-word-p
             :f #'phpinspect-word-p
-            :f #'phpinspect-list-p)
+            :f #'phpinspect-list-p
+            :rest *)
           (setq return-type (cadr (nth 1 annotation)))
           (setq name (cadr (nth 2 annotation)))
           (setq arg-list (nth 3 annotation)))
+         ;; Sequence is: method-name, method-signature
          ((phpinspect--match-sequence annotation
             :m :method-annotation
             :f #'phpinspect-word-p
-            :f #'phpinspect-list-p)
+            :f #'phpinspect-list-p
+            :rest *)
           (setq return-type "void")
           (setq name (cadr (nth 1 annotation)))
           (setq arg-list (nth 2 annotation))))
