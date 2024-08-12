@@ -31,7 +31,6 @@
 (require 'phpinspect-meta)
 (require 'phpinspect-util)
 
-
 (defsubst phpinspect-blocklike-p (token)
   (or (phpinspect-block-p token)
       (phpinspect-function-p token)
@@ -111,6 +110,7 @@
 
 (cl-defmethod phpinspect-get-resolvecontext
   ((bmap phpinspect-bmap) (point integer))
+  "Construct resolvecontext for BMAP, orienting around POINT."
   (let* ((enclosing-tokens)
          ;; When there are no enclosing tokens, point is probably at the absolute
          ;; end of the buffer, so we find the last child before point.
@@ -226,6 +226,7 @@ accompanied by all of its enclosing tokens."
 return it. Pops enclosing tokens to keep both in sync."
   (pop (phpinspect--resolvecontext-enclosing-tokens rctx))
   (pop (phpinspect--resolvecontext-enclosing-metadata rctx)))
+
 
 (provide 'phpinspect-resolvecontext)
 ;;; phpinspect-resolvecontext.el ends here

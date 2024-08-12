@@ -25,6 +25,7 @@
 
 (require 'phpinspect-resolvecontext)
 (require 'phpinspect-cache)
+(require 'phpinspect-class)
 (require 'phpinspect-type)
 (require 'phpinspect-token-predicates)
 
@@ -496,5 +497,42 @@ EXPRESSION."
                     type-resolver
                     (phpinspect-function-argument-list enclosing-token))))))
     type))
+
+(defun phpinspect--function-get-pattern-type (fn rctx pattern type-resolver)
+  (phpinspect-get-pattern-type-in-block
+   rctx pattern
+   (phpinspect-function-block (phpinspect--function-token fn))
+   type-resolver
+   (phpinspect-function-argument-list (phpinspect--function-token fn))))
+
+
+(cl-defmethod phpinspect--class-resolve-property-type
+  ((class phpinspect--class) (property-name string) type-resolver class-token-meta)
+  "Resolve type of POPERTY-NAME in the context of CLASS using
+CLASS-TOKEN-META as parse result."
+  (let ((pattern (phpinspect--make-pattern
+                  :m `(:variable "this")
+                  :m `(:object-attrib (:word ,property-name))))
+        (rctx (phpinspect--make-resolvecontext :enclosing-tokens (list (phpinspect-meta-token class-token-meta))
+                                               :enclosing-metadata (list class-token-meta)))
+        (constructor-name (phpinspect-intern-name "__construct")))
+
+    (or
+     (when-let ((constructor (phpinspect--class-get-method class constructor-name)))
+       (phpinspect--function-get-pattern-type constructor rctx pattern type-resolver))
+     (catch 'found
+       (dolist (method (phpinspect--class-get-method-list class))
+         (unless (eq constructor-name (phpinspect--function-name-symbol method))
+           (when-let ((result (phpinspect--function-get-pattern-type method rctx pattern type-resolver)))
+             (throw 'found result))))
+       nil))))
+
+(cl-defmethod phpinspect--class-resolve-property-type
+  ((_class phpinspect--class) property-name &rest _ignored)
+  ;; Catch-all for cases where one attempts to resolve a nil property
+  ;; name. Saves an if-statement for the caller.
+  ;; Can't resolve property type when property name is nil, so we do nothing.
+  (cl-assert (not property-name))
+  nil)
 
 (provide 'phpinspect-resolve)

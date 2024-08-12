@@ -404,17 +404,9 @@ linked with."
                    static)))
 
           (when (and (phpinspect-variable-p (phpinspect-meta-token var)) (not (phpinspect--variable-type indexed)))
-            (when-let* ((constructor (phpinspect--class-get-method class-obj (phpinspect-intern-name "__construct")))
-                        (rctx (phpinspect--make-resolvecontext :enclosing-tokens (list (phpinspect-meta-token class))
-                                                               :enclosing-metadata (list class))))
-              (setf (phpinspect--variable-type indexed)
-                    (phpinspect-get-pattern-type-in-block
-                     rctx (phpinspect--make-pattern :m `(:variable "this")
-                                                    :m `(:object-attrib (:word ,(cadr (phpinspect-meta-token var)))))
-                     (phpinspect-function-block (phpinspect--function-token constructor))
-                     type-resolver
-                     (phpinspect-function-argument-list (phpinspect--function-token constructor))))))
-
+            (setf (phpinspect--variable-type indexed)
+                  (phpinspect--class-resolve-property-type
+                   class-obj (cadr (phpinspect-meta-token var)) type-resolver class)))
 
           (phpinspect--class-set-variable class-obj indexed)
 

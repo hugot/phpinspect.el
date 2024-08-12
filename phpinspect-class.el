@@ -259,5 +259,6 @@ Conditionally executes BODY depending on
         (puthash subscription-class update-function
                  (phpinspect--class-subscriptions subscription-class))))))
 
+
 (provide 'phpinspect-class)
 ;;; phpinspect-class.el ends here
