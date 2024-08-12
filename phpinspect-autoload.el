@@ -114,6 +114,11 @@ bareword typenames."))
                (string-remove-prefix ,dir ,filename))))))))
 
 (defun phpinspect-find-composer-json-files (fs project-root)
+  "Find all composer.json files that are relevant for a project.
+
+Usually, the relevant files are the current project's
+composer.json and the composer.json files of all dependencies in
+the vendor directory."
   (let ((cj-path (concat project-root "/composer.json"))
         (vendor-dir (concat project-root "/vendor"))
         files)

@@ -126,6 +126,10 @@ serious performance hits. Enable at your own risk (:")
     (dolist (func (alist-get 'functions (cdr index)))
       (phpinspect-project-set-function project func))))
 
+(cl-defmethod phpinspect-project-add-index ((_project phpinspect-project) index)
+  (cl-assert (not index))
+  (phpinspect--log "phpinspect-project-add-index: ignoring added nil index"))
+
 (cl-defmethod phpinspect-project-set-function
   ((project phpinspect-project) (func phpinspect--function))
   (phpinspect-project-edit project
@@ -305,10 +309,11 @@ before the search is executed."
   (condition-case error
       (let* ((file (phpinspect-project-get-type-filepath project type))
              (visited-buffer (when file (find-buffer-visiting file))))
-        (when file
+        (if file
           (if visited-buffer
               (with-current-buffer visited-buffer (phpinspect-index-current-buffer))
-            (with-temp-buffer (phpinspect-project-index-file project file)))))
+            (with-temp-buffer (phpinspect-project-index-file project file)))
+          (phpinspect--log "Failed to determine filepath for type %s" (phpinspect--type-name type))))
     (file-missing
      (phpinspect--log "Failed to find file for type %s:  %s" type error)
      nil)))
