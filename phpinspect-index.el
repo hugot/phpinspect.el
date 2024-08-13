@@ -467,7 +467,7 @@ NAMESPACE will be assumed the root namespace if not provided"
     indexed))
 
 (defun phpinspect--index-functions-in-tokens (tokens type-resolver-factory &optional imports namespace add-used-types)
-  "TODO: implement function indexation. This is a stub function."
+  "Index functions in TOKENS."
   (let ((type-resolver (funcall type-resolver-factory imports nil namespace))
         comment-before functions)
     (dolist (token tokens)
@@ -496,9 +496,16 @@ NAMESPACE will be assumed the root namespace if not provided"
 
 
 (defun phpinspect--find-used-types-in-tokens (tokens)
-  "Find usage of the \"new\" keyword in TOKENS.
+  "Find usage of bareword types in TOKENS.
 
-Return value is a list of the types that are \"newed\"."
+Covers usage of types:
+- with the \"new\" keyword
+- as function argument/return types
+
+see `phpinspect--index-class' for indexation of types used in
+classes (like property typehints).
+
+Returns a list of type name strings."
   (let* ((previous-tokens)
          (used-types (cons nil nil))
          (used-types-rear used-types))
