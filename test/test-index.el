@@ -88,12 +88,15 @@
   (let* ((result (phpinspect--index-tokens
                   (phpinspect-parse-string
                    "<?php namespace Field; class Potato extends Cheese, Bacon implements Ham, Bagel {
+
+private PropertyType $property;
+
 public function makeThing(): Thing
 {
 if ((new Monkey())->tree() === true) {
    return new ExtendedThing();
 }
-return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->antiPotato(new OtherThing()))));
+return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->antiPotato(new OtherThing(function (InnerFunctionParam $param) {})))));
 }")))
          (used-types (alist-get 'used-types (car (alist-get 'classes result)))))
     (should (equal
@@ -101,7 +104,8 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
                      (sort
                       (copy-sequence
                        '("Cheese" "Bacon" "Ham" "Bagel" "Monkey" "ExtendedThing"
-                         "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing"))
+                         "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing"
+                         "InnerFunctionParam" "PropertyType"))
                       #'string<))
              (sort used-types (lambda (s1 s2) (string< (phpinspect-name-string s1) (phpinspect-name-string s2))))))))
 

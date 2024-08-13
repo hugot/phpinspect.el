@@ -173,7 +173,7 @@ function (think \"new\" statements, return types etc.)."
     ;; return nil.
     (when (stringp type) type)))
 
-(defun phpinspect--index-variable-from-scope (type-resolver scope comment-before &optional static)
+(defun phpinspect--index-variable-from-scope (type-resolver scope comment-before &optional static add-used-types)
   "Index the variable inside SCOPE, use doc in COMMENT-BEFORE if missing typehint.
 
 Provide STATIC if the variable was defined as static.
@@ -212,7 +212,9 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
        :name (if static (concat "$" variable-name) variable-name)
        :scope `(,(car scope))
        :lifetime (when static '(:static))
-       :type (if type (funcall type-resolver (phpinspect--make-type :name type)))))))
+       :type (when type
+               (when add-used-types (funcall add-used-types (list type)))
+               (funcall type-resolver (phpinspect--make-type :name type)))))))
 
 (defun phpinspect-doc-block-p (token)
   (phpinspect-token-type-p token :doc-block))
@@ -292,9 +294,8 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
                     (push (phpinspect--index-const-from-scope token) constants))
 
                    ((seq-find #'phpinspect-variable-p token)
-                    (push (phpinspect--index-variable-from-scope type-resolver
-                                                                 token
-                                                                 comment-before)
+                    (push (phpinspect--index-variable-from-scope
+                           type-resolver token comment-before nil add-used-types)
                           variables))
 
                    ((phpinspect-static-p (cadr token))
@@ -307,10 +308,9 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
                                  static-methods))
 
                           ((seq-find #'phpinspect-variable-p (cdadr token))
-                           (push (phpinspect--index-variable-from-scope type-resolver
-                                                                        `(,(car token) ,@(cdadr token))
-                                                                        comment-before
-                                                                        'static)
+                           (push (phpinspect--index-variable-from-scope
+                                  type-resolver `(,(car token) ,@(cdadr token))
+                                  comment-before 'static add-used-types)
                                  static-variables))))
                    (t
                     (phpinspect--log "comment-before is: %s" comment-before)
@@ -329,10 +329,9 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
                           static-methods))
 
                    ((seq-find #'phpinspect-variable-p (cdr token))
-                    (push (phpinspect--index-variable-from-scope type-resolver
-                                                                 `(:public ,@(cdr token))
-                                                                 comment-before
-                                                                 'static)
+                    (push (phpinspect--index-variable-from-scope
+                           type-resolver `(:public ,@(cdr token)) comment-before
+                           'static add-used-types)
                           static-variables))))
             ((phpinspect-const-p token)
              ;; Bare constants are always public
@@ -481,6 +480,21 @@ NAMESPACE will be assumed the root namespace if not provided"
                    functions))))
     functions))
 
+(defun phpinspect-function-declaration (function-token)
+  (seq-find #'phpinspect-declaration-p function-token))
+
+(defun phpinspect--find-used-types-in-function-token (token)
+  (let* (types
+         (add-types (lambda (add-types)
+                      (setq types (nconc types add-types))))
+         (resolver (phpinspect--make-type-resolver nil)))
+
+    (phpinspect--index-function-declaration
+     (phpinspect-function-declaration token) resolver add-types)
+
+    (nconc types (phpinspect--find-used-types-in-tokens (phpinspect-function-block token)))))
+
+
 (defun phpinspect--find-used-types-in-tokens (tokens)
   "Find usage of the \"new\" keyword in TOKENS.
 
@@ -509,6 +523,13 @@ Return value is a list of the types that are \"newed\"."
                          (nconc used-types-rear
                                 (phpinspect--find-used-types-in-tokens (cdr list)))
                          used-types-rear (last used-types-rear)))))
+              ((phpinspect-function-p token)
+               (setq used-types-rear
+                     (nconc used-types-rear (phpinspect--find-used-types-in-function-token token))
+                     used-types-rear
+                     (nconc used-types-rear
+                            (phpinspect--find-used-types-in-tokens (cdr (phpinspect-function-block token))))
+                     used-types-rear (last used-types-rear)))
               ((or (phpinspect-list-p token) (phpinspect-block-p token))
                (setq used-types-rear
                      (nconc used-types-rear (phpinspect--find-used-types-in-tokens (cdr token)))
