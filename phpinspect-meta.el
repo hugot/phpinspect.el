@@ -270,6 +270,12 @@
       (when (funcall predicate child)
         (throw 'return child)))))
 
+(cl-defmethod phpinspect-meta-find-first-child-matching-token ((meta (head meta)) predicate)
+  (catch 'return
+    (phpinspect-splayt-traverse-lr (child (phpinspect-meta-children meta))
+      (when (funcall predicate (phpinspect-meta-token child))
+        (throw 'return child)))))
+
 (cl-defmethod phpinspect-meta-last-child ((meta (head meta)))
   (phpinspect-meta-find-child-before meta (phpinspect-meta-end meta)))
 

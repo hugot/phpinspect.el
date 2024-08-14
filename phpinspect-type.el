@@ -299,12 +299,15 @@ mutability of the variable")
   (not (or (phpinspect--variable-static-p variable)
            (phpinspect--variable-const-p variable))))
 
-(defun phpinspect--use-to-type (use)
+(defun phpinspect-use-name-to-type (fqn-string)
+  (phpinspect--make-type :name (if (string-match "^\\\\" fqn-string)
+                                   fqn-string
+                                 (concat "\\" fqn-string))
+                         :fully-qualified t))
+
+(defun phpinspect--use-to-type-cons (use)
   (let* ((fqn (cadr (cadr use)))
-         (type (phpinspect--make-type :name (if (string-match "^\\\\" fqn)
-                                                fqn
-                                              (concat "\\" fqn))
-                                      :fully-qualified t))
+         (type (phpinspect-use-name-to-type fqn))
          (type-name (if (and (phpinspect-word-p (caddr use))
                              (string= "as" (cadr (caddr use))))
                         (cadr (cadddr use))
@@ -313,7 +316,7 @@ mutability of the variable")
     (cons (phpinspect-intern-name type-name) type)))
 
 (defun phpinspect--uses-to-types (uses)
-  (mapcar #'phpinspect--use-to-type uses))
+  (mapcar #'phpinspect--use-to-type-cons uses))
 
 (defun phpinspect--get-class-name-from-token (class-token)
   (let ((subtoken (seq-find (lambda (word)

@@ -111,14 +111,56 @@ buffer position to insert the use statement at."
 (defalias 'phpinspect-fix-uses-interactive #'phpinspect-fix-imports
   "Alias for backwards compatibility")
 
+(defsubst phpinspect-namespace-meta-body (namespace-meta)
+  "Return the token metadata of NAMESPACE-META's body.
+More specifically, returns the token itself if it is a namespace
+without block.  If the namespace is defined with a block ('{}'),
+NAMESPACE-META itself is returned without alterations."
+  (if (phpinspect-block-p (caddr (phpinspect-meta-token namespace-meta)))
+      (phpinspect-meta-find-first-child-matching-token namespace-meta #'phpinspect-block-p)
+    namespace-meta))
+
+(defun phpinspect-find-use-statement-for-import (parent-token import-type)
+  (phpinspect-meta-find-first-child-matching-token
+   (if (phpinspect-namespace-p (phpinspect-meta-token parent-token))
+       (phpinspect-namespace-meta-body parent-token)
+     parent-token)
+   (lambda (token)
+     (and (phpinspect-use-p token)
+          (phpinspect-word-p (cadr token))
+          (phpinspect--type= import-type (phpinspect-use-name-to-type (cadadr token)))))))
+
+(defun phpinspect-remove-unneeded-use-statements (types buffer imports parent-token)
+  (let ((namespace (phpinspect-meta-find-parent-matching-token parent-token #'phpinspect-namespace-p)))
+    (dolist (import imports)
+      (unless (member (car import) types)
+        (when-let ((use-meta (phpinspect-find-use-statement-for-import namespace (cdr import))))
+          (let ((start-point (phpinspect-meta-start use-meta))
+                (use-before (phpinspect-meta-find-left-sibling use-meta)))
+            (if (phpinspect-use-p (phpinspect-meta-token use-before))
+                ;; left-sibling is another use statement, remove all preceding whitespace
+                (setq start-point (- start-point (length (phpinspect-meta-whitespace-before use-meta))))
+              ;; left-sibling isn't a use statement, just remove a newline if
+              ;; any whitespace is present
+              (when (length> (phpinspect-meta-whitespace-before use-meta) 0)
+                (setq start-point (- start-point 1))))
+
+            (delete-region start-point (phpinspect-meta-end use-meta))
+            (phpinspect-buffer-parse buffer 'no-interrupt)))))))
+
 (defun phpinspect-add-use-statements-for-missing-types (types buffer imports project parent-token)
-  (let (namespace namespace-name)
-    (dolist (type types)
-      (setq namespace (phpinspect-meta-find-parent-matching-token
-                       parent-token #'phpinspect-namespace-p)
-            namespace-name (if namespace
+  "Add use statements to BUFFER for TYPES if not already included in IMPORTS.
+
+Uses PROJECT's autoloader to determine available types for import.
+
+PARENT-TOKEN must be a `token-meta' object and is used to
+determine the scope of the imports (global or local namespace)."
+  (let* ((namespace (phpinspect-meta-find-parent-matching-token
+                       parent-token #'phpinspect-namespace-p))
+         (namespace-name (if namespace
                                (phpinspect-namespace-name (phpinspect-meta-token namespace))
-                             ""))
+                             "")))
+    (dolist (type types)
       ;; Add use statements for types that aren't imported or already referenced
       ;; with a fully qualified name.
       (unless (or (or (alist-get type imports))
@@ -149,6 +191,9 @@ that there are import (\"use\") statements for them."
         (phpinspect-add-use-statements-for-missing-types
          used-types buffer imports project (phpinspect-buffer-root-meta buffer))
 
+        (phpinspect-remove-unneeded-use-statements
+         used-types buffer imports (phpinspect-buffer-root-meta buffer))
+
         (dolist (class classes)
           (let* ((class-imports (alist-get 'imports class))
                  (used-types (alist-get 'used-types class))
@@ -164,6 +209,9 @@ that there are import (\"use\") statements for them."
               (error "Unable to find token for class %s" class-name))
 
             (phpinspect-add-use-statements-for-missing-types
-             used-types buffer (append imports class-imports) project token-meta))))))
+             used-types buffer (append imports class-imports) project token-meta)
+
+            (phpinspect-remove-unneeded-use-statements
+             used-types buffer class-imports token-meta))))))
 
 (provide 'phpinspect-imports)
