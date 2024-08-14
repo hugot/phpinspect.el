@@ -319,7 +319,7 @@ directories."
            (when ,seed-sym
              (phpinspect-pipeline--enqueue
               ,queue-sym
-              (phpinspect-make-pipeline-emission :collection ,seed-form) 'no-notify))
+              (phpinspect-make-pipeline-emission :collection ,seed-sym) 'no-notify))
 
            (phpinspect-pipeline--enqueue
             ,queue-sym (phpinspect-make-pipeline-end :thread (current-thread)))
