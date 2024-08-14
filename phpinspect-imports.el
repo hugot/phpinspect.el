@@ -194,7 +194,7 @@ that there are import (\"use\") statements for them."
              ;;
              ;; FIXME: Change to buffer-parse when this particular problem in
              ;; incremental parsing has been solved
-             (tree (phpinspect-buffer-reparse buffer))
+             (tree (phpinspect-buffer-reparse-if-not-fresh buffer))
              (index (phpinspect--index-tokens
                      tree nil (phpinspect-buffer-location-resolver buffer)))
              (classes (alist-get 'classes index))

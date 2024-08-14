@@ -76,12 +76,39 @@ emacs buffer."
         (phpinspect--cache-get-project-create (phpinspect--get-or-create-global-cache)
                                               (phpinspect-current-project-root)))))
 
+(defun phpinspect-buffer-tainted-p (buffer)
+  "Whether or not BUFFER's current tree needs updating to incorporate edits."
+  (and (phpinspect-edtrack-taint-pool (phpinspect-buffer-edit-tracker buffer)) t))
+
+(defun phpinspect-buffer-needs-parse-p (buffer)
+  "Whether or not BUFFER needs to be parsed for an updated tree to be present."
+  (or (not (phpinspect-buffer-tree buffer))
+      (phpinspect-buffer-tainted-p buffer)))
+
+(defun phpinspect-buffer-fresh-p (buffer)
+  "Whether or not BUFFER's metadata is fresh.
+
+A buffer's metadata is fresh when the buffer's last parsed tree
+was parsed from scratch and no edits have been applied
+afterwards. An incrementally parsed tree that has incorporated
+edits does not count as fresh (because incremental parsing has its flaws)."
+  (and (not (phpinspect-buffer-needs-parse-p buffer))
+      ;; If the buffer map has overlays, the last parsed tree has incorporated
+      ;; edits and is not fresh.
+      (phpinspect-splayt-empty-p (phpinspect-bmap-overlays (phpinspect-buffer-map buffer)))))
+
+(defun phpinspect-buffer-reparse-if-not-fresh (buffer)
+  "If BUFFER's tree is fresh, return it. Otherwise reparse the
+ buffer and return the result."
+  (if (phpinspect-buffer-fresh-p buffer)
+      (phpinspect-buffer-tree buffer)
+    (phpinspect-buffer-reparse buffer)))
+
 (cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer) &optional no-interrupt)
   "Parse the PHP code in the the emacs buffer that this object is
 linked with."
   (let ((tree))
-  (if (or (not (phpinspect-buffer-tree buffer))
-          (phpinspect-edtrack-taint-pool (phpinspect-buffer-edit-tracker buffer)))
+  (if (phpinspect-buffer-needs-parse-p buffer)
       (with-current-buffer (phpinspect-buffer-buffer buffer)
         (let* ((map (phpinspect-make-bmap))
                (buffer-map (phpinspect-buffer-map buffer))
