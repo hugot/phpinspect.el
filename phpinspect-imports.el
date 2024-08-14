@@ -185,7 +185,16 @@ that there are import (\"use\") statements for them."
   (interactive)
   (if phpinspect-current-buffer
       (let* ((buffer phpinspect-current-buffer)
-             (tree (phpinspect-buffer-parse buffer))
+             ;; use buffer-reparse to ensure fully structurally correct
+             ;; tree. (at the time of writing, incremental parsing has some
+             ;; limitations causing reused tokens to lose their special meaning
+             ;; when they are reused. For example the "class" keyword being
+             ;; reused as just a word instead of a special keyword marking the
+             ;; start of a class)
+             ;;
+             ;; FIXME: Change to buffer-parse when this particular problem in
+             ;; incremental parsing has been solved
+             (tree (phpinspect-buffer-reparse buffer))
              (index (phpinspect--index-tokens
                      tree nil (phpinspect-buffer-location-resolver buffer)))
              (classes (alist-get 'classes index))

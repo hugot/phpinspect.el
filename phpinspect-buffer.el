@@ -518,7 +518,7 @@ use."
   (interactive)
   (when phpinspect-current-buffer
     (let ((buffer phpinspect-current-buffer))
-      (pop-to-buffer (generate-new-buffer "phpinspect-buffer-tree"))
+      (pop-to-buffer (generate-new-buffer "phpinspect-buffer-index"))
       (insert (pp-to-string (phpinspect--index-tokens (phpinspect-buffer-parse buffer 'no-interrupt))))
       (read-only-mode))))
 
