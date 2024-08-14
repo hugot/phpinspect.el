@@ -96,7 +96,11 @@ public function makeThing(): Thing
 if ((new Monkey())->tree() === true) {
    return new ExtendedThing();
 }
-return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->antiPotato(new OtherThing(function (InnerFunctionParam $param) {})))));
+return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->antiPotato(new OtherThing(function (InnerFunctionParam $param) {
+if ($param instanceof InstanceOffed) {
+// nothing
+}
+})))));
 }")))
          (used-types (alist-get 'used-types (car (alist-get 'classes result)))))
     (should (equal
@@ -105,7 +109,7 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
                       (copy-sequence
                        '("Cheese" "Bacon" "Ham" "Bagel" "Monkey" "ExtendedThing"
                          "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing"
-                         "InnerFunctionParam" "PropertyType"))
+                         "InnerFunctionParam" "PropertyType" "InstanceOffed"))
                       #'string<))
              (sort used-types (lambda (s1 s2) (string< (phpinspect-name-string s1) (phpinspect-name-string s2))))))))
 

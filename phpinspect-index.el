@@ -513,7 +513,7 @@ Returns a list of type name strings."
       (let ((token (pop tokens))
             (previous-token (car previous-tokens)))
         (cond ((and (phpinspect-word-p previous-token)
-                    (string= "new" (cadr previous-token))
+                    (member (cadr previous-token) `("new" "instanceof"))
                     (phpinspect-word-p token))
                (let ((type (cadr token)))
                  (when (not (string-match-p "\\\\" type))
