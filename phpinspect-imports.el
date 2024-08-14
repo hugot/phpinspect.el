@@ -131,8 +131,10 @@ NAMESPACE-META itself is returned without alterations."
           (phpinspect--type= import-type (phpinspect-use-name-to-type (cadadr token)))))))
 
 (defun phpinspect-remove-unneeded-use-statements (types buffer imports parent-token)
-  (let ((namespace (phpinspect-meta-find-parent-matching-token parent-token #'phpinspect-namespace-p)))
-    (dolist (import imports)
+  (dolist (import imports)
+    ;; Namespace must be inferred within the loop, see comments in
+    ;; `phpinspect-add-use-statements-for-missing-types' for context.
+    (let ((namespace (phpinspect-meta-find-parent-matching-token parent-token #'phpinspect-namespace-p)))
       (unless (member (car import) types)
         (when-let ((use-meta (phpinspect-find-use-statement-for-import namespace (cdr import))))
           (let ((start-point (phpinspect-meta-start use-meta))
@@ -155,12 +157,16 @@ Uses PROJECT's autoloader to determine available types for import.
 
 PARENT-TOKEN must be a `token-meta' object and is used to
 determine the scope of the imports (global or local namespace)."
-  (let* ((namespace (phpinspect-meta-find-parent-matching-token
+  (dolist (type types)
+    ;; Namespace token must be inferred within the loop, as the ancestors of
+    ;; PARENT-TOKEN may change after a buffer reparse (which happens after each
+    ;; insert)
+    (let* ((namespace (phpinspect-meta-find-parent-matching-token
                        parent-token #'phpinspect-namespace-p))
-         (namespace-name (if namespace
+           (namespace-name (if namespace
                                (phpinspect-namespace-name (phpinspect-meta-token namespace))
                              "")))
-    (dolist (type types)
+
       ;; Add use statements for types that aren't imported or already referenced
       ;; with a fully qualified name.
       (unless (or (or (alist-get type imports))
@@ -169,8 +175,9 @@ determine the scope of the imports (global or local namespace)."
                              nil namespace-name (phpinspect-name-string type)))
                            (phpinspect-autoloader-types
                             (phpinspect-project-autoload project))))
-        (phpinspect-add-use-interactive type buffer project namespace)
-        (phpinspect-buffer-parse buffer 'no-interrupt)))))
+        (unless (member (phpinspect-name-string type) phpinspect-native-typenames)
+          (phpinspect-add-use-interactive type buffer project namespace)
+          (phpinspect-buffer-parse buffer 'no-interrupt))))))
 
 (defun phpinspect-fix-imports ()
   "Find types that are used in the current buffer and make sure
