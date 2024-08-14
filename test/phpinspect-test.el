@@ -412,20 +412,29 @@ class Thing
                   (:variable "notbam") (:word "nonsense") (:assignment "=") (:string) (:terminator)
                   (:variable "bam") (:comment) (:object-attrib "boom") (:assignment "=")
                   (:variable "wat") (:object-attrib "call") (:terminator)))
-         (result (phpinspect--find-assignments-by-predicate
-                  token
+         (assignments (nreverse (phpinspect--find-assignments-in-token token)))
+         (result (phpinspect--find-assignment-by-predicate
+                  assignments
                   (phpinspect--match-sequence-lambda :m `(:variable "bam") :m `(:object-attrib "boom")))))
 
-    (should (= 2 (length result)))
-    (dolist (assignment result)
-      (should (equal '((:variable "bam") (:object-attrib "boom"))
-                     (phpinspect--assignment-to assignment))))
-
-    (should (equal '((:variable "beng"))
-                   (phpinspect--assignment-from (cadr result))))
+    (should result)
+    (should (equal '((:variable "bam") (:object-attrib "boom"))
+                   (phpinspect--assignment-to result)))
 
     (should (equal '((:variable "wat") (:object-attrib "call"))
-                   (phpinspect--assignment-from (car result))))))
+                   (phpinspect--assignment-from result)))
+
+
+    (setq result (phpinspect--find-assignment-by-predicate
+                  assignments
+                  (phpinspect--match-sequence-lambda :m `(:variable "bam") :m `(:object-attrib "boom"))))
+    (should result)
+
+    (should (equal '((:variable "bam") (:object-attrib "boom"))
+                   (phpinspect--assignment-to result)))
+
+    (should (equal '((:variable "beng"))
+                   (phpinspect--assignment-from result)))))
 
 (ert-deftest phpinspect-parse-function-missing-open-block ()
   (let ((parsed (phpinspect-parse-string "function bla() echo 'Hello'}")))

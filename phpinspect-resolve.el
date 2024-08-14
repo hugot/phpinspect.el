@@ -79,10 +79,16 @@
     (phpinspect--log "Found statements in token: %s" statements)
     assignments))
 
-(defun phpinspect--find-assignments-by-predicate (token predicate)
-  (let ((variable-assignments)
-        (all-assignments (phpinspect--find-assignments-in-token token)))
-    (dolist (assignment all-assignments)
+(defun phpinspect--find-assignment-by-predicate (assignment-tokens predicate)
+  "Find first assignment in ASSIGNMENT-TOKENS matching PREDICATE.
+
+Destructively removes tokens from the end of ASSIGNMENT-TOKENS."
+  (catch 'return
+    (while-let ((assignment (car (last assignment-tokens))))
+      (if (cdr assignment-tokens)
+          (setcdr assignment-tokens (butlast (cdr assignment-tokens)))
+        (setcar assignment-tokens nil))
+
       (let* ((is-loop-assignment nil)
              (left-of-assignment
               (seq-filter #'phpinspect-not-comment-p
@@ -105,15 +111,14 @@
             (when (funcall predicate right-of-assignment)
               ;; Masquerade as an array access assignment
               (setq left-of-assignment (append left-of-assignment '((:array))))
-              (push (phpinspect--make-assignment :to right-of-assignment
-                                                 :from left-of-assignment)
-                    variable-assignments))
+              (throw 'return (phpinspect--make-assignment :to right-of-assignment
+                                                          :from left-of-assignment)))
           (when (funcall predicate left-of-assignment)
-            (push (phpinspect--make-assignment :from right-of-assignment
-                                               :to left-of-assignment)
-                  variable-assignments)))))
-    (phpinspect--log "Returning the thing %s" variable-assignments)
-    (nreverse variable-assignments)))
+            (throw 'return (phpinspect--make-assignment :from right-of-assignment
+                                                        :to left-of-assignment))))))
+    nil))
+    ;; (phpinspect--log "Returning the thing %s" variable-assignments)
+    ;; (nreverse variable-assignments)))
 
 (defsubst phpinspect-drop-preceding-barewords (statement)
   (while (and statement (phpinspect-word-p (cadr statement)))
@@ -181,7 +186,7 @@
           (phpinspect--function-return-type method))))))
 
 (defun phpinspect-get-derived-statement-type-in-block
-    (resolvecontext statement php-block type-resolver &optional function-arg-list)
+    (resolvecontext statement php-block type-resolver &optional function-arg-list assignments)
   "Get type of RESOLVECONTEXT subject in PHP-BLOCK.
 
 Use TYPE-RESOLVER and FUNCTION-ARG-LIST in the process.
@@ -194,6 +199,8 @@ self::method();
 ClassName::method();
 $variable = ClassName::method();
 $variable = $variable->method();"
+(setq assignments (or assignments (nreverse (phpinspect--find-assignments-in-token php-block))))
+
     ;; A derived statement can be an assignment itself.
     (when (seq-find #'phpinspect-assignment-p statement)
       (phpinspect--log "Derived statement is an assignment: %s" statement)
@@ -221,11 +228,8 @@ $variable = $variable->method();"
                            ;; No bare word, assume we're dealing with a variable.
                            (when (phpinspect-variable-p first-token)
                              (phpinspect-get-variable-type-in-block
-                              resolvecontext
-                              (cadr first-token)
-                              php-block
-                              type-resolver
-                              function-arg-list)))))
+                              resolvecontext (cadr first-token) php-block
+                              type-resolver function-arg-list assignments)))))
 
         (phpinspect--log "Statement: %s" statement)
         (phpinspect--log "Starting attribute type: %s" previous-attribute-type)
@@ -283,7 +287,7 @@ $variable = $variable->method();"
 ;; we may as well always return FQNs in stead of relative type names.
 ;;;;
 (defun phpinspect-get-variable-type-in-block
-    (resolvecontext variable-name php-block type-resolver &optional function-arg-list)
+    (resolvecontext variable-name php-block type-resolver &optional function-arg-list assignments)
   "Find the type of VARIABLE-NAME in PHP-BLOCK using TYPE-RESOLVER.
 
 Returns either a FQN or a relative type name, depending on
@@ -292,15 +296,17 @@ side of assignment) can be found in FUNCTION-ARG-LIST.
 
 When PHP-BLOCK belongs to a function, supply FUNCTION-ARG-LIST to
 resolve types of function argument variables."
+  (setq assignments (or assignments (nreverse (phpinspect--find-assignments-in-token php-block))))
+
   (phpinspect--log "Looking for assignments of variable %s in php block" variable-name)
   (if (string= variable-name "this")
       (funcall type-resolver (phpinspect--make-type :name "self"))
     (phpinspect-get-pattern-type-in-block
      resolvecontext (phpinspect--make-pattern :m `(:variable ,variable-name))
-     php-block type-resolver function-arg-list)))
+     php-block type-resolver function-arg-list assignments)))
 
 (defun phpinspect-get-pattern-type-in-block
-    (resolvecontext pattern php-block type-resolver &optional function-arg-list)
+    (resolvecontext pattern php-block type-resolver &optional function-arg-list assignments)
   "Find the type of PATTERN in PHP-BLOCK using TYPE-RESOLVER.
 
 PATTERN must be an object of the type `phpinspect--pattern'.
@@ -311,17 +317,24 @@ side of assignment) needs to be extracted from FUNCTION-ARG-LIST.
 
 When PHP-BLOCK belongs to a function, supply FUNCTION-ARG-LIST to
 resolve types of function argument variables."
-  (let* ((assignments
-          (phpinspect--find-assignments-by-predicate
-           php-block (phpinspect--pattern-matcher pattern)))
-         (last-assignment (when assignments (car (last assignments))))
+  (phpinspect--get-pattern-type-from-assignments
+   resolvecontext pattern php-block
+   type-resolver function-arg-list (or assignments (nreverse (phpinspect--find-assignments-in-token php-block)))))
+
+(defun phpinspect--get-pattern-type-from-assignments
+    (resolvecontext pattern php-block type-resolver &optional function-arg-list assignments)
+  (cl-assert (phpinspect-blocklike-p php-block))
+  (setq assignments (or assignments (nreverse (phpinspect--find-assignments-in-token php-block))))
+  (let* ((last-assignment
+          (phpinspect--find-assignment-by-predicate
+           assignments (phpinspect--pattern-matcher pattern)))
          (last-assignment-value (when last-assignment
                                   (phpinspect--assignment-from last-assignment)))
          (pattern-code (phpinspect--pattern-code pattern))
          (result))
-    (phpinspect--log "Looking for assignments of pattern %s in php block" pattern-code)
+    (phpinspect--log "Looking for assignments of pattern %s in assignment list %s" pattern-code assignments)
 
-    (if (not assignments)
+    (if (not last-assignment)
         (when (and (= (length pattern-code) 2) (phpinspect-variable-p (cadr pattern-code)))
           (let ((variable-name (cadadr pattern-code)))
             (progn
@@ -329,10 +342,11 @@ resolve types of function argument variables."
                                variable-name function-arg-list)
               (setq result (phpinspect-get-variable-type-in-function-arg-list
                             variable-name type-resolver function-arg-list)))))
+
       (setq result
             (phpinspect--interpret-expression-type-in-context
              resolvecontext php-block type-resolver
-             last-assignment-value function-arg-list)))
+             last-assignment-value function-arg-list assignments)))
 
     (phpinspect--log "Type interpreted from last assignment expression of pattern %s: %s"
                      pattern-code result)
@@ -349,11 +363,13 @@ resolve types of function argument variables."
         (phpinspect--log "Inferring type of concatenated pattern %s"
                          (phpinspect--pattern-code concat-pattern))
         (setf (phpinspect--type-contains result)
-              (phpinspect-get-pattern-type-in-block
+              ;; Don't pass assignments, we need to look from scratch as array
+              ;; assignments for this variable may already have been dropped.
+              (phpinspect--get-pattern-type-from-assignments
                resolvecontext concat-pattern php-block
                type-resolver function-arg-list))))
 
-    ; return
+    ;; return
     result))
 
 (defun phpinspect--split-statements (tokens &optional predicate)
@@ -394,7 +410,7 @@ ARG-LIST. ARG-LIST should be a list token as returned by
             nil)))))
 
 (defun phpinspect--interpret-expression-type-in-context
-    (resolvecontext php-block type-resolver expression &optional function-arg-list)
+    (resolvecontext php-block type-resolver expression &optional function-arg-list assignments)
   "Infer EXPRESSION's type from provided context.
 
 Use RESOLVECONTEXT, PHP-BLOCK, TYPE-RESOLVER and
@@ -405,6 +421,7 @@ EXPRESSION."
   ;; (:variable "variable") (:terminator ";") or (:string "string") (:terminator ";")
   ;; in tokens), we're likely working with a derived assignment like $object->method()
   ;; or $object->attributen
+
   (cond ((phpinspect-array-p (car expression))
          (let ((collection-contains)
                (collection-items (phpinspect--split-statements (cdr (car expression))))
@@ -415,7 +432,7 @@ EXPRESSION."
              (setq collection-contains
                    (phpinspect--interpret-expression-type-in-context
                     resolvecontext php-block type-resolver
-                    (elt collection-items count) function-arg-list)
+                    (elt collection-items count) function-arg-list assignments)
                    count (+ count 1)))
 
            (phpinspect--log "Collection contained: %s" collection-contains)
@@ -435,7 +452,7 @@ EXPRESSION."
          (phpinspect--log "Variable was assigned with a derived statement")
          (phpinspect-get-derived-statement-type-in-block
           resolvecontext expression php-block
-          type-resolver function-arg-list))
+          type-resolver function-arg-list assignments))
 
         ;; If the right of an assignment is just $variable;, we can check if it is a
         ;; function argument and otherwise recurse to find the type of that variable.
@@ -446,11 +463,8 @@ EXPRESSION."
                (phpinspect-get-variable-type-in-function-arg-list
                 (cadar expression)
                 type-resolver function-arg-list))
-             (phpinspect-get-variable-type-in-block resolvecontext
-                                                    (cadar expression)
-                                                    php-block
-                                                    type-resolver
-                                                    function-arg-list)))))
+             (phpinspect-get-variable-type-in-block
+              resolvecontext (cadar expression) php-block type-resolver function-arg-list assignments)))))
 
 
 (defun phpinspect-resolve-type-from-context (resolvecontext &optional type-resolver)

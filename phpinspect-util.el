@@ -161,6 +161,9 @@ pattern. See `phpinspect--match-sequence'."
     :code  (list ,@(mapcar (lambda (part) (if (eq '* part) `(quote ,part) part))
                            pattern))))
 
+(defun phpinspect--pattern-length (pattern)
+  (/ (length (phpinspect--pattern-code pattern)) 2))
+
 (defmacro phpinspect--match-sequence-lambda (&rest pattern)
   (let ((sequence-sym (gensym)))
     `(lambda (,sequence-sym)
