@@ -89,6 +89,8 @@
                   (phpinspect-parse-string
                    "<?php namespace Field; class Potato extends Cheese, Bacon implements Ham, Bagel {
 
+use UsedTrait;
+
 private PropertyType $property;
 
 public function makeThing(): Thing
@@ -110,7 +112,7 @@ if ($param instanceof InstanceOffed) {
                       (copy-sequence
                        '("Cheese" "Bacon" "Ham" "Bagel" "Monkey" "ExtendedThing"
                          "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing"
-                         "InnerFunctionParam" "PropertyType" "InstanceOffed" "NestedArray"))
+                         "InnerFunctionParam" "PropertyType" "InstanceOffed" "NestedArray" "UsedTrait"))
                       #'string<))
              (sort used-types (lambda (s1 s2) (string< (phpinspect-name-string s1) (phpinspect-name-string s2))))))))
 

@@ -349,6 +349,10 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
              (setq comment-before token))
 
             ;; Prevent comments from sticking around too long
+            ((and (phpinspect-use-p token) (phpinspect-word-p (cadr token)))
+             ;; FIXME: Actually implement indexation of trait usage. This just
+             ;; marks the type as used for now.
+             (push (cadadr token) used-types))
             (t
              (phpinspect--log "Unsetting comment-before")
              (setq comment-before nil))))
