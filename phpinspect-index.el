@@ -537,7 +537,7 @@ Returns a list of type name strings."
                      (nconc used-types-rear
                             (phpinspect--find-used-types-in-tokens (cdr (phpinspect-function-block token))))
                      used-types-rear (last used-types-rear)))
-              ((or (phpinspect-list-p token) (phpinspect-block-p token))
+              ((or (phpinspect-list-p token) (phpinspect-block-p token) (phpinspect-array-p token))
                (setq used-types-rear
                      (nconc used-types-rear (phpinspect--find-used-types-in-tokens (cdr token)))
                      used-types-rear (last used-types-rear))))

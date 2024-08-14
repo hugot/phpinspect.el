@@ -98,6 +98,7 @@ if ((new Monkey())->tree() === true) {
 }
 return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->antiPotato(new OtherThing(function (InnerFunctionParam $param) {
 if ($param instanceof InstanceOffed) {
+  $bing = [ 'bong' => [ 'nested' => NestedArray::call(), ], ];
 // nothing
 }
 })))));
@@ -109,7 +110,7 @@ if ($param instanceof InstanceOffed) {
                       (copy-sequence
                        '("Cheese" "Bacon" "Ham" "Bagel" "Monkey" "ExtendedThing"
                          "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing"
-                         "InnerFunctionParam" "PropertyType" "InstanceOffed"))
+                         "InnerFunctionParam" "PropertyType" "InstanceOffed" "NestedArray"))
                       #'string<))
              (sort used-types (lambda (s1 s2) (string< (phpinspect-name-string s1) (phpinspect-name-string s2))))))))
 
