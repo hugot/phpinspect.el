@@ -98,40 +98,6 @@
     (should (= (length (phpinspect--resolvecontext-enclosing-tokens context1))
                (length (phpinspect--resolvecontext-enclosing-tokens context2))))))
 
-
-
-(ert-deftest phpinspect-get-variable-type-in-block-array-access ()
-  (let* ((code "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; $bar = $foo[0]; $bork = [$foo[0]]; $bark = $bork[0]; $borknest = [$bork]; $barknest = $borknest[0][0]; }}")
-         (tokens (phpinspect-parse-string-to-bmap code))
-         (context (phpinspect-get-resolvecontext tokens (- (length code) 4)))
-         (project-root "could never be a real project root")
-         (phpinspect-project-root-function
-          (lambda (&rest _ignored) project-root))
-         (project (phpinspect--make-project
-                              :fs (phpinspect-make-virtual-fs)
-                              :root project-root
-                              :worker (phpinspect-make-worker))))
-
-    (puthash project-root project (phpinspect--cache-projects phpinspect-cache))
-
-    (let* ((function-token (car (phpinspect--resolvecontext-enclosing-tokens context)))
-           (result1 (phpinspect-get-variable-type-in-block
-                     context "bar"
-                     (phpinspect-function-block function-token)
-                     (phpinspect--make-type-resolver-for-resolvecontext context)
-                     (phpinspect-function-argument-list function-token)))
-           (result2 (phpinspect-get-variable-type-in-block
-                     context "bark"
-                     (phpinspect-function-block function-token)
-                     (phpinspect--make-type-resolver-for-resolvecontext context)
-                     (phpinspect-function-argument-list function-token))))
-
-      (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
-                                 result1))
-      (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
-                                 result2)))))
-
-
 (ert-deftest phpinspect-get-variable-type-in-block-array-foreach ()
   (let* ((code "class Foo { function a(\\Thing $baz) { $foo = []; $foo[] = $baz; foreach ($foo as $bar) {$bar->")
          (bmap (phpinspect-parse-string-to-bmap code))
@@ -156,7 +122,6 @@
 
       (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
                                  result)))))
-
 
 (ert-deftest phpinspect-get-variable-type-in-block-nested-array ()
   (let* ((code "class Foo { function a(\\Thing $baz) { $foo = [[$baz]]; foreach ($foo[0] as $bar) {$bar->")
@@ -184,7 +149,7 @@
                                  result)))))
 
 
-(ert-deftest phpinspect--find-assignments-in-token ()
+(ert-deftest phpinspect--find-assignment-ctxs-in-token ()
   (let* ((tokens (cadr
                   (phpinspect-parse-string "{ $foo = ['nr 1']; $bar = $nr2; if (true === ($foo = $nr3)) { $foo = $nr4; $notfoo = $nr5; if ([] === ($foo = [ $nr6 ])){ $foo = [ $nr7 ];}}}")))
          (expected '(((:variable "foo")
@@ -211,9 +176,9 @@
                       (:assignment "=")
                       (:array
                        (:string "nr 1")))))
-         (assignments (phpinspect--find-assignments-in-token tokens)))
+         (assignments (phpinspect--find-assignment-ctxs-in-token tokens)))
 
-    (should (equal expected assignments))))
+    (should (equal expected (mapcar #'phpinspect--actx-tokens assignments)))))
 
 
 (ert-deftest phpinspect-resolve-type-from-context ()
@@ -405,14 +370,14 @@ class Thing
                      (phpinspect--get-last-statement-in-token
                       (phpinspect-parse-string php-code-bare))))))
 
-(ert-deftest phpinspect--find-assignments-by-predicate ()
+(ert-deftest phpinspect--find-assignment-by-predicate ()
   (let* ((token '(:block
                   (:variable "bam") (:object-attrib "boom") (:assignment "=")
                   (:variable "beng") (:terminator)
                   (:variable "notbam") (:word "nonsense") (:assignment "=") (:string) (:terminator)
                   (:variable "bam") (:comment) (:object-attrib "boom") (:assignment "=")
                   (:variable "wat") (:object-attrib "call") (:terminator)))
-         (assignments (nreverse (phpinspect--find-assignments-in-token token)))
+         (assignments (phpinspect--find-assignment-ctxs-in-token token))
          (result (phpinspect--find-assignment-by-predicate
                   assignments
                   (phpinspect--match-sequence-lambda :m `(:variable "bam") :m `(:object-attrib "boom")))))
@@ -424,9 +389,9 @@ class Thing
     (should (equal '((:variable "wat") (:object-attrib "call"))
                    (phpinspect--assignment-from result)))
 
-
     (setq result (phpinspect--find-assignment-by-predicate
-                  assignments
+                  (phpinspect--actx-preceding-assignments
+                   (phpinspect--assignment-ctx result))
                   (phpinspect--match-sequence-lambda :m `(:variable "bam") :m `(:object-attrib "boom"))))
     (should result)
 
@@ -466,6 +431,7 @@ class Thing
 (load-file (concat phpinspect-test-directory "/test-pipeline.el"))
 (load-file (concat phpinspect-test-directory "/test-toc.el"))
 (load-file (concat phpinspect-test-directory "/test-meta.el"))
+(load-file (concat phpinspect-test-directory "/test-resolve.el"))
 
 
 (provide 'phpinspect-test)
