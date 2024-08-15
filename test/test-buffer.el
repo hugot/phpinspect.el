@@ -494,6 +494,8 @@ class AccountStatisticsController {
     private Model $privModel;
     static Relation $relation;
     public static Relation $staticRelation;
+    /* @var Relation[] */
+    private array $relations;
 }")
 
       (phpinspect-buffer-update-project-index buffer)
@@ -509,18 +511,21 @@ class AccountStatisticsController {
               (priv-model (phpinspect--class-get-variable class "privModel"))
               ;; Static variables are stored with "$" prefix
               (relation (phpinspect--class-get-variable class "$relation"))
-              (static-relation (phpinspect--class-get-variable class "$staticRelation")))
+              (static-relation (phpinspect--class-get-variable class "$staticRelation"))
+              (relations (phpinspect--class-get-variable class "relations")))
           (should model)
           (should priv-model)
           (should relation)
           (should static-relation)
+          (should relations)
 
           (let ((model-type (phpinspect--make-type
                              :name "\\Illuminate\\Database\\Eloquent\\Model"
                              :fully-qualified t))
                 (relation-type (phpinspect--make-type
                              :name "\\Illuminate\\Database\\Eloquent\\Relations\\Relation"
-                             :fully-qualified t)))
+                             :fully-qualified t))
+                (array-type (phpinspect--make-type :name "\\array" :fully-qualified t)))
 
             (should (phpinspect--variable-type model))
             (should (phpinspect--type= model-type (phpinspect--variable-type model)))
@@ -529,4 +534,9 @@ class AccountStatisticsController {
             (should (phpinspect--variable-type relation))
             (should (phpinspect--type= relation-type (phpinspect--variable-type relation)))
             (should (phpinspect--variable-type static-relation))
-            (should (phpinspect--type= relation-type (phpinspect--variable-type static-relation)))))))))
+            (should (phpinspect--type= relation-type (phpinspect--variable-type static-relation)))
+
+            (should (phpinspect--type= array-type (phpinspect--variable-type relations)))
+            (should (phpinspect--type=
+                     relation-type
+                     (phpinspect--type-contains (phpinspect--variable-type relations))))))))))

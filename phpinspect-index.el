@@ -81,6 +81,39 @@ of TYPE, if available."
 
     (list name function-args return-type)))
 
+(defun phpinspect--apply-annotation-type (annotation-type-string type type-resolver)
+  "Add/modify information of a resolved TYPE based on ANNOTATION-TYPE-STRING.
+
+Annotation type is resolved using TYPE-RESOLVER.
+"
+  (if (stringp annotation-type-string)
+      (let ((is-collection (phpinspect--type-is-collection type)))
+        (phpinspect--log "found annotation type string %s when type is %s"
+                         annotation-type-string type)
+
+        (when (string-suffix-p "[]" annotation-type-string)
+          (setq is-collection t)
+          (setq annotation-type-string (string-trim-right annotation-type-string "\\[\\]")))
+
+
+        (cond ((phpinspect--should-prefer-return-annotation type)
+               ;; Sometimes it's better to override the typehint with a more narrow annotation
+               (setq type (funcall type-resolver
+                                   (phpinspect--make-type :name annotation-type-string))))
+
+              (is-collection
+               ;; Collections need to have their "contains" slot set
+               (phpinspect--log "Detected collection type, setting contains from annotation type '%s'"
+                                annotation-type-string)
+               (setf (phpinspect--type-contains type)
+                     (funcall type-resolver
+                              (phpinspect--make-type :name annotation-type-string)))
+               (setf (phpinspect--type-collection type) t))))
+    ;; else
+    (phpinspect--log "Discarding invalid annotation type %s" annotation-type-string))
+  type)
+
+
 (defun phpinspect--index-function-from-scope (type-resolver scope comment-before &optional add-used-types namespace)
   "Index a function inside SCOPE token using phpdoc metadata in COMMENT-BEFORE.
 
@@ -106,31 +139,8 @@ function (think \"new\" statements, return types etc.)."
     ;; @return annotation. When dealing with a collection, we want to store the
     ;; type of its members.
     (let* ((return-annotation-type
-            (cadadr (seq-find #'phpinspect-return-annotation-p comment-before)))
-           (is-collection
-            (and type
-                 (phpinspect--type-is-collection type))))
-      (phpinspect--log "found return annotation %s in %s when type is %s"
-                       return-annotation-type comment-before type)
-
-      (unless (stringp return-annotation-type)
-        (phpinspect--log "Discarding invalid return annotation type %s" return-annotation-type)
-        (setq return-annotation-type nil))
-
-      (when return-annotation-type
-        (when (string-suffix-p "[]" return-annotation-type)
-          (setq is-collection t)
-          (setq return-annotation-type (string-trim-right return-annotation-type "\\[\\]")))
-
-        (cond ((phpinspect--should-prefer-return-annotation type)
-               (setq type (funcall type-resolver
-                                   (phpinspect--make-type :name return-annotation-type))))
-              (is-collection
-               (phpinspect--log "Detected collection type in: %s" scope)
-               (setf (phpinspect--type-contains type)
-                     (funcall type-resolver
-                              (phpinspect--make-type :name return-annotation-type)))
-               (setf (phpinspect--type-collection type) t)))))
+            (cadadr (seq-find #'phpinspect-return-annotation-p comment-before))))
+      (phpinspect--apply-annotation-type return-annotation-type type type-resolver))
 
     (when add-used-types
       (let ((used-types (phpinspect--find-used-types-in-tokens
@@ -214,7 +224,10 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
        :lifetime (when static '(:static))
        :type (when type
                (when add-used-types (funcall add-used-types (list type)))
-               (funcall type-resolver (phpinspect--make-type :name type)))))))
+               (phpinspect--apply-annotation-type
+                (phpinspect--variable-type-string-from-comment comment-before variable-name)
+                (funcall type-resolver (phpinspect--make-type :name type))
+                type-resolver))))))
 
 (defun phpinspect-doc-block-p (token)
   (phpinspect-token-type-p token :doc-block))
