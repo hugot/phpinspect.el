@@ -53,6 +53,22 @@ and CONTEXT. All strategies must implement this method.")
   "Should return a string to be displayed by eldoc. This needs to
 be implemented for return values of `phpinspect-eld-strategy-execute'")
 
+(cl-defstruct (phpinspect-eld-sigil (:constructor phpinspect-make-eld-sigil))
+  "Eldoc strategy for sigil ($) variables.")
+
+(cl-defmethod phpinspect-eld-strategy-supports
+  ((_strat phpinspect-eld-sigil) (_q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
+  (phpinspect-variable-p (car (last (phpinspect--resolvecontext-subject rctx)))))
+
+(cl-defmethod phpinspect-eld-strategy-execute
+  ((_strat phpinspect-eld-sigil) (_q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
+  (when-let ((type (phpinspect-resolve-type-from-context rctx))
+             (variable (car (last (phpinspect--resolvecontext-subject rctx)))))
+    (when (and (phpinspect-variable-p variable) (cadr variable))
+      (phpinspect--make-variable :name (cadr variable)
+                                 :scope '(:public)
+                                 :type type))))
+
 (cl-defstruct (phpinspect-eld-attribute (:constructor phpinspect-make-eld-attribute))
   "Eldoc strategy for object attributes.")
 
@@ -120,25 +136,23 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
          (left-sibling )
          (statement )
          match-result static arg-list arg-pos)
-
     (cond
      ;; Subject is a statement
      ((and (phpinspect-list-p (car (last (phpinspect--resolvecontext-subject rctx))))
            enclosing-token)
-
       (setq left-sibling (phpinspect-meta-find-child-before-recursively
                           enclosing-token (phpinspect-eldoc-query-point q))))
     ;; Subject is inside an argument list
      ((and enclosing-token
-                (phpinspect-list-p (phpinspect-meta-token enclosing-token)))
+           (phpinspect-list-p (phpinspect-meta-token enclosing-token)))
       (setq left-sibling (phpinspect-meta-find-left-sibling enclosing-token)
             statement (list enclosing-token))))
 
     (phpinspect--log "Left sibling: %s" (phpinspect-meta-string left-sibling))
     (phpinspect--log "Enclosing parent: %s" (phpinspect-meta-string (phpinspect-meta-parent enclosing-token)))
 
-
     (while (and left-sibling
+                (not (phpinspect-variable-p (phpinspect-meta-token (car statement))))
                 (not (phpinspect-statement-introduction-p (phpinspect-meta-token left-sibling))))
       (unless (phpinspect-comment-p (phpinspect-meta-token left-sibling))
         (push left-sibling statement))
@@ -212,7 +226,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                        'face 'font-lock-variable-name-face)
            phpinspect-eldoc-word-width)
           ": "
-          (propertize (phpinspect--format-type-name (phpinspect--variable-type var))
+          (propertize (phpinspect--display-format-type-name (phpinspect--variable-type var))
                       'face 'font-lock-type-face)))
 
 (cl-defstruct (phpinspect-function-doc (:constructor phpinspect-make-function-doc))
@@ -232,7 +246,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                        (concat "$" (truncate-string-to-width
                                     (car arg) phpinspect-eldoc-word-width)
                                (if (cadr arg) " " "")
-                               (phpinspect--format-type-name (or (cadr arg) "")))))
+                               (phpinspect--display-format-type-name (or (cadr arg) "")))))
                   (when (and arg-pos (= arg-count arg-pos))
                     (setq doc-string
                           (propertize
@@ -243,11 +257,12 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
               ", ")
              "): "
              (propertize
-              (phpinspect--format-type-name (phpinspect--function-return-type fn))
+              (phpinspect--display-format-type-name (phpinspect--function-return-type fn))
               'face 'font-lock-type-face))))
 
 (defvar phpinspect-eldoc-strategies (list (phpinspect-make-eld-attribute)
-                                          (phpinspect-make-eld-function-args))
+                                          (phpinspect-make-eld-function-args)
+                                          (phpinspect-make-eld-sigil))
   "The eldoc strategies that phpinspect is currently allowed to
 employ. Strategies are queried in the order of this list. See
 also `phpinspect-eldoc-query-execute'.")
@@ -256,13 +271,15 @@ also `phpinspect-eldoc-query-execute'.")
   (let* ((buffer (phpinspect-eldoc-query-buffer query))
          (point (phpinspect-eldoc-query-point query))
          (buffer-map (phpinspect-buffer-parse-map buffer))
-         (rctx (phpinspect-get-resolvecontext buffer-map point)))
+         (rctx (phpinspect-get-resolvecontext buffer-map point))
+         responses)
     (phpinspect-buffer-update-project-index buffer)
-    (catch 'matched
-      (dolist (strategy phpinspect-eldoc-strategies)
+    (dolist (strategy phpinspect-eldoc-strategies)
+      (let ((rctx (phpinspect--copy-resolvecontext rctx)))
         (when (phpinspect-eld-strategy-supports strategy query rctx)
           (phpinspect--log "Found matching eldoc strategy. Executing...")
-          (throw 'matched (phpinspect-eld-strategy-execute strategy query rctx)))))))
+          (push (phpinspect-eld-strategy-execute strategy query rctx) responses))))
+    (remove nil responses)))
 
 (defun phpinspect-eldoc-function ()
   "An `eldoc-documentation-function` implementation for PHP files.
@@ -278,7 +295,7 @@ TODO:
                   :buffer phpinspect-current-buffer
                   :point (phpinspect--determine-completion-point)))))
       (when resp
-        (phpinspect-eldoc-string resp)))))
+        (mapconcat #'phpinspect-eldoc-string resp "\n")))))
 
 
 (provide 'phpinspect-eldoc)

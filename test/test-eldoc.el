@@ -38,8 +38,9 @@ class Thing
       (backward-char 8)
       (setq first-arg-pos (point))
 
-      (let ((result (phpinspect-eldoc-query-execute
-                     (phpinspect-make-eldoc-query :point second-arg-pos :buffer buffer))))
+      (let ((result (seq-find #'phpinspect-function-doc-p
+                              (phpinspect-eldoc-query-execute
+                               (phpinspect-make-eldoc-query :point second-arg-pos :buffer buffer)))))
         (should (phpinspect-function-doc-p result))
         (should (= 1 (phpinspect-function-doc-arg-pos result)))
         (should (string= "getThis" (phpinspect--function-name (phpinspect-function-doc-fn result))))
@@ -48,8 +49,8 @@ class Thing
                       (phpinspect-make-eldoc-query :point inside-nested-list-pos :buffer buffer)))
         (should-not result)
 
-        (setq result (phpinspect-eldoc-query-execute
-                      (phpinspect-make-eldoc-query :point first-arg-pos :buffer buffer)))
+        (setq result (car (phpinspect-eldoc-query-execute
+                           (phpinspect-make-eldoc-query :point first-arg-pos :buffer buffer))))
         (should (phpinspect-function-doc-p result))
         (should (= 0 (phpinspect-function-doc-arg-pos result)))
         (should (string= "getThis" (phpinspect--function-name (phpinspect-function-doc-fn result))))))))

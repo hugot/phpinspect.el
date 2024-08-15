@@ -215,6 +215,15 @@ NAMESPACE may be nil, or a string with a namespace FQN."
 (cl-defmethod phpinspect--format-type-name ((type phpinspect--type))
   (phpinspect--format-type-name (phpinspect--type-name type)))
 
+(cl-defmethod phpinspect--display-format-type-name ((name string))
+  (phpinspect--format-type-name name))
+
+(cl-defmethod phpinspect--display-format-type-name ((type phpinspect--type))
+  (let ((self (phpinspect--format-type-name type)))
+    (if (phpinspect--type-contains type)
+        (concat self "<" (phpinspect--format-type-name (phpinspect--type-contains type)) ">")
+      self)))
+
 (cl-defstruct (phpinspect--function (:constructor phpinspect--make-function-generated)
                                     (:copier phpinspect--copy-function))
   "A PHP function."

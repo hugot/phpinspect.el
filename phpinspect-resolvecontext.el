@@ -49,7 +49,8 @@
          (phpinspect-function-p ,token)))))
 
 (cl-defstruct (phpinspect--resolvecontext
-            (:constructor phpinspect--make-resolvecontext))
+               (:constructor phpinspect--make-resolvecontext)
+               (:copier phpinspect--copy-resolvecontext))
   (subject nil
            :type phpinspect--token
            :documentation
