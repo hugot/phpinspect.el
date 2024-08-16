@@ -68,6 +68,23 @@
                     :documentation
                     "Tokens that enclose the subject."))
 
+(defun phpinspect--repurpose-resolvecontext (rctx &optional enclosing-tokens subject)
+  "Copy RCTX, optionally replacing the enclosing tokens and subject.
+
+Note: if ENCLOSING-TOKENS are provided, the repurposed
+resolvecontext will have it's enclosing token metadata unset as
+it would no longer be valid for the new enclosing tokens."
+  (let ((rctx (phpinspect--copy-resolvecontext rctx)))
+    (when subject
+      (setf (phpinspect--resolvecontext-subject rctx) subject))
+
+    (when enclosing-tokens
+      ;; Unset enclosing-metadata as it is no longer valid.
+      (setf (phpinspect--resolvecontext-enclosing-metadata rctx) nil)
+      (setf (phpinspect--resolvecontext-enclosing-tokens rctx) enclosing-tokens))
+
+    rctx))
+
 (cl-defmethod phpinspect--resolvecontext-push-enclosing-token
   ((resolvecontext phpinspect--resolvecontext) enclosing-token)
   "Add ENCLOSING-TOKEN to RESOLVECONTEXTs enclosing token stack."

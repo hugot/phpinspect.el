@@ -38,7 +38,8 @@
 
 (defun phpinspect-suggest-variables-at-point (resolvecontext)
   (phpinspect--log "Suggesting variables at point")
-  (let ((variables))
+
+  (let ((variables (make-hash-table :test 'equal)))
     (dolist (token (phpinspect--resolvecontext-enclosing-tokens resolvecontext))
       (when (phpinspect-not-class-p token)
         (let ((token-list token)
@@ -46,26 +47,33 @@
         (while token-list
           (setq potential-variable (pop token-list))
           (cond ((phpinspect-variable-p potential-variable)
-                 (phpinspect--log "Pushing variable %s" potential-variable)
-                 (push (phpinspect--make-variable
-                        :name (cadr potential-variable)
-                        :type phpinspect--null-type)
-                       variables))
+                 (puthash (cadr potential-variable)
+                          (phpinspect--make-variable :name (cadr potential-variable))
+                          variables))
                 ((phpinspect-function-p potential-variable)
                  (push (phpinspect-function-block potential-variable) token-list)
                  (dolist (argument (phpinspect-function-argument-list potential-variable))
                    (when (phpinspect-variable-p argument)
-                     (push (phpinspect--make-variable
-                            :name (cadr argument)
-                            :type phpinspect--null-type)
-                           variables))))
+                     (puthash (cadr argument)
+                              (phpinspect--make-variable :name (cadr argument))
+                              variables))))
                 ((phpinspect-block-p potential-variable)
                  (dolist (nested-token (cdr potential-variable))
                    (push nested-token token-list))))))))
 
-    ;; Only return variables that have a name. Unnamed variables are just dollar
-    ;; signs (:
-    (seq-filter #'phpinspect--variable-name variables)))
+    (let (variable-list)
+      (dolist (var (hash-table-values variables))
+        ;; Only return variables that have a name. Unnamed variables are just dollar
+        ;; signs (:
+        (when (phpinspect--variable-name var)
+          (setf (phpinspect--variable-type var)
+                (phpinspect-resolve-type-from-context
+                 (phpinspect--repurpose-resolvecontext
+                  resolvecontext nil `(:variable ,(phpinspect--variable-name var)))))
+
+          (push var variable-list)))
+
+      variable-list)))
 
 (defun phpinspect-get-cached-project-class-methods (project-root class-fqn &optional static)
     (phpinspect--log "Getting cached project class methods for %s (%s)"

@@ -73,6 +73,7 @@
         (blocks-or-lists)
         (statements (phpinspect--split-statements token)))
     (dolist (statement statements)
+      (phpinspect--log "Finding assignment in statement '%s'" statement)
       (when (seq-find #'phpinspect-maybe-assignment-p statement)
         (phpinspect--log "Found assignment statement")
         (push (phpinspect--make-assignment-context
@@ -500,9 +501,16 @@ EXPRESSION."
 
 
 (defun phpinspect-resolve-type-from-context (resolvecontext &optional type-resolver)
+  "Resolve the type that RESOLVECONTEXT's subject evaluates to."
+  ;; Subject should be a statement, not a single token.
+  (when (phpinspect-probably-token-p (phpinspect--resolvecontext-subject resolvecontext))
+    (setf (phpinspect--resolvecontext-subject resolvecontext)
+          (list (phpinspect--resolvecontext-subject resolvecontext))))
+
   (unless type-resolver
     (setq type-resolver
           (phpinspect--make-type-resolver-for-resolvecontext resolvecontext)))
+
   (phpinspect--log "Looking for type of statement: %s in nested token"
                    (phpinspect--resolvecontext-subject resolvecontext))
   ;; Find all enclosing tokens that aren't classes. Classes do not contain variable
