@@ -98,29 +98,29 @@ about.")
 as keys and project caches as values."))
 
 (defun phpinspect--get-stub-class (fqn)
-  (when phpinspect-stub-cache
-    (phpinspect--log "Getting stub class")
+  (when-let ((stub-cache (phpinspect-get-or-load-stub-cache)))
+    (phpinspect--log "Getting stub class for %s" fqn)
     (catch 'return
       (maphash (lambda (_name project)
                  (when-let ((class (phpinspect-project-get-class project fqn)))
                    (throw 'return class)))
-               (phpinspect--cache-projects phpinspect-stub-cache)))))
+               (phpinspect--cache-projects stub-cache)))))
 
 (defun phpinspect--get-stub-function (name)
-  (when phpinspect-stub-cache
+  (when-let ((stub-cache (phpinspect-get-or-load-stub-cache)))
     (if name
         (catch 'return
           (phpinspect--log "Getting stub function by name %s" name)
           (maphash (lambda (_name project)
                      (when-let ((class (phpinspect-project-get-function project name)))
                        (throw 'return class)))
-                   (phpinspect--cache-projects phpinspect-stub-cache)))
+                   (phpinspect--cache-projects stub-cache)))
       (let* ((funcs (cons nil nil))
              (funcs-rear funcs))
         (phpinspect--log "Retrieving all stub functions for nil name")
         (maphash (lambda (_name project)
                    (setq funcs-rear (last (nconc funcs-rear (phpinspect-project-get-functions project)))))
-                 (phpinspect--cache-projects phpinspect-stub-cache))
+                 (phpinspect--cache-projects stub-cache))
         (cdr funcs)))))
 
 (defun phpinspect--get-or-create-global-cache ()
@@ -284,7 +284,16 @@ then returned."
     (setq phpinspect-stub-cache (phpinspect--make-cache))
     (phpinspect-project-add-index project (alist-get 'index data))
     (puthash "builtins" project (phpinspect--cache-projects phpinspect-stub-cache))
-    (setf (phpinspect--cache-read-only-p phpinspect-stub-cache) t)))
+    (setf (phpinspect--cache-read-only-p phpinspect-stub-cache) t))
+  phpinspect-stub-cache)
+
+(defun phpinspect-get-or-load-stub-cache (&optional ignore-setting)
+  "Get stub cache if available,otherwise load stubs if setting is enabled.
+
+if IGNORE-SETTING is non-nil, stubs are always loaded when not available."
+  (or phpinspect-stub-cache
+      (and (or phpinspect-load-stubs ignore-setting)
+           (phpinspect-load-stub-index))))
 
 ;;; phpinspect.el ends here
 (provide 'phpinspect-cache)
