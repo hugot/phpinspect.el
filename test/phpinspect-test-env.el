@@ -10,15 +10,25 @@
 (phpinspect-ensure-worker)
 (phpinspect-purge-cache)
 
-(defun phpinspect--make-dummy-project ()
-  (phpinspect--make-project
-   :fs (phpinspect-make-virtual-fs)
-   :autoload (phpinspect-make-autoloader)
-   :worker 'nil-worker))
-
 (defvar phpinspect-test-directory
   (file-name-directory (macroexp-file-name))
   "Directory that phpinspect tests reside in.")
+
+(defun phpinspect--make-dummy-project (&optional fs project-root)
+  (setq fs (or fs (phpinspect-make-virtual-fs))
+        project-root (or project-root "could never be a real project root"))
+
+  (let ((project (phpinspect--make-project
+                  :root project-root
+                  :fs fs
+                  :autoload (phpinspect-make-autoloader
+                             :fs fs
+                             :project-root-resolver (lambda () project-root))
+                  :worker 'nil-worker)))
+    (setf (phpinspect-autoloader-file-indexer (phpinspect-project-autoload project))
+          (phpinspect-project-make-file-indexer project))
+
+    project))
 
 
 (defvar phpinspect-test-php-file-directory

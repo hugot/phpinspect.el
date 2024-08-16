@@ -398,6 +398,7 @@ class Thing
 (load-file (concat phpinspect-test-directory "/test-toc.el"))
 (load-file (concat phpinspect-test-directory "/test-meta.el"))
 (load-file (concat phpinspect-test-directory "/test-resolve.el"))
+(load-file (concat phpinspect-test-directory "/test-imports.el"))
 
 
 (provide 'phpinspect-test)

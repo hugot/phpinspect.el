@@ -199,9 +199,7 @@ that there are import (\"use\") statements for them."
                      tree nil (phpinspect-buffer-location-resolver buffer)))
              (classes (alist-get 'classes index))
              (imports (alist-get 'imports index))
-             (project (phpinspect--cache-get-project-create
-                       (phpinspect--get-or-create-global-cache)
-                       (phpinspect-current-project-root)))
+             (project (phpinspect-buffer-project buffer))
              (used-types (alist-get 'used-types index)))
 
         (phpinspect-add-use-statements-for-missing-types
