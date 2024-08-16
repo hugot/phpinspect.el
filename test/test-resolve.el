@@ -62,3 +62,60 @@
 
       (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
                                  result)))))
+
+(ert-deftest phpinspect-get-variable-type-in-block-wrapped-in-list ()
+  (let* ((code "function () { $bar = (new Foo())->bar")
+         (bmap (phpinspect-parse-string-to-bmap code))
+         (project (phpinspect--make-dummy-project))
+         (context (phpinspect-get-resolvecontext project bmap (length code)))
+         (result (phpinspect-resolve-type-from-context context)))
+    (phpinspect-project-add-index
+     project
+     (phpinspect--index-tokens
+      (phpinspect-parse-string "class Foo { public string $bar; }")))
+
+    (should (phpinspect--type= (phpinspect--make-type :name "\\string")
+                               (phpinspect-resolve-type-from-context context)))))
+
+(ert-deftest phpinspect-get-variable-type-in-block-assignment-wrapped-in-list ()
+  (let ((base-code "function () { $bar = ($banana = new Foo())")
+        (paths (list "->bar"
+                     "; $banana->bar"
+                     "; $bar->bar"))
+        (project (phpinspect--make-dummy-project)))
+
+    (phpinspect-project-add-index
+     project
+     (phpinspect--index-tokens
+      (phpinspect-parse-string "class Foo { public string $bar; }")))
+
+    (dolist (path paths)
+      (let* ((code (concat base-code path))
+             (bmap (phpinspect-parse-string-to-bmap code))
+             (context (phpinspect-get-resolvecontext project bmap (length code)))
+             (result (phpinspect-resolve-type-from-context context)))
+
+        (should (phpinspect--type= (phpinspect--make-type :name "\\string")
+                                   (phpinspect-resolve-type-from-context context)))))))
+
+(ert-deftest phpinspect-get-variable-type-in-block-assignment-wrapped-in-if-condition ()
+  (let ((base-code "function () { if ($bar = ($banana = new Foo())) {")
+        (paths (list "$banana->bar"
+                     "$bar->bar"
+                     "$baz = new \\DateTime();} $banana->bar"
+                     "if ($baz = $bar->bar) { $baz"))
+        (project (phpinspect--make-dummy-project)))
+
+    (phpinspect-project-add-index
+     project
+     (phpinspect--index-tokens
+      (phpinspect-parse-string "class Foo { public string $bar; }")))
+
+    (dolist (path paths)
+      (let* ((code (concat base-code path))
+             (bmap (phpinspect-parse-string-to-bmap code))
+             (context (phpinspect-get-resolvecontext project bmap (length code)))
+             (result (phpinspect-resolve-type-from-context context)))
+
+        (should (phpinspect--type= (phpinspect--make-type :name "\\string")
+                                   (phpinspect-resolve-type-from-context context)))))))

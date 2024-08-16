@@ -208,11 +208,25 @@ $variable = $variable->method();"
 
 (defun phpinspect--get-derived-statement-type-in-block
     (resolvecontext statement php-block assignments type-resolver &optional function-arg-list)
+  "Determine the type that STATEMENT evaluates to in RESOLVECONTEXT.
+
+PHP-BLOCK should be the block that STATEMENT was found in.
+ASSIGNMENTS should be a list of assignment-contexts.
+
+A statement is derived when it contains multiple components that
+derive off a base token. Object property access is an example of
+a derived statement. In the statement $foo->bar which is parsed
+into ((:variable foo) (:object-attrib (:word bar))), the
+value/type of ->bar must be derived from the type of $foo. So
+->bar derives from the base token $foo."
+
     ;; A derived statement can be an assignment itself.
     (when (seq-find #'phpinspect-assignment-p statement)
       (phpinspect--log "Derived statement is an assignment: %s" statement)
       (setq statement (cdr (seq-drop-while #'phpinspect-not-assignment-p statement))))
-    (phpinspect--log "Get derived statement type in block: %s" statement)
+    (phpinspect--log "Get derived statement type in block: (truncated, real length: %d) %s"
+                     (length statement)
+                     (take 10 statement))
     (let* ((first-token (pop statement))
            (current-token)
            (previous-attribute-type))
@@ -231,6 +245,12 @@ $variable = $variable->method();"
                                (setq first-token (pop statement)))
                              (funcall type-resolver (phpinspect--make-type
                                                      :name (cadr first-token))))
+
+                           ;; First token is a list, for example "(new DateTime())"
+                           (when (phpinspect-list-p first-token)
+                             (phpinspect--interpret-expression-type-in-context
+                              resolvecontext php-block type-resolver (cdr first-token)
+                              function-arg-list assignments))
 
                            ;; No bare word, assume we're dealing with a variable.
                            (when (phpinspect-variable-p first-token)
@@ -285,11 +305,6 @@ $variable = $variable->method();"
         (phpinspect--log "Found derived type: %s" previous-attribute-type)
         ;; Make sure to always return a FQN
         (funcall type-resolver previous-attribute-type))))
-
-;;;;
-;; TODO: since we're passing type-resolver to all of the get-variable-type functions now,
-;; we may as well always return FQNs in stead of relative type names.
-;;;;
 
 (defun phpinspect-get-variable-type-in-block
     (resolvecontext variable-name php-block type-resolver &optional function-arg-list)
@@ -348,7 +363,8 @@ resolve types of function argument variables."
                                   (phpinspect--assignment-from last-assignment)))
          (pattern-code (phpinspect--pattern-code pattern))
          (result))
-    (phpinspect--log "Looking for assignments of pattern %s in assignment list %s" pattern-code assignments)
+    (phpinspect--log "Looking for assignments of pattern %s in assignment list of length %d"
+                     pattern-code (length assignments))
 
     (if (not last-assignment)
         (when (and (= (length pattern-code) 2) (phpinspect-variable-p (cadr pattern-code)))
@@ -431,18 +447,20 @@ ARG-LIST. ARG-LIST should be a list token as returned by
 
 Use RESOLVECONTEXT, PHP-BLOCK, TYPE-RESOLVER and
 FUNCTION-ARG-LIST as contextual information to infer type of
-EXPRESSION."
+EXPRESSION.
 
-  ;; When the right of an assignment is more than $variable; or "string";(so
-  ;; (:variable "variable") (:terminator ";") or (:string "string") (:terminator ";")
-  ;; in tokens), we're likely working with a derived assignment like $object->method()
-  ;; or $object->attributen
+An expression can be any sequence of tokens that evaluates to a
+value/type."
+  (phpinspect--log "Interpreting type of expression (truncated, full-length: %s) %s"
+                   (length expression)
+                   (take 10 expression))
 
   (cond ((phpinspect-array-p (car expression))
          (let ((collection-contains)
                (collection-items (phpinspect--split-statements (cdr (car expression))))
                (count 0))
-           (phpinspect--log "Checking collection items: %s" collection-items)
+           (phpinspect--log "Checking collection items in array token of length: %d"
+                            (length collection-items))
            (while (and (< count (length collection-items))
                        (not collection-contains))
              (setq collection-contains
@@ -463,12 +481,24 @@ EXPRESSION."
           type-resolver (phpinspect--make-type :name (cadadr expression))))
         ((and (> (length expression) 1)
               (seq-find (lambda (part) (or (phpinspect-attrib-p part)
-                                               (phpinspect-array-p part)))
+                                           (phpinspect-array-p part)))
                         expression))
-         (phpinspect--log "Variable was assigned with a derived statement")
+         (phpinspect--log "Expression is a derived statement")
          (phpinspect--get-derived-statement-type-in-block
           resolvecontext expression php-block assignments
           type-resolver function-arg-list))
+
+        ((phpinspect-list-p (car expression))
+         (phpinspect--interpret-expression-type-in-context
+          resolvecontext php-block type-resolver (cdar expression) function-arg-list assignments))
+
+        ;; Expression is a (chain of) assignments. The right-most subexpression
+        ;; is the type it evaluates to.
+        ((seq-find #'phpinspect-assignment-p expression)
+         (phpinspect--interpret-expression-type-in-context
+          resolvecontext php-block type-resolver
+          (car (last (phpinspect--split-statements expression #'phpinspect-maybe-assignment-p)))
+          function-arg-list assignments))
 
         ;; If the right of an assignment is just $variable;, we can check if it is a
         ;; function argument and otherwise recurse to find the type of that variable.
