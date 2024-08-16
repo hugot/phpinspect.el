@@ -226,8 +226,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                        'face 'font-lock-variable-name-face)
            phpinspect-eldoc-word-width)
           ": "
-          (propertize (phpinspect--display-format-type-name (phpinspect--variable-type var))
-                      'face 'font-lock-type-face)))
+          (phpinspect--display-format-type-name (phpinspect--variable-type var))))
 
 (cl-defstruct (phpinspect-function-doc (:constructor phpinspect-make-function-doc))
   (fn nil
@@ -256,9 +255,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
               (phpinspect--function-arguments fn)
               ", ")
              "): "
-             (propertize
-              (phpinspect--display-format-type-name (phpinspect--function-return-type fn))
-              'face 'font-lock-type-face))))
+              (phpinspect--display-format-type-name (phpinspect--function-return-type fn)))))
 
 (defvar phpinspect-eldoc-strategies (list (phpinspect-make-eld-attribute)
                                           (phpinspect-make-eld-function-args)

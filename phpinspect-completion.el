@@ -255,7 +255,7 @@ Returns list of `phpinspect--completion'."
                                 (phpinspect--function-arguments completion-candidate)
                                 ", ")
                  ") "
-                 (phpinspect--format-type-name (phpinspect--function-return-type completion-candidate)))
+                 (phpinspect--display-format-type-name (phpinspect--function-return-type completion-candidate)))
    :annotation (concat " "
                        (phpinspect--type-bare-name
                         (phpinspect--function-return-type completion-candidate)))
@@ -266,7 +266,7 @@ Returns list of `phpinspect--completion'."
   ((completion-candidate phpinspect--variable))
   (phpinspect--construct-completion
    :value (phpinspect--variable-name completion-candidate)
-   :meta (phpinspect--format-type-name
+   :meta (phpinspect--display-format-type-name
           (or (phpinspect--variable-type completion-candidate)
               phpinspect--null-type))
    :target completion-candidate
@@ -300,7 +300,7 @@ Returns list of `phpinspect--completion'."
                      (dolist (comp completions)
                        (setq completion (phpinspect--completion-list-get-metadata comp-list comp))
                        (push (list comp (phpinspect--prefix-for-completion completion)
-                                   (phpinspect--completion-meta completion))
+                                   (concat " " (phpinspect--completion-meta completion)))
                              affixated))
                      (nreverse affixated)))
                  :exit-function

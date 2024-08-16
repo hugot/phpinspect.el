@@ -216,13 +216,15 @@ NAMESPACE may be nil, or a string with a namespace FQN."
   (phpinspect--format-type-name (phpinspect--type-name type)))
 
 (cl-defmethod phpinspect--display-format-type-name ((name string))
-  (phpinspect--format-type-name name))
+  (propertize (phpinspect--format-type-name name) 'face 'font-lock-type-face))
 
 (cl-defmethod phpinspect--display-format-type-name ((type phpinspect--type))
   (let ((self (phpinspect--format-type-name type)))
-    (if (phpinspect--type-contains type)
+    (propertize
+     (if (phpinspect--type-contains type)
         (concat self "<" (phpinspect--format-type-name (phpinspect--type-contains type)) ">")
-      self)))
+       self)
+     'face 'font-lock-type-face)))
 
 (cl-defstruct (phpinspect--function (:constructor phpinspect--make-function-generated)
                                     (:copier phpinspect--copy-function))
