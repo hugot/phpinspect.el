@@ -28,6 +28,10 @@
 (require 'phpinspect-fs)
 (require 'phpinspect-autoload)
 (require 'phpinspect-resolvecontext)
+(require 'phpinspect-test-env
+         (expand-file-name "phpinspect-test-env.el"
+                           (file-name-directory (macroexp-file-name))))
+
 
 (ert-deftest phpinspect-filename-to-typename ()
   (should (eq (phpinspect-intern-name "\\Foo\\Bar") (phpinspect-filename-to-typename "src/" "src/Foo////////Bar.php")))

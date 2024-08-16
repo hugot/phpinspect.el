@@ -141,65 +141,51 @@ Destructively removes tokens from the end of ASSIGNMENT-TOKENS."
     (pop statement))
   statement)
 
-;; FIXME: the use of this function and similar ones should be replaced with code
-;; that uses locally injected project objects in stead of retrieving the project
-;; object through global variables.
-(defsubst phpinspect-get-cached-project-class (project-root class-fqn)
-  (when project-root
-    (phpinspect-project-get-class-or-extra
-     (phpinspect--cache-get-project-create (phpinspect--get-or-create-global-cache)
-                                           project-root)
-     class-fqn)))
+(defsubst phpinspect-get-cached-project-class (rctx class-fqn)
+  (phpinspect-project-get-class-or-extra (phpinspect--resolvecontext-project rctx) class-fqn))
 
-(defun phpinspect-get-cached-project-class-methods (project-root class-fqn &optional static)
-    (phpinspect--log "Getting cached project class methods for %s (%s)"
-                   project-root class-fqn)
-    (when project-root
-      (let ((class (phpinspect-get-or-create-cached-project-class
-                    project-root
-                    class-fqn)))
-        (when class
-          (phpinspect--log "Retrieved class index, starting method collection %s (%s)"
-                           project-root class-fqn)
-          (if static
-              (phpinspect--class-get-static-method-list class)
-            (phpinspect--class-get-method-list class))))))
-
-(defsubst phpinspect-get-cached-project-class-method-type
-  (project-root class-fqn method-name)
-    (when project-root
-    (let* ((class (phpinspect-get-or-create-cached-project-class project-root class-fqn))
-           (method))
+(defun phpinspect-get-cached-project-class-methods (rctx class-fqn &optional static)
+    (phpinspect--log "Getting cached project class methods for %s"
+                     class-fqn)
+    (let ((class (phpinspect-rctx-get-or-create-cached-project-class rctx class-fqn)))
       (when class
-        (setq method
-              (phpinspect--class-get-method class (phpinspect-intern-name method-name)))
-        (when method
-          (phpinspect--function-return-type method))))))
+        (phpinspect--log "Retrieved class index, starting method collection for %s"
+                         class-fqn)
+        (if static
+            (phpinspect--class-get-static-method-list class)
+          (phpinspect--class-get-method-list class)))))
+
+(defsubst phpinspect-get-cached-project-class-method-type (rctx class-fqn method-name)
+  (let* ((class (phpinspect-rctx-get-or-create-cached-project-class rctx class-fqn))
+         (method))
+    (when class
+      (setq method
+            (phpinspect--class-get-method class (phpinspect-intern-name method-name)))
+      (when method
+        (phpinspect--function-return-type method)))))
 
 (defsubst phpinspect-get-cached-project-class-variable-type
-  (project-root class-fqn variable-name)
-  (phpinspect--log "Getting cached project class variable type for %s (%s::%s)"
-                   project-root class-fqn variable-name)
-  (when project-root
-    (let ((found-variable
-           (phpinspect--class-get-variable
-            (phpinspect-get-or-create-cached-project-class project-root class-fqn)
-            variable-name)))
-      (when found-variable
-        (phpinspect--variable-type found-variable)))))
+  (rctx class-fqn variable-name)
+  (phpinspect--log "Getting cached project class variable type %s::%s"
+                   class-fqn variable-name)
+  (let ((found-variable
+         (phpinspect--class-get-variable
+          (phpinspect-rctx-get-or-create-cached-project-class rctx class-fqn)
+          variable-name)))
+    (when found-variable
+      (phpinspect--variable-type found-variable))))
 
 (defsubst phpinspect-get-cached-project-class-static-method-type
-  (project-root class-fqn method-name)
-  (when project-root
-    (let* ((class (phpinspect-get-or-create-cached-project-class project-root class-fqn))
-           (method))
-      (when class
-        (setq method
-              (phpinspect--class-get-static-method
-               class
-               (phpinspect-intern-name method-name)))
-        (when method
-          (phpinspect--function-return-type method))))))
+  (rctx class-fqn method-name)
+  (let* ((class (phpinspect-rctx-get-or-create-cached-project-class rctx class-fqn))
+         (method))
+    (when class
+      (setq method
+            (phpinspect--class-get-static-method
+             class
+             (phpinspect-intern-name method-name)))
+      (when method
+        (phpinspect--function-return-type method)))))
 
 (defun phpinspect-get-derived-statement-type-in-block
     (resolvecontext statement php-block type-resolver &optional function-arg-list assignments)
@@ -265,16 +251,14 @@ $variable = $variable->method();"
                            (setq previous-attribute-type
                                  (or
                                  (phpinspect-get-cached-project-class-method-type
-                                   (phpinspect--resolvecontext-project-root
-                                    resolvecontext)
-                                   (funcall type-resolver previous-attribute-type)
-                                   (cadr attribute-word))
+                                  resolvecontext
+                                  (funcall type-resolver previous-attribute-type)
+                                  (cadr attribute-word))
                                   previous-attribute-type)))
                        (setq previous-attribute-type
                              (or
                               (phpinspect-get-cached-project-class-variable-type
-                               (phpinspect--resolvecontext-project-root
-                                resolvecontext)
+                                resolvecontext
                                (funcall type-resolver previous-attribute-type)
                                (cadr attribute-word))
                               previous-attribute-type))))))
@@ -290,8 +274,7 @@ $variable = $variable->method();"
                            (setq previous-attribute-type
                                  (or
                                   (phpinspect-get-cached-project-class-static-method-type
-                                   (phpinspect--resolvecontext-project-root
-                                    resolvecontext)
+                                   resolvecontext
                                    (funcall type-resolver previous-attribute-type)
                                    (cadr attribute-word))
                                   previous-attribute-type)))))))

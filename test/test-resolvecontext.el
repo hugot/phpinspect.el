@@ -28,7 +28,7 @@ class TestClass {
       (phpinspect-parse-string code))
     (setq bmap (phpinspect-pctx-bmap ctx))
 
-    (let ((rctx (phpinspect-get-resolvecontext bmap 317)))
+    (let ((rctx (phpinspect-get-resolvecontext (phpinspect--make-dummy-project) bmap 317)))
       (should (phpinspect--resolvecontext-subject rctx))
       (should (phpinspect--resolvecontext-enclosing-tokens rctx)))))
 
@@ -37,7 +37,7 @@ class TestClass {
   (with-temp-buffer
     (insert-file-contents (expand-file-name "IncompleteClass.php" phpinspect-test-php-file-directory))
     (let* ((bmap (phpinspect-parse-string-to-bmap (buffer-string)))
-           (resolvecontext (phpinspect-get-resolvecontext bmap (point-max)))
+           (resolvecontext (phpinspect-get-resolvecontext (phpinspect--make-dummy-project) bmap (point-max)))
            (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
                            resolvecontext)))
 
@@ -65,7 +65,7 @@ class TestClass {
   (with-temp-buffer
     (insert-file-contents (concat phpinspect-test-php-file-directory "/IncompleteClassBlockedNamespace.php"))
     (let* ((bmap (phpinspect-parse-string-to-bmap (buffer-string)))
-           (resolvecontext (phpinspect-get-resolvecontext bmap (point-max)))
+           (resolvecontext (phpinspect-get-resolvecontext (phpinspect--make-dummy-project) bmap (point-max)))
            (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
                            resolvecontext)))
 
@@ -87,6 +87,7 @@ class TestClass {
 
 (ert-deftest phpinspect-type-resolver-for-resolvecontext-multiple-namespace-blocks ()
   (let* ((resolvecontext (phpinspect--get-resolvecontext
+                          (phpinspect-current-project)
                           (phpinspect-test-read-fixture-data
                            "IncompleteClassMultipleNamespaces")))
          (type-resolver (phpinspect--make-type-resolver-for-resolvecontext

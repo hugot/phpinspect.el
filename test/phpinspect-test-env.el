@@ -10,6 +10,12 @@
 (phpinspect-ensure-worker)
 (phpinspect-purge-cache)
 
+(defun phpinspect--make-dummy-project ()
+  (phpinspect--make-project
+   :fs (phpinspect-make-virtual-fs)
+   :autoload (phpinspect-make-autoloader)
+   :worker 'nil-worker))
+
 (defvar phpinspect-test-directory
   (file-name-directory (macroexp-file-name))
   "Directory that phpinspect tests reside in.")

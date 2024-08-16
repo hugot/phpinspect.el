@@ -57,13 +57,6 @@
   (inline-quote
    (funcall phpinspect-type-filepath-function ,fqn)))
 
-(defsubst phpinspect-cache-project-class (project-root indexed-class)
-  (when project-root
-    (phpinspect-project-add-class
-     (phpinspect--cache-get-project-create (phpinspect--get-or-create-global-cache)
-                                           project-root)
-     indexed-class)))
-
 (defun phpinspect-parse-string-to-bmap (string)
   (with-temp-buffer
     (insert string)

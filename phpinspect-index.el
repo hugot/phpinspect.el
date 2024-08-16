@@ -138,10 +138,11 @@ function (think \"new\" statements, return types etc.)."
 
     ;; @return annotation. When dealing with a collection, we want to store the
     ;; type of its members.
-    (when type
-      (let* ((return-annotation-type
-              (cadadr (seq-find #'phpinspect-return-annotation-p comment-before))))
-        (phpinspect--apply-annotation-type return-annotation-type type type-resolver)))
+    (when-let* ((return-annotation-type
+                 (cadadr (seq-find #'phpinspect-return-annotation-p comment-before))))
+      (if type
+          (phpinspect--apply-annotation-type return-annotation-type type type-resolver)
+        (setq type (funcall type-resolver (phpinspect--make-type :name return-annotation-type)))))
 
     (when add-used-types
       (let ((used-types (phpinspect--find-used-types-in-tokens

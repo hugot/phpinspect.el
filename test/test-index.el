@@ -356,3 +356,31 @@ class AccountStatisticsController {
             (should (phpinspect--type= relation-type (phpinspect--variable-type relation)))
             (should (phpinspect--variable-type static-relation))
             (should (phpinspect--type= relation-type (phpinspect--variable-type static-relation)))))))))
+
+
+(ert-deftest phpinspect-index-return-type-annotation-for-method ()
+  (with-temp-buffer
+    (let ((project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))
+      (insert "<?php
+declare(strict_types=1);
+
+namespace App\\Controller\\Api\\V1;
+
+class AccountStatisticsController {
+/**
+ * @return $this
+ */
+public function doStuff()
+{
+}
+}")
+      (phpinspect-project-add-index project (phpinspect-index-current-buffer))
+
+      (let ((class (phpinspect-project-get-class
+                   project
+                    (phpinspect--make-type
+                     :name "\\App\\Controller\\Api\\V1\\AccountStatisticsController"
+                     :fully-qualified t))))
+        (should class)
+
+        (should (phpinspect--class-get-method class "doStuff"))))))

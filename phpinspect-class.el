@@ -104,8 +104,15 @@ Conditionally executes BODY depending on
 (cl-defmethod phpinspect--class-get-method ((class phpinspect--class) (method-name (head phpinspect-name)))
   (gethash method-name (phpinspect--class-methods class)))
 
+(cl-defmethod phpinspect--class-get-method ((class phpinspect--class) (method-name string))
+  (phpinspect--class-get-method class (phpinspect-intern-name method-name)))
+
 (cl-defmethod phpinspect--class-get-static-method ((class phpinspect--class) (method-name (head phpinspect-name)))
   (gethash method-name (phpinspect--class-static-methods class)))
+
+(cl-defmethod phpinspect--class-get-static-method ((class phpinspect--class) (method-name string))
+  (phpinspect--class-get-static-method class (phpinspect-intern-name method-name)))
+
 
 (cl-defmethod phpinspect--class-get-variable
   ((class phpinspect--class) (variable-name string))

@@ -128,21 +128,15 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
         (phpinspect-list-p
          (car (last (phpinspect--resolvecontext-subject rctx)))))))
 
-(cl-defmethod phpinspect-eld-strategy-execute
-  ((_strat phpinspect-eld-function-args) (q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
-  (phpinspect--log "Executing `phpinspect-eld-function-args' strategy")
-  (let* ((enclosing-token (car (phpinspect--resolvecontext-enclosing-metadata
-                                 rctx)))
-         (left-sibling )
-         (statement )
-         match-result static arg-list arg-pos)
+(defun phpinspect--determine-function-call-statement (rctx eld-query enclosing-token)
+  (let (statement left-sibling)
     (cond
      ;; Subject is a statement
      ((and (phpinspect-list-p (car (last (phpinspect--resolvecontext-subject rctx))))
            enclosing-token)
       (setq left-sibling (phpinspect-meta-find-child-before-recursively
-                          enclosing-token (phpinspect-eldoc-query-point q))))
-    ;; Subject is inside an argument list
+                          enclosing-token (phpinspect-eldoc-query-point eld-query))))
+     ;; Subject is inside an argument list
      ((and enclosing-token
            (phpinspect-list-p (phpinspect-meta-token enclosing-token)))
       (setq left-sibling (phpinspect-meta-find-left-sibling enclosing-token)
@@ -160,6 +154,15 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
 
     (phpinspect--log "Eldoc statement is:  %s" (mapcar #'phpinspect-meta-token statement))
     (phpinspect--log "Enclosing token was: %s" (phpinspect-meta-token enclosing-token))
+    statement))
+
+(cl-defmethod phpinspect-eld-strategy-execute
+  ((_strat phpinspect-eld-function-args) (q phpinspect-eldoc-query) (rctx phpinspect--resolvecontext))
+  (phpinspect--log "Executing `phpinspect-eld-function-args' strategy")
+  (let* ((enclosing-token (car (phpinspect--resolvecontext-enclosing-metadata
+                                 rctx)))
+         (statement (phpinspect--determine-function-call-statement rctx q enclosing-token))
+         match-result static arg-list arg-pos)
 
     (when enclosing-token
       (cond
@@ -167,7 +170,6 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
        ((setq match-result (phpinspect--match-sequence (last statement 2)
                              :f (phpinspect-meta-wrap-token-pred #'phpinspect-attrib-p)
                              :f (phpinspect-meta-wrap-token-pred #'phpinspect-list-p)))
-        (phpinspect--log "Eldoc context is a method call")
 
         (setq arg-list (car (last match-result))
               static (phpinspect-static-attrib-p (phpinspect-meta-token (car match-result)))
@@ -184,18 +186,14 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
         (setf (phpinspect--resolvecontext-subject rctx)
               (mapcar #'phpinspect-meta-token (butlast statement 2)))
 
-
-
-        (when-let* ((type-of-previous-statement
+        (let* ((type-of-previous-statement
                      (phpinspect-resolve-type-from-context rctx))
-                    (method-name-sym (phpinspect-intern-name (cadadr (phpinspect-meta-token (car match-result)))))
-                    (class (phpinspect-project-get-class-extra-or-create
-                            (phpinspect--resolvecontext-project rctx)
-                            type-of-previous-statement
-                            'no-enqueue))
-                    (method (if static
-                                (phpinspect--class-get-static-method class method-name-sym)
-                              (phpinspect--class-get-method class method-name-sym))))
+               (method-name (cadadr (phpinspect-meta-token (car match-result))))
+               (class (phpinspect-rctx-get-or-create-cached-project-class
+                       rctx type-of-previous-statement 'no-enqueue))
+               (method (if static
+                           (phpinspect--class-get-static-method class method-name)
+                         (phpinspect--class-get-method class method-name))))
 
           (when method
             (phpinspect-make-function-doc :fn method :arg-pos arg-pos))))
@@ -268,7 +266,7 @@ also `phpinspect-eldoc-query-execute'.")
   (let* ((buffer (phpinspect-eldoc-query-buffer query))
          (point (phpinspect-eldoc-query-point query))
          (buffer-map (phpinspect-buffer-parse-map buffer))
-         (rctx (phpinspect-get-resolvecontext buffer-map point))
+         (rctx (phpinspect-get-resolvecontext (phpinspect-buffer-project buffer) buffer-map point))
          responses)
     (phpinspect-buffer-update-project-index buffer)
     (dolist (strategy phpinspect-eldoc-strategies)
@@ -276,6 +274,7 @@ also `phpinspect-eldoc-query-execute'.")
         (when (phpinspect-eld-strategy-supports strategy query rctx)
           (phpinspect--log "Found matching eldoc strategy. Executing...")
           (push (phpinspect-eld-strategy-execute strategy query rctx) responses))))
+
     (remove nil responses)))
 
 (defun phpinspect-eldoc-function ()

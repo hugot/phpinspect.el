@@ -75,34 +75,27 @@
 
       variable-list)))
 
-(defun phpinspect-get-cached-project-class-methods (project-root class-fqn &optional static)
-    (phpinspect--log "Getting cached project class methods for %s (%s)"
-                   project-root class-fqn)
-    (when project-root
-      (let ((class (phpinspect-get-or-create-cached-project-class
-                    project-root
-                    class-fqn 'no-enqueue)))
-        (phpinspect--log (if class
-                             "Retrieved class index, starting method collection %s (%s)"
-                           "No class index found in %s for %s")
-                         project-root class-fqn)
-        (when class
-          (if static
-              (phpinspect--class-get-static-method-list class)
-            (phpinspect--class-get-method-list class))))))
+(defun phpinspect-get-cached-project-class-methods (rctx class-fqn &optional static)
+  (phpinspect--log "Getting cached project class methods for %s" class-fqn)
+  (let ((class (phpinspect-rctx-get-or-create-cached-project-class rctx class-fqn 'no-enqueue)))
+    (phpinspect--log (if class
+                         "Retrieved class index, starting method collection %s"
+                       "No class index found for %s")
+                     class-fqn)
+    (when class
+      (if static
+          (phpinspect--class-get-static-method-list class)
+        (phpinspect--class-get-method-list class)))))
 
 (defun phpinspect--get-methods-for-class
     (resolvecontext class &optional static)
   "Find all known cached methods for CLASS."
-  (or (phpinspect-get-cached-project-class-methods
-       (phpinspect--resolvecontext-project-root resolvecontext)
-       class static)
+  (or (phpinspect-get-cached-project-class-methods resolvecontext class static)
       (progn (phpinspect--log "Failed to find methods for class %s :(" class) nil)))
 
-(defun phpinspect--get-variables-for-class (class-name &optional static)
-  (let ((class (phpinspect-get-or-create-cached-project-class
-                (phpinspect-current-project-root)
-                class-name 'no-enqueue)))
+(defun phpinspect--get-variables-for-class (rctx class-name &optional static)
+  (let ((class (phpinspect-rctx-get-or-create-cached-project-class
+                rctx class-name 'no-enqueue)))
     (when class
       (if static
           (append (phpinspect--class-get-static-variables class) (phpinspect--class-get-constants class))
@@ -149,8 +142,7 @@ static variables and static methods."
         (let ((type (funcall type-resolver statement-type)))
           (when-let ((result
                       (append (phpinspect--get-variables-for-class
-                               type
-                               static)
+                               resolvecontext type static)
                               (funcall method-lister type))))
             (phpinspect--log "Returning attributes %s" result)
             result))))))

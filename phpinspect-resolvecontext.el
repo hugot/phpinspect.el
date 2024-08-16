@@ -55,10 +55,10 @@
            :type phpinspect--token
            :documentation
            "The statement we're trying to resolve the type of.")
-  (project-root nil
-                :type string
-                :documentation
-                "The root directory of the project we're resolving types for.")
+  (project nil
+           :type phpinspect-project
+           :documentation
+           "The project we're resolving types for.")
   (enclosing-metadata nil
                       :type list
                       :documentation
@@ -127,7 +127,7 @@ it would no longer be valid for the new enclosing tokens."
     (reverse token))))
 
 (cl-defmethod phpinspect-get-resolvecontext
-  ((bmap phpinspect-bmap) (point integer))
+  ((project phpinspect-project) (bmap phpinspect-bmap) (point integer))
   "Construct resolvecontext for BMAP, orienting around POINT."
   (let* ((enclosing-tokens)
          ;; When there are no enclosing tokens, point is probably at the absolute
@@ -184,14 +184,9 @@ it would no longer be valid for the new enclosing tokens."
      :subject (phpinspect--get-last-statement-in-token subject-token)
      :enclosing-tokens (nreverse (mapcar #'phpinspect-meta-token enclosing-tokens))
      :enclosing-metadata (nreverse enclosing-tokens)
-     :project-root (phpinspect-current-project-root))))
+     :project project)))
 
-(defun phpinspect--resolvecontext-project (rctx)
-  (phpinspect--cache-get-project-create
-   (phpinspect--get-or-create-global-cache)
-   (phpinspect--resolvecontext-project-root rctx)))
-
-(defun phpinspect--get-resolvecontext (token &optional resolvecontext)
+(defun phpinspect--get-resolvecontext (project token &optional resolvecontext)
   "Find the deepest nested incomplete token in TOKEN.
 If RESOLVECONTEXT is nil, it is created.  Returns RESOLVECONTEXT
 of type `phpinspect--resolvecontext' containing the last
@@ -199,7 +194,7 @@ statement of the innermost incomplete token as subject
 accompanied by all of its enclosing tokens."
   (unless resolvecontext
     (setq resolvecontext (phpinspect--make-resolvecontext
-                          :project-root (phpinspect-current-project-root))))
+                          :project project)))
 
   (let ((last-token (car (last token)))
         (last-encountered-token (car
@@ -213,12 +208,17 @@ accompanied by all of its enclosing tokens."
       (phpinspect--resolvecontext-push-enclosing-token resolvecontext token))
 
     (if (phpinspect-incomplete-token-p last-token)
-        (phpinspect--get-resolvecontext last-token resolvecontext)
+        (phpinspect--get-resolvecontext project last-token resolvecontext)
     ;; else
     (setf (phpinspect--resolvecontext-subject resolvecontext)
           (phpinspect--get-last-statement-in-token token))
 
     resolvecontext)))
+
+(defun phpinspect-rctx-get-or-create-cached-project-class (rctx class-fqn &optional no-enqueue)
+  (cl-assert (phpinspect--resolvecontext-p rctx))
+  (let ((project (phpinspect--resolvecontext-project rctx)))
+    (phpinspect-project-get-class-extra-or-create project class-fqn no-enqueue)))
 
 (defun phpinspect--make-type-resolver-for-resolvecontext
     (resolvecontext)

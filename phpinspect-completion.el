@@ -224,7 +224,8 @@ Returns list of `phpinspect--completion'."
   (let* ((buffer (phpinspect-completion-query-buffer query))
          (point (phpinspect-completion-query-point query))
          (buffer-map (phpinspect-buffer-parse-map buffer))
-         (rctx (phpinspect-get-resolvecontext buffer-map point))
+         (rctx (phpinspect-get-resolvecontext
+                (phpinspect-buffer-project buffer) buffer-map point))
          (completion-list (phpinspect--make-completion-list)))
     (phpinspect-buffer-update-project-index buffer)
 
