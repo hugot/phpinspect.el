@@ -376,11 +376,14 @@ public function doStuff()
 }")
       (phpinspect-project-add-index project (phpinspect-index-current-buffer))
 
-      (let ((class (phpinspect-project-get-class
-                   project
-                    (phpinspect--make-type
+      (let* ((type (phpinspect--make-type
                      :name "\\App\\Controller\\Api\\V1\\AccountStatisticsController"
-                     :fully-qualified t))))
+                     :fully-qualified t))
+             (class (phpinspect-project-get-class project type)))
+
         (should class)
 
-        (should (phpinspect--class-get-method class "doStuff"))))))
+        (let ((method (phpinspect--class-get-method class "doStuff")))
+          (should method)
+          (should (phpinspect--function-return-type method))
+          (should (phpinspect--type= type (phpinspect--function-return-type method))))))))
