@@ -451,9 +451,10 @@ NAMESPACE will be assumed the root namespace if not provided"
 
 (defun phpinspect--index-namespace (namespace type-resolver-factory location-resolver)
   (let* (used-types
+         (imports (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p namespace)))
          (index
           `((classes . ,(phpinspect--index-classes-in-tokens
-                         (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p namespace))
+                         imports
                          namespace
                          type-resolver-factory location-resolver (cadadr namespace)))
             (functions . ,(phpinspect--index-functions-in-tokens
@@ -461,9 +462,21 @@ NAMESPACE will be assumed the root namespace if not provided"
                            type-resolver-factory
                            (phpinspect--uses-to-types (seq-filter #'phpinspect-use-p namespace))
                            (cadadr namespace)
-                           (lambda (types) (setq used-types (nconc used-types types))))))))
+                           (lambda (types) (setq used-types (nconc used-types (mapcar #'phpinspect-intern-name types)))))))))
 
-    (push `(used-types . ,used-types) index)))
+    (let (class-names)
+      (dolist (class (alist-get 'classes index))
+        (push (car class) class-names)
+        (setq used-types (nconc used-types (alist-get 'used-types class))))
+
+      (setq used-types (seq-uniq used-types #'eq))
+
+      (push `(namespaces . ((,(cadadr namespace) . ((location  . ,(funcall location-resolver namespace))
+                                                    (imports . ,imports)
+                                                    (used-types . ,used-types)
+                                                    (classes . ,class-names)))))
+            index)
+    index)))
 
 (defun phpinspect--index-namespaces
     (namespaces type-resolver-factory location-resolver &optional indexed)
@@ -474,8 +487,8 @@ NAMESPACE will be assumed the root namespace if not provided"
 
         (if indexed
             (progn
-              (nconc (alist-get 'used-types indexed)
-                     (alist-get 'used-types namespace-index))
+              (nconc (alist-get 'namespaces indexed)
+                     (alist-get 'namespaces namespace-index))
               (nconc (alist-get 'classes indexed)
                      (alist-get 'classes namespace-index))
               (nconc (alist-get 'functions indexed)
@@ -581,6 +594,7 @@ Returns a list of type name strings."
                                                location-resolver)))
            `(phpinspect--root-index
              (imports . ,imports)
+             (namespaces . ,(alist-get 'namespaces namespace-index))
              (classes ,@(append
                          (alist-get 'classes namespace-index)
                          (phpinspect--index-classes-in-tokens
@@ -588,7 +602,6 @@ Returns a list of type name strings."
              (used-types ,@(mapcar #'phpinspect-intern-name
                                    (seq-uniq
                                     (append
-                                     (alist-get 'used-types namespace-index)
                                      (phpinspect--find-used-types-in-tokens tokens))
                                     #'string=)))
              (functions . ,(append

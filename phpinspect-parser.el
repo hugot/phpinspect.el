@@ -132,7 +132,7 @@ You can purge the parser cache with \\[phpinspect-purge-parser-cache]."
        (put (quote ,inline-name) 'phpinspect--handler t))))
 
 (eval-when-compile
-  (defun phpinspect-make-parser-function (name tree-type handlers &optional delimiter-predicate)
+  (defun phpinspect-make-parser-function (name tree-type handlers &optional delimiter-predicate delimiter-condition)
     "Create a parser function using the handlers by names defined in HANDLER-LIST.
 
 See also `phpinspect-defhandler`.
@@ -160,8 +160,11 @@ token is \";\", which marks the end of a statement in PHP."
            (while (and (< (point) max-point)
                        (if continue-condition (funcall continue-condition) t)
                        (not ,(if delimiter-predicate
-                                   `(,delimiter-predicate (car (last tokens)))
-                                 nil)))
+                                 (if delimiter-condition
+                                     `(and (,delimiter-condition tokens)
+                                           (,delimiter-predicate (car (last tokens))))
+                                   `(,delimiter-predicate (car (last tokens))))
+                               nil)))
              (cond ,@(mapcar
                       (lambda (handler)
                         `((looking-at (,(phpinspect-handler-regexp-func-name handler)))
@@ -175,7 +178,7 @@ token is \";\", which marks the end of a statement in PHP."
            tokens))))
 
 
-  (defun phpinspect-make-incremental-parser-function (name tree-type handlers &optional delimiter-predicate)
+  (defun phpinspect-make-incremental-parser-function (name tree-type handlers &optional delimiter-predicate delimiter-condition)
     "Like `phpinspect-make-parser-function', but returned function
 is able to reuse an already parsed tree."
     (cl-assert (symbolp delimiter-predicate))
@@ -202,7 +205,10 @@ is able to reuse an already parsed tree."
              (while (and (< (point) max-point)
                          (if continue-condition (funcall continue-condition) t)
                          (not ,(if delimiter-predicate
-                                   `(,delimiter-predicate (car (last tokens)))
+                                   (if delimiter-condition
+                                       `(and (,delimiter-condition tokens)
+                                             (,delimiter-predicate (car (last tokens))))
+                                     `(,delimiter-predicate (car (last tokens))))
                                  nil)))
                (when check-interrupt
                  (phpinspect-pctx-check-interrupt context))
@@ -274,6 +280,13 @@ handlers that this parser uses.")
                          :documentation "A predicate function that is passed each
 parsed token. When the predicate returns a non-nil value, the parser stops
 executing.")
+    (delimiter-condition nil
+                         :type function
+                         :read-only t
+                         :documentation "A predicate function
+ that is passed the list of parsed tokens after each parsed
+ token. If it returns a non-nil value, the delimiter-predicate is
+ invoked and checked.")
     (func nil
           :type function
           :documentation "The parser function.")
@@ -289,7 +302,8 @@ executing.")
                (phpinspect-parser-name parser)
                (intern (concat ":" (phpinspect-parser-tree-keyword parser)))
                (phpinspect-parser-handlers parser)
-               (phpinspect-parser-delimiter-predicate parser)))))
+               (phpinspect-parser-delimiter-predicate parser)
+               (phpinspect-parser-delimiter-condition parser)))))
 
   (cl-defmethod phpinspect-parser-compile-incremental ((parser phpinspect-parser))
     "Like `phpinspect-parser-compile', but for an incremental
@@ -300,7 +314,8 @@ version of the parser function."
                (phpinspect-parser-name parser)
                (intern (concat ":" (phpinspect-parser-tree-keyword parser)))
                (phpinspect-parser-handlers parser)
-               (phpinspect-parser-delimiter-predicate parser)))))
+               (phpinspect-parser-delimiter-predicate parser)
+               (phpinspect-parser-delimiter-condition parser)))))
 
   (cl-defmethod phpinspect-parser-compile-entry ((parser phpinspect-parser))
     (let ((func-name (phpinspect-parser-func-name (phpinspect-parser-name parser)))
@@ -586,8 +601,12 @@ nature like argument lists"
      ((string= start-token "->")
       (list :object-attrib name)))))
 
+(define-inline phpinspect--namespace-should-end-at-block-p (tokens)
+  (>= 4 (length tokens)))
+
 (phpinspect-defparser namespace
   :tree-keyword "namespace"
+  :delimiter-condition #'phpinspect--namespace-should-end-at-block-p
   :delimiter-predicate #'phpinspect-block-p)
 
 (phpinspect-defhandler namespace (start-token max-point)
@@ -833,7 +852,12 @@ Returns the consumed text string without face properties."
 (phpinspect-defhandler class-keyword (start-token max-point)
   "Handler for the class keyword, and tokens that follow to define
 the properties of the class"
-  ((regexp . (concat "\\(abstract\\|final\\|class\\|interface\\|trait\\)"
+  ;; FIXME: "case" keyworded enum cases are not recognized/parsed into anything
+  ;; other than "word" tokens. Enums might require a different (specialized)
+  ;; handler to parse into an indexable tree. For now, this works to get basic
+  ;; functionality (enum methods) as enum case support hasn't been implemented
+  ;; yet.
+  ((regexp . (concat "\\(abstract\\|final\\|class\\|interface\\|trait\\|enum\\)"
                      (phpinspect--word-end-regex))))
   (setq start-token (phpinspect--strip-word-end-space start-token))
   `(:class ,(phpinspect-parse-declaration

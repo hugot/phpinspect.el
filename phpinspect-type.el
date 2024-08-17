@@ -316,8 +316,11 @@ mutability of the variable")
                                  (concat "\\" fqn-string))
                          :fully-qualified t))
 
+(define-inline phpinspect-use-name-string (use)
+  (inline-quote (cadr (cadr ,use))))
+
 (defun phpinspect--use-to-type-cons (use)
-  (let* ((fqn (cadr (cadr use)))
+  (let* ((fqn (phpinspect-use-name-string use))
          (type (phpinspect-use-name-to-type fqn))
          (type-name (if (and (phpinspect-word-p (caddr use))
                              (string= "as" (cadr (caddr use))))

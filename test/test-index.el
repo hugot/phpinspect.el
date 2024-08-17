@@ -50,6 +50,7 @@
          (expected-index
           `(phpinspect--root-index
             (imports)
+            (namespaces)
             (classes
              (,(phpinspect--make-type :name "\\Potato" :fully-qualified t)
               phpinspect--indexed-class
@@ -285,7 +286,10 @@ function test_func(): array {}
 function example(Firewall $wall): Thing {}")
          (tokens (phpinspect-parse-string code))
          (index (phpinspect--index-tokens tokens))
+         (namespace (alist-get "Local" (alist-get 'namespaces index) nil nil #'string=))
          functions)
+
+    (should namespace)
 
     (should (setq functions (alist-get 'functions index)))
     (should (= 2 (length functions)))
@@ -296,12 +300,11 @@ function example(Firewall $wall): Thing {}")
                                (phpinspect--function-return-type (cadr functions))))
     (should (phpinspect--type= (phpinspect--make-type :name "\\Example\\Thing")
                                (phpinspect--function-return-type (car functions))))
-    (should (= 3 (length (alist-get 'used-types index))))
-    (should (member (phpinspect-intern-name "Firewall") (alist-get 'used-types index)))
-    (should (member (phpinspect-intern-name "array") (alist-get 'used-types index)))
-    (should (member (phpinspect-intern-name "Thing") (alist-get 'used-types index)))
-
-    (should (alist-get 'used-types index))))
+    (should (alist-get 'used-types namespace))
+    (should (= 3 (length (alist-get 'used-types namespace))))
+    (should (member (phpinspect-intern-name "Firewall") (alist-get 'used-types namespace)))
+    (should (member (phpinspect-intern-name "array") (alist-get 'used-types namespace)))
+    (should (member (phpinspect-intern-name "Thing") (alist-get 'used-types namespace)))))
 
 (ert-deftest phpinspect-index-typehinted-variables ()
   (with-temp-buffer

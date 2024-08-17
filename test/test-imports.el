@@ -37,7 +37,7 @@
       (let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
                                              :-project project)))
 
-        (insert "<php
+        (insert "<?php
 
 namespace Not\\App;
 
@@ -50,16 +50,125 @@ class Baz {
         (add-hook 'after-change-functions #'phpinspect-after-change-function)
 
         (phpinspect-fix-imports)
-        (should (string= "<php
+        (should (string= "<?php
 
 namespace Not\\App;
 
 use App\\Bar;
 use App\\Foo;
 
-
 class Baz {
     private Foo $foo;
     public Bar $bar;
+}"
+                         (buffer-string)))))))
+
+(ert-deftest phpinspect-fix-imports-multiple-namespaced-classes ()
+  (let ((project (phpinspect--make-dummy-composer-project)))
+    (with-temp-buffer
+      (let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
+                                             :-project project)))
+
+        (insert "<?php
+
+namespace Not\\App;
+
+class Bee {
+    public Bar $bar;
+}
+
+class Baz {
+    private Foo $foo;
+}")
+        ;; Ensure buffer is made aware of changes
+        (setq phpinspect-current-buffer buffer)
+        (add-hook 'after-change-functions #'phpinspect-after-change-function)
+
+        (phpinspect-fix-imports)
+        (should (string= "<?php
+
+namespace Not\\App;
+
+use App\\Bar;
+use App\\Foo;
+
+class Bee {
+    public Bar $bar;
+}
+
+class Baz {
+    private Foo $foo;
+}"
+                         (buffer-string)))))))
+
+(ert-deftest phpinspect-fix-imports-namespaced-class-and-enum ()
+  (let ((project (phpinspect--make-dummy-composer-project)))
+    (with-temp-buffer
+      (let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
+                                             :-project project)))
+
+        (insert "<?php
+
+namespace Not\\App;
+
+enum Bee: string {
+    pubic function Bar():  Bar {}
+}
+
+class Baz {
+    private Foo $foo;
+}")
+        ;; Ensure buffer is made aware of changes
+        (setq phpinspect-current-buffer buffer)
+        (add-hook 'after-change-functions #'phpinspect-after-change-function)
+
+        (phpinspect-fix-imports)
+        (should (string= "<?php
+
+namespace Not\\App;
+
+use App\\Bar;
+use App\\Foo;
+
+enum Bee: string {
+    pubic function Bar():  Bar {}
+}
+
+class Baz {
+    private Foo $foo;
+}"
+                         (buffer-string)))))))
+
+(ert-deftest phpinspect-fix-imports-namespaced-class-and-function ()
+  (let ((project (phpinspect--make-dummy-composer-project)))
+    (with-temp-buffer
+      (let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
+                                             :-project project)))
+
+        (insert "<?php
+
+namespace Not\\App;
+
+function bar(): Bar {}
+
+class Baz {
+    private Foo $foo;
+}")
+        ;; Ensure buffer is made aware of changes
+        (setq phpinspect-current-buffer buffer)
+        (add-hook 'after-change-functions #'phpinspect-after-change-function)
+
+        (phpinspect-fix-imports)
+        (should (string= "<?php
+
+namespace Not\\App;
+
+use App\\Bar;
+use App\\Foo;
+
+function bar(): Bar {}
+
+class Baz {
+    private Foo $foo;
 }"
                          (buffer-string)))))))
