@@ -210,20 +210,21 @@ group."
 
       ;; Re-insert use statements
       (with-current-buffer (phpinspect-buffer-buffer buffer)
-        (goto-char start)
-        (delete-region start end)
-        (dolist (statement statements)
-          (insert (format "use %s;%c" (car statement) ?\n)))
+        (save-excursion
+          (goto-char start)
+          (delete-region start end)
+          (dolist (statement statements)
+            (insert (format "use %s;%c" (car statement) ?\n)))
 
-        (if (and (looking-at "[[:blank:]\n]+"))
-            ;; Delete excess trailing whitespace (there's more than 2 between the
-            ;; last use statement and the next token)
-            (when (< 1 (- (match-end 0) (match-beginning 0)))
-              (delete-region (match-beginning 0) (match-end 0))
-              (insert-char ?\n))
-          ;; Insert an extra newline (there's only one between the last use
-          ;; statement and the next token)
-          (insert-char ?\n))))))
+          (if (and (looking-at "[[:blank:]\n]+"))
+              ;; Delete excess trailing whitespace (there's more than 2 between the
+              ;; last use statement and the next token)
+              (when (< 1 (- (match-end 0) (match-beginning 0)))
+                (delete-region (match-beginning 0) (match-end 0))
+                (insert-char ?\n))
+            ;; Insert an extra newline (there's only one between the last use
+            ;; statement and the next token)
+            (insert-char ?\n)))))))
 
 (defun phpinspect-fix-imports ()
   "Find types that are used in the current buffer and make sure
