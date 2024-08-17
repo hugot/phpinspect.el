@@ -243,12 +243,10 @@ that there are import (\"use\") statements for them."
              (tree (phpinspect-buffer-reparse-if-not-fresh buffer))
              (index (phpinspect--index-tokens
                      tree nil (phpinspect-buffer-location-resolver buffer)))
-             (classes (alist-get 'classes index))
              (namespaces (alist-get 'namespaces index))
              (imports (alist-get 'imports index))
              (project (phpinspect-buffer-project buffer))
              (used-types (alist-get 'used-types index))
-             class-tokens
              namespace-tokens)
 
         ;; First collect tokens in the buffer via which the namespace tokens can

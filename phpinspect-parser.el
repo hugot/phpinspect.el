@@ -602,7 +602,8 @@ nature like argument lists"
       (list :object-attrib name)))))
 
 (define-inline phpinspect--namespace-should-end-at-block-p (tokens)
-  (>= 4 (length tokens)))
+  (inline-quote
+   (>= 4 (length ,tokens))))
 
 (phpinspect-defparser namespace
   :tree-keyword "namespace"
