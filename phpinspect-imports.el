@@ -250,8 +250,9 @@ that there are import (\"use\") statements for them."
              namespace-tokens)
 
         ;; First collect tokens in the buffer via which the namespace tokens can
-        ;; be found. The edits we do to add imports will invalidate the class
-        ;; region bounds, making this hard to do during the loop that adds them.
+        ;; be found. The edits we do to add imports will invalidate the
+        ;; namespace region bounds, making this hard to do during the loop that
+        ;; adds them.
         (dolist (namespace namespaces)
           (let ((region (alist-get 'location namespace)))
             ;; Use the first child of the namespace token. The namespace token
