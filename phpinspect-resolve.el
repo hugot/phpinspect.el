@@ -503,6 +503,14 @@ value/type."
               (string= (cadar expression) "new"))
          (funcall
           type-resolver (phpinspect--make-type :name (cadadr expression))))
+
+        ((and (phpinspect-list-p (car expression))
+              (= 1 (length (cdar expression)))
+              (phpinspect-word-p (cadar expression)))
+         ;; expression starts with "(word)", so it is a type cast. Return the
+         ;; type of the cast.
+         (funcall type-resolver (phpinspect--make-type :name (car (cdadar expression)))))
+
         ((and (> (length expression) 1)
               (seq-find (lambda (part) (or (phpinspect-attrib-p part)
                                            (phpinspect-array-p part)))
@@ -514,8 +522,8 @@ value/type."
 
         ((phpinspect-list-p (car expression))
          (phpinspect--interpret-expression-type-in-context
-          resolvecontext php-block type-resolver (cdar expression) function-arg-list assignments))
-
+          resolvecontext php-block type-resolver (cdar expression)
+          function-arg-list assignments))
         ;; Expression is a (chain of) assignments. The right-most subexpression
         ;; is the type it evaluates to.
         ((seq-find #'phpinspect-assignment-p expression)

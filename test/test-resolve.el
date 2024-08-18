@@ -143,3 +143,27 @@
         (should result)
         (should (phpinspect--type= (phpinspect--make-type :name "\\string")
                                    result))))))
+
+
+(ert-deftest phpinspect-get-variable-type-in-block-typecast ()
+  (let ((base-code "$foo = new \\DateTime();")
+        (paths (list "$foo = (string) $foo; $foo"
+                     "((Foo) $foo)->bar"
+                     "$baz = (string) $foo; $baz"
+                     "if ($baz = (string) $banana->bar) { $baz"))
+        (project (phpinspect--make-dummy-project)))
+
+    (phpinspect-project-add-index
+     project
+     (phpinspect--index-tokens
+      (phpinspect-parse-string "class Foo { public string $bar; }")))
+
+    (dolist (path paths)
+      (let* ((code (concat base-code path))
+             (bmap (phpinspect-parse-string-to-bmap code))
+             (context (phpinspect-get-resolvecontext project bmap (length code)))
+             (result (phpinspect-resolve-type-from-context context)))
+
+        (should result)
+        (should (phpinspect--type= (phpinspect--make-type :name "\\string")
+                                   result))))))
