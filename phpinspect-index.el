@@ -172,6 +172,22 @@ function (think \"new\" statements, return types etc.)."
 (defun phpinspect--var-annotations-from-token (token)
   (seq-filter #'phpinspect-var-annotation-p token))
 
+(define-inline phpinspect-var-annotation-variable (annotation)
+  (inline-quote (cadr (caddr ,annotation))))
+
+(define-inline phpinspect-var-annotation-type (annotation)
+  (inline-quote (cadadr ,annotation)))
+
+(defun phpinspect--find-var-annotation-for-variable (annotation-list variable)
+  (catch 'return
+    (dolist (annotation annotation-list)
+      (when (and (phpinspect-var-annotation-p annotation)
+                 (phpinspect-var-annotation-variable annotation)
+                 (string= (phpinspect-var-annotation-variable annotation)
+                          variable))
+        (throw 'return annotation)))
+    nil))
+
 (defun phpinspect--variable-type-string-from-comment (comment variable-name)
   (let* ((var-annotations (phpinspect--var-annotations-from-token comment))
          (type (if var-annotations

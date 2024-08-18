@@ -60,33 +60,48 @@
 (cl-defstruct (phpinspect--assignment-context
                (:constructor phpinspect--make-assignment-context)
                (:conc-name phpinspect--actx-))
+  (annotations nil
+               :type list
+               :documentation "List of var annotations available in context")
   (tokens nil
           :type list)
   (preceding-assignments nil
                          :type list))
 
-(defun phpinspect--find-assignment-ctxs-in-token (token &optional assignments-before)
+(defun phpinspect--find-assignment-ctxs-in-token (token &optional assignments-before var-annotations)
   (when (keywordp (car token))
     (setq token (cdr token)))
 
-  (let ((assignments)
-        (blocks-or-lists)
-        (statements (phpinspect--split-statements token)))
+  (setq var-annotations (or var-annotations (cons nil nil)))
+
+  (let ((statements (phpinspect--split-statements token))
+        assignments blocks-or-lists)
     (dolist (statement statements)
       (phpinspect--log "Finding assignment in statement '%s'" statement)
       (when (seq-find #'phpinspect-maybe-assignment-p statement)
         (phpinspect--log "Found assignment statement")
         (push (phpinspect--make-assignment-context
+               :annotations var-annotations
                :tokens statement
                :preceding-assignments assignments-before)
               assignments)
         (setq assignments-before assignments))
 
+      ;; Find all var annotations in statement.
+      (when-let* ((comments (seq-filter #'phpinspect-comment-p statement)))
+        (dolist (comment comments)
+          (dolist (token comment)
+            (when (phpinspect-var-annotation-p token)
+              ;; Intentionally destructively modify annotation list so that all
+              ;; assignments have the same annotations available to them.
+              (push token (cdr var-annotations))))))
+
       (when (setq blocks-or-lists (seq-filter #'phpinspect-block-or-list-p statement))
         (dolist (block-or-list blocks-or-lists)
           (phpinspect--log "Found block or list %s" block-or-list)
           (let ((local-assignments
-                 (phpinspect--find-assignment-ctxs-in-token block-or-list assignments-before)))
+                 (phpinspect--find-assignment-ctxs-in-token
+                  block-or-list assignments-before var-annotations)))
             (dolist (local-assignment (nreverse local-assignments))
               (push local-assignment assignments))
             (setq assignments-before assignments)))))
@@ -133,8 +148,6 @@ Destructively removes tokens from the end of ASSIGNMENT-TOKENS."
                                                           :to left-of-assignment
                                                           :ctx actx)))))))
       nil))
-    ;; (phpinspect--log "Returning the thing %s" variable-assignments)
-    ;; (nreverse variable-assignments)))
 
 (defsubst phpinspect-drop-preceding-barewords (statement)
   (while (and statement (phpinspect-word-p (cadr statement)))
@@ -385,6 +398,18 @@ resolve types of function argument variables."
     (phpinspect--log "Type interpreted from last assignment expression of pattern %s: %s"
                      pattern-code result)
 
+    ;; Unable to resolve a type from the code. When the pattern is for a
+    ;; variable, attempt to find a @var annotation for the specified variable.
+    (when (and (not result) last-assignment
+               (and (= (phpinspect--pattern-length pattern) 1)
+                    (phpinspect-variable-p (cadr pattern-code))))
+      (when-let* ((annotation (phpinspect--find-var-annotation-for-variable
+                                (phpinspect--actx-annotations
+                                 (phpinspect--assignment-ctx last-assignment))
+                               (cadadr pattern-code)))
+                  (annotation-type (phpinspect-var-annotation-type annotation)))
+        (setq result (funcall type-resolver (phpinspect--make-type :name annotation-type)))))
+
     (when (and result (phpinspect--type-collection result) (not (phpinspect--type-contains result)))
       (phpinspect--log (concat
                         "Interpreted type %s is a collection type, but 'contains'"
@@ -400,7 +425,6 @@ resolve types of function argument variables."
               (phpinspect--get-pattern-type-from-assignments
                resolvecontext concat-pattern php-block assignments
                type-resolver function-arg-list))))
-
     ;; return
     result))
 
