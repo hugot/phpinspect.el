@@ -94,7 +94,9 @@ use UsedTrait;
 
 private PropertyType $property;
 
-/** @param ParamAnnotation $par */
+/** @param ParamAnnotation $par
+@throws ThrowAnnotationException */
+*/
 public function makeThing($par): Thing
 {
 if ((new Monkey())->tree() === true) {
@@ -116,7 +118,8 @@ if ($param instanceof InstanceOffed) {
                        '("Cheese" "Bacon" "Ham" "Bagel" "Monkey" "ExtendedThing"
                          "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing"
                          "InnerFunctionParam" "PropertyType" "InstanceOffed"
-                         "NestedArray" "UsedTrait" "VarAnnotation" "ParamAnnotation"))
+                         "NestedArray" "UsedTrait" "VarAnnotation" "ParamAnnotation"
+                         "ThrowAnnotationException"))
                       #'string<))
              (sort used-types (lambda (s1 s2) (string< (phpinspect-name-string s1) (phpinspect-name-string s2))))))))
 

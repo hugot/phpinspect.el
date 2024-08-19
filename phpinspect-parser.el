@@ -499,6 +499,9 @@ nature like argument lists"
               ((string= annotation-name "method")
                (cons :method-annotation
                      (phpinspect--parse-annotation-parameters 4)))
+              ((string= annotation-name "throws")
+               (cons :throws-annotation
+                     (phpinspect--parse-annotation-parameters 1)))
               (t
                (list :annotation annotation-name))))
     (list :annotation nil)))

@@ -138,7 +138,7 @@ function (think \"new\" statements, return types etc.)."
   (phpinspect--log "Indexing function")
   (let* ((php-func (cadr scope))
          (declaration (cadr php-func))
-         name type arguments)
+         name type arguments throws used-types)
 
     (pcase-setq `(,name ,arguments ,type)
                 (phpinspect--index-function-declaration
@@ -159,17 +159,26 @@ function (think \"new\" statements, return types etc.)."
           (phpinspect--apply-annotation-type return-annotation-type type type-resolver)
         (setq type (funcall type-resolver (phpinspect--make-type :name return-annotation-type)))))
 
+    (when-let ((throw-annotations (seq-filter #'phpinspect-throws-annotation-p comment-before)))
+      (dolist (tr throw-annotations)
+        (when-let ((type (phpinspect-var-annotation-type tr)))
+          (push (funcall type-resolver (phpinspect--make-type :name type)) throws)
+          (push type used-types))))
+
+
     (when add-used-types
-      (let ((used-types (phpinspect--find-used-types-in-tokens
-                         `(,(seq-find #'phpinspect-block-p php-func)))))
-        (when type (push (phpinspect--type-bare-name type) used-types))
-        (funcall add-used-types used-types)))
+      (setq used-types (nconc used-types
+                              (phpinspect--find-used-types-in-tokens
+                               `(,(seq-find #'phpinspect-block-p php-func)))))
+      (when type (push (phpinspect--type-bare-name type) used-types))
+      (funcall add-used-types used-types))
 
     (phpinspect--log "Creating function object")
     (phpinspect--make-function
      :scope `(,(car scope))
      :token php-func
      :name (concat (if namespace (concat namespace "\\") "") name)
+     :throws throws
      :return-type (or type phpinspect--null-type)
      :arguments arguments)))
 
@@ -563,6 +572,7 @@ NAMESPACE will be assumed the root namespace if not provided"
 Covers usage of types:
 - with the \"new\" keyword
 - as function argument/return types
+- Types used in annotations (@var, @throws etc.)
 
 see `phpinspect--index-class' for indexation of types used in
 classes (like property typehints).
@@ -583,7 +593,9 @@ Returns a list of type name strings."
               ((phpinspect-comment-p token)
                (setq used-types-rear
                      (nconc used-types-rear (phpinspect--find-used-types-in-tokens (cdr token)))))
-              ((and (or (phpinspect-var-annotation-p token) (phpinspect-param-annotation-p token))
+              ((and (or (phpinspect-var-annotation-p token)
+                        (phpinspect-param-annotation-p token)
+                        (phpinspect-throws-annotation-p token))
                     (phpinspect-var-annotation-type token))
                (setq used-types-rear
                      (setcdr used-types-rear (cons (phpinspect-var-annotation-type token) nil))))

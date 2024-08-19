@@ -233,6 +233,10 @@ NAMESPACE may be nil, or a string with a namespace FQN."
                :type symbol
                :documentation
                "A symbol associated with the name of the function")
+  (throws nil
+          :type list
+          :documentation "List of exception types that function throws (according to doc
+block).")
   (token nil
          :type phpinspect-function-p
          :documentation
