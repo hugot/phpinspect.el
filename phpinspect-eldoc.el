@@ -186,14 +186,14 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
         (setf (phpinspect--resolvecontext-subject rctx)
               (mapcar #'phpinspect-meta-token (butlast statement 2)))
 
-        (let* ((type-of-previous-statement
+        (when-let* ((type-of-previous-statement
                      (phpinspect-resolve-type-from-context rctx))
-               (method-name (cadadr (phpinspect-meta-token (car match-result))))
-               (class (phpinspect-rctx-get-or-create-cached-project-class
-                       rctx type-of-previous-statement 'no-enqueue))
-               (method (if static
-                           (phpinspect--class-get-static-method class method-name)
-                         (phpinspect--class-get-method class method-name))))
+                    (method-name (cadadr (phpinspect-meta-token (car match-result))))
+                    (class (phpinspect-rctx-get-or-create-cached-project-class
+                            rctx type-of-previous-statement 'no-enqueue))
+                    (method (if static
+                                (phpinspect--class-get-static-method class method-name)
+                              (phpinspect--class-get-method class method-name))))
 
           (when method
             (phpinspect-make-function-doc :fn method :arg-pos arg-pos))))
