@@ -170,20 +170,20 @@
         (push token existing-end)
       (puthash end (list token-meta) ends))
 
-    (puthash token token-meta meta)
+     (puthash token token-meta meta)
 
-    (when (and last-token-start
-               (<= start last-token-start))
-      (let ((child)
-            (stack (phpinspect-bmap-token-stack bmap)))
-        (while (and (car stack) (>= (phpinspect-meta-start (car stack)) start))
-          (setq child (pop stack))
-          (phpinspect-meta-set-parent child token-meta))
+     (when (and last-token-start
+                (<= start last-token-start))
+       (let ((child)
+             (stack (phpinspect-bmap-token-stack bmap)))
+         (while (and (car stack) (>= (phpinspect-meta-start (car stack)) start))
+           (setq child (pop stack))
+           (phpinspect-meta-set-parent child token-meta))
 
-          (setf (phpinspect-bmap-token-stack bmap) stack)))
+         (setf (phpinspect-bmap-token-stack bmap) stack)))
 
-    (setf (phpinspect-bmap-last-token-start bmap) start)
-    (push token-meta (phpinspect-bmap-token-stack bmap))))
+     (setf (phpinspect-bmap-last-token-start bmap) start)
+     (push token-meta (phpinspect-bmap-token-stack bmap))))
 
 (define-inline phpinspect-pctx-register-token (pctx token start end)
   (inline-letevals (pctx)
@@ -208,7 +208,7 @@
 (cl-defmethod phpinspect-bmap-token-starting-at ((bmap phpinspect-bmap) point)
   (let ((overlay (phpinspect-bmap-overlay-at-point bmap point)))
     (if overlay
-          (phpinspect-bmap-token-starting-at overlay point)
+        (phpinspect-bmap-token-starting-at overlay point)
       (gethash point (phpinspect-bmap-starts bmap)))))
 
 (cl-defmethod phpinspect-bmap-tokens-ending-at ((overlay (head overlay)) point)

@@ -61,6 +61,9 @@ thrown.")
   (whitespace-before ""
                      :type string))
 
+(define-inline phpinspect-pctx-whitespace-before-length (ctx)
+  (inline-quote (length (phpinspect-pctx-whitespace-before ,ctx))))
+
 (defmacro phpinspect-with-parse-context (ctx &rest body)
   (declare (indent 1))
   (let ((old-ctx (gensym))
@@ -78,13 +81,14 @@ thrown.")
          (progn
            (unless ,completed (phpinspect-pctx-cancel ,ctx))
            (setq phpinspect-parse-context ,old-ctx))))))
+
 (defmacro phpinspect-pctx-save-whitespace (pctx &rest body)
   (declare (indent 1))
   (let ((save-sym (gensym)))
     `(let ((,save-sym (phpinspect-pctx-whitespace-before ,pctx)))
        (unwind-protect
            (progn
-             (setf (phpinspect-pctx-whitespace-before ,pctx) nil)
+             (setf (phpinspect-pctx-whitespace-before ,pctx) "")
              ,@body)
          (setf (phpinspect-pctx-whitespace-before ,pctx) ,save-sym)))))
 
@@ -120,8 +124,9 @@ thrown.")
          (throw 'phpinspect-parse-interrupted nil))))))
 
 (define-inline phpinspect-pctx-register-whitespace (pctx whitespace)
-  (inline-quote
-   (setf (phpinspect-pctx-whitespace-before ,pctx) ,whitespace)))
+  (inline-letevals (pctx)
+    (inline-quote
+     (setf (phpinspect-pctx-whitespace-before ,pctx) ,whitespace))))
 
 (defsubst phpinspect-pctx-consume-whitespace (pctx)
   (let ((whitespace (phpinspect-pctx-whitespace-before pctx)))

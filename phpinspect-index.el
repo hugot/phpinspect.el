@@ -197,18 +197,23 @@ function (think \"new\" statements, return types etc.)."
   (seq-filter #'phpinspect-var-annotation-p token))
 
 (define-inline phpinspect-var-annotation-variable (annotation)
-  (inline-quote (cadr (caddr ,annotation))))
+  "Return ANNOTATION's variable name if and only if its structure is correct."
+  (inline-letevals ((variable-name (inline-quote (cadr (caddr ,annotation)))))
+    (inline-quote (and (stringp ,variable-name)
+                       ,variable-name))))
 
 (define-inline phpinspect-var-annotation-type (annotation)
-  (inline-quote (cadadr ,annotation)))
+  "Returns ANNOTATION's variable type if and only if its structure is correct."
+  (inline-letevals ((variable-type (inline-quote (cadadr ,annotation))))
+    (inline-quote (and (stringp ,variable-type) ,variable-type))))
 
 (defun phpinspect--find-var-annotation-for-variable (annotation-list variable &optional predicate)
   (catch 'return
     (dolist (annotation annotation-list)
       (when (and (or (phpinspect-var-annotation-p annotation) (and predicate (funcall predicate annotation)))
                  (phpinspect-var-annotation-variable annotation)
-                 (string= (phpinspect-var-annotation-variable annotation)
-                          variable))
+                 (equal (phpinspect-var-annotation-variable annotation)
+                        variable))
         (throw 'return annotation)))
     nil))
 

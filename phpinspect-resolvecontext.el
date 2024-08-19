@@ -158,7 +158,7 @@ it would no longer be valid for the new enclosing tokens."
             (throw 'break nil)))))
 
     (phpinspect--log "Initial resolvecontext subject token: %s"
-             (phpinspect-meta-token subject))
+                     (phpinspect-meta-token subject))
     (when subject
       (setq subject-token
             (mapcar #'phpinspect-meta-token
@@ -168,6 +168,7 @@ it would no longer be valid for the new enclosing tokens."
       (phpinspect--log "Ultimate resolvecontext subject token: %s. Parent: %s"
                        subject-token (phpinspect-meta-token
                                       (phpinspect-meta-parent subject)))
+
 
       ;; Iterate through subject parents to build stack of enclosing tokens
       (let ((parent (phpinspect-meta-parent subject)))

@@ -26,6 +26,7 @@
 (require 'ert)
 (require 'phpinspect-parser)
 (require 'phpinspect-buffer)
+(require 'phpinspect-imports)
 (require 'phpinspect-test-env
          (expand-file-name "phpinspect-test-env.el"
                            (file-name-directory (macroexp-file-name))))
@@ -262,7 +263,6 @@ class YYY {
       (kill-line))
 
     (setq parsed-after (phpinspect-buffer-parse buffer 'no-interrupt))
-
     (should (equal parsed parsed-after))
 
     ;; Delete namespace declaration
@@ -286,6 +286,68 @@ class YYY {
 
     (should (equal parsed parsed-after))))
 
+(ert-deftest phpinspect-buffer-parse-incrementally-use ()
+  (with-temp-buffer
+  (let* ((buffer (phpinspect-make-buffer
+                  :buffer (current-buffer))))
+
+
+    (setq-local phpinspect-current-buffer buffer)
+
+    (insert
+     "<?php
+
+namespace XXX;
+
+use ZZZ\\zzz;
+use AAA\\BBB;  // comment
+
+use CCC;
+
+")
+
+    (add-hook 'after-change-functions #'phpinspect-after-change-function)
+    (phpinspect-buffer-parse buffer 'no-interrupt)
+    (let ((switch nil)
+          (delta 0))
+
+      (dotimes (i 100)
+        (if switch
+            (progn
+              (setq delta 0)
+              (goto-char 44)
+              (insert "hh")
+              (should (phpinspect-edtrack-edits (phpinspect-buffer-edit-tracker buffer)))
+              (should (= 51 (phpinspect-edtrack-current-position-at-point (phpinspect-buffer-edit-tracker buffer) 49))))
+          (progn
+            (setq delta (- 2))
+            (goto-char 44)
+            (delete-char 2)
+            (should (phpinspect-edtrack-edits (phpinspect-buffer-edit-tracker buffer)))
+            (should (= 47 (phpinspect-edtrack-current-position-at-point (phpinspect-buffer-edit-tracker buffer) 49)))))
+
+        (setq switch (not switch))
+
+        (phpinspect-buffer-parse buffer 'no-interrupt)
+
+    (let ((use (phpinspect-find-first-use (phpinspect-meta-find-first-child-matching-token
+                                           (phpinspect-buffer-root-meta buffer)
+                                           #'phpinspect-namespace-p))))
+
+      (should use)
+      (should (= 2 (length (phpinspect-meta-whitespace-before use))))
+      (should (= 24 (phpinspect-meta-start use)))
+      (should (= 36 (phpinspect-meta-end use)))
+
+      (let ((sibling (phpinspect-meta-find-right-sibling use)))
+        (should sibling)
+        (should (= 37 (phpinspect-meta-start sibling)))
+        (should (= (+ delta 49) (phpinspect-meta-end sibling)))
+
+        (let ((2nd-sibling (phpinspect-meta-find-right-sibling (phpinspect-meta-find-right-sibling sibling))))
+          (should 2nd-sibling)
+          (should (= (+ delta 63) (phpinspect-meta-start 2nd-sibling)))
+          (should (= (+ delta 71) (phpinspect-meta-end 2nd-sibling)))))))))))
 
 (ert-deftest phpinspect-buffer-index-classes ()
   (let* ((buffer (phpinspect-make-buffer :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))

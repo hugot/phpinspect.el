@@ -38,10 +38,6 @@
   (inline-letevals (string)
     (inline-quote
      (progn
-       (when phpinspect-parse-context
-         (phpinspect-pctx-register-whitespace
-          phpinspect-parse-context
-          (substring ,string (- (length ,string) 1) (length ,string))))
        (substring ,string 0 (- (length ,string) 1))))))
 
 (defsubst phpinspect-munch-token-without-attribs (string token-keyword)
@@ -178,11 +174,13 @@ token is \";\", which marks the end of a statement in PHP."
            tokens))))
 
 
-  (defun phpinspect-make-incremental-parser-function (name tree-type handlers &optional delimiter-predicate delimiter-condition)
+  (defun phpinspect-make-incremental-parser-function
+      (name tree-type handlers &optional delimiter-predicate delimiter-condition)
     "Like `phpinspect-make-parser-function', but returned function
 is able to reuse an already parsed tree."
     (cl-assert (symbolp delimiter-predicate))
-    `(defun ,(phpinspect-parser-func-name name "incremental") (context buffer max-point &optional skip-over continue-condition root)
+    `(defun ,(phpinspect-parser-func-name name "incremental")
+         (context buffer max-point &optional skip-over continue-condition root)
        (with-current-buffer buffer
          (let* ((tokens (cons ,tree-type nil))
                 (tokens-rear tokens)
@@ -201,7 +199,11 @@ is able to reuse an already parsed tree."
                 (delta)
                 (token))
            (when skip-over (forward-char skip-over))
+
            (phpinspect-pctx-save-whitespace context
+             (when (looking-at (phpinspect-handler-regexp whitespace))
+               (,(phpinspect-handler-func-name 'whitespace) (match-string 0)))
+
              (while (and (< (point) max-point)
                          (if continue-condition (funcall continue-condition) t)
                          (not ,(if delimiter-predicate
@@ -245,10 +247,22 @@ is able to reuse an already parsed tree."
                             (when token
                               (phpinspect-pctx-register-token context token start-position (point)))))
                         handlers)
-                     (t (forward-char)))
+                     ;; When no handlers match, whitespace can be discarded (if
+                     ;; we call forward-char, it probably won't be accurate
+                     ;; anymore anyways. One reason that no handlers matched
+                     ;; could be that this parser does not have the whitespace
+                     ;; handler and as such does not contain relevant
+                     ;; whitespace.
+                     (t (phpinspect-pctx-consume-whitespace context)
+                        (forward-char)))
                (when token
                  (setq tokens-rear (setcdr tokens-rear (cons token nil)))
-                 (setq token nil))))
+                 (setq token nil)))
+
+             ;; When there is unconsumed whitespace, move back. It should not be
+             ;; included in the current parent token's length.
+             (backward-char (length (phpinspect-pctx-consume-whitespace context))))
+
            (when root
              (phpinspect-pctx-register-token context tokens root-start (point)))
 
@@ -446,12 +460,12 @@ nature like argument lists"
                     (current-buffer)
                     max-point
                     (length start-token)
-                    (lambda () (not (and (char-equal (char-after) ?\)) (setq complete-list t)))))))
+                    (lambda () (not (and (char-equal (char-after) ?\)) (setq complete-list (point))))))))
 
     (if complete-list
         ;; Prevent parent-lists (if any) from exiting by skipping over the
         ;; ")" character
-        (forward-char)
+        (goto-char (+ complete-list 1))
       (setcar php-list :incomplete-list))
     php-list))
 
@@ -663,11 +677,11 @@ static keywords with the same meaning as in a class block."
   (let* ((complete-block nil)
          (continue-condition (lambda ()
                                (not (and (char-equal (char-after) ?})
-                                         (setq complete-block t)))))
+                                         (setq complete-block (point))))))
          (parsed (phpinspect--parse-block-without-scopes
-                  (current-buffer) max-point (length start-token) continue-condition 'root)))
+                  (current-buffer) max-point (length start-token) continue-condition)))
     (if complete-block
-        (forward-char)
+        (goto-char (+ complete-block 1))
       (setcar parsed :incomplete-block))
     parsed))
 
@@ -685,11 +699,11 @@ static keywords with the same meaning as in a class block."
   (let* ((complete-block nil)
          (continue-condition (lambda ()
                                (not (and (char-equal (char-after) ?})
-                                         (setq complete-block t)))))
+                                         (setq complete-block (point))))))
          (parsed (phpinspect--parse-class-block
-                  (current-buffer) max-point (length start-token) continue-condition 'root)))
+                  (current-buffer) max-point (length start-token) continue-condition)))
     (if complete-block
-        (forward-char)
+        (goto-char (+ complete-block 1))
       (setcar parsed :incomplete-block))
     parsed))
 
@@ -704,14 +718,14 @@ static keywords with the same meaning as in a class block."
                                ;; When we encounter a closing brace for this
                                ;; block, we can mark the block as complete.
                                (not (and (char-equal (char-after) ?})
-                                         (setq complete-block t)))))
+                                         (setq complete-block (point))))))
          (parsed (phpinspect--parse-block
                   (current-buffer) max-point (length start-token) continue-condition)))
     (if complete-block
         ;; After meeting the char-after requirement above, we need to move
         ;; one char forward to prevent parent-blocks from exiting because
         ;; of the same char.
-        (forward-char)
+        (goto-char (+ complete-block 1))
       (setcar parsed :incomplete-block))
     parsed))
 
@@ -775,10 +789,11 @@ Returns the consumed text string without face properties."
     (if (or (phpinspect-end-of-token-p (car (last declaration)))
             (not (looking-at (phpinspect-handler-regexp block))))
         (list :function declaration)
-      (list :function
-            declaration
-            (phpinspect--block-without-scopes-handler
-             (char-to-string (char-after)) max-point)))))
+      `(:function
+        ,declaration
+       ,@(cdr (phpinspect--parse-function-body (current-buffer) max-point))))))
+;; (phpinspect--block-without-scopes-handler
+;;  (char-to-string (char-after)) max-point)))))
 
 (phpinspect-defparser scope-public
   :tree-keyword "public"
@@ -869,9 +884,15 @@ the properties of the class"
                 max-point
                 (lambda () (not (char-equal (char-after) ?{)))
                 'root)
-           ,@(when (looking-at (phpinspect--class-block-handler-regexp))
-                (list (phpinspect--class-block-handler
-                       (char-to-string (char-after)) max-point)))))
+           ,@(cdr (phpinspect--parse-class-body (current-buffer) max-point nil))))
+
+(phpinspect-defparser class-body
+  :handlers '(whitespace comment class-block)
+  :delimiter-predicate #'phpinspect-block-p)
+
+(phpinspect-defparser function-body
+  :handlers '(whitespace comment block-without-scopes)
+  :delimiter-predicate #'phpinspect-block-p)
 
 (phpinspect-defparser root
   :tree-keyword "root"
