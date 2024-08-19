@@ -172,3 +172,42 @@ class Baz {
     private Foo $foo;
 }"
                          (buffer-string)))))))
+
+(ert-deftest phpinspect-fix-imports-aliased ()
+  (let ((project (phpinspect--make-dummy-composer-project)))
+    (with-temp-buffer
+      (let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
+                                             :-project project)))
+
+        (insert "<?php
+
+namespace Not\\App;
+
+use App\\Foo as FooBar;
+
+function bar(): Bar {}
+
+class Baz {
+    private FooBar $foo;
+    private Foo $notAliased;
+}")
+        ;; Ensure buffer is made aware of changes
+        (setq phpinspect-current-buffer buffer)
+        (add-hook 'after-change-functions #'phpinspect-after-change-function)
+
+        (phpinspect-fix-imports)
+        (should (string= "<?php
+
+namespace Not\\App;
+
+use App\\Bar;
+use App\\Foo as FooBar;
+use App\\Foo;
+
+function bar(): Bar {}
+
+class Baz {
+    private FooBar $foo;
+    private Foo $notAliased;
+}"
+                         (buffer-string)))))))

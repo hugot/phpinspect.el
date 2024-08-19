@@ -127,8 +127,56 @@ NAMESPACE-META itself is returned without alterations."
      parent-token)
    (lambda (token)
      (and (phpinspect-use-p token)
-          (phpinspect-word-p (cadr token))
-          (phpinspect--type= import-type (phpinspect-use-name-to-type (cadadr token)))))))
+          (eq (car (phpinspect--use-to-type-cons token))
+              (phpinspect--type-bare-name-sym import-type))))))
+
+(define-inline phpinspect-codify-token-delimiters (token)
+  (inline-letevals (token)
+    (inline-quote
+     (cond
+      ((phpinspect-namespace-p ,token) '("namespace" . ""))
+      ((phpinspect-use-p ,token) '("use" . ""))
+      ((phpinspect-annotation-p ,token) '("@" . ""))
+      ((phpinspect-root-p ,token) '("<?php" . ""))
+      ((phpinspect-token-type-p ,token :string) '("'" . "'"))
+      ((phpinspect-block-p ,token) '("{" . "}"))
+      ((phpinspect-list-p ,token) '("(" . ")"))
+      ((phpinspect-array-p ,token) '("[" . "]"))
+      ((phpinspect-object-attrib-p ,token) '("->" . ""))
+      ((phpinspect-variable-p ,token) '("$" . ""))
+      ((phpinspect-doc-block-p ,token) '("/**" . "**/"))))))
+
+(defun phpinspect-codify-token (token-meta)
+  "Pretty print TOKEN-META.
+
+Note: this function is very imcomplete and not guaranteed to work
+correctly. It might result in deleted code when used in
+unforeseen scenario's."
+  (let ((delimiters (phpinspect-codify-token-delimiters (phpinspect-meta-token token-meta))))
+
+    (when delimiters
+      (insert (car delimiters)))
+
+    ;; FIXME: if this code is ever to be used for broader cases than formatting
+    ;; use statements, it will have to support a much wider array of token types
+    ;; and should be tested extensively.
+    (phpinspect-splayt-traverse-lr (child (phpinspect-meta-children token-meta))
+      (let ((token (phpinspect-meta-token child)))
+        (cond ((phpinspect-word-p token)
+               (insert (concat " " (cadr token))))
+              ((phpinspect-terminator-p token)
+               (insert (cadr token)))
+              ((and (listp token) (keywordp (car token)))
+               (phpinspect-codify-token child))
+              (t (error "Unable to determine code format of object %s" token)))))
+
+    (when delimiters
+      (insert (cdr delimiters)))))
+
+(defun phpinspect-codify-token-to-string (token-meta)
+  (with-temp-buffer
+    (phpinspect-codify-token token-meta)
+    (buffer-string)))
 
 (defun phpinspect-remove-unneeded-use-statements (types buffer imports parent-token)
   (dolist (import imports)
@@ -214,9 +262,10 @@ group."
           (goto-char start)
           (delete-region start end)
           (dolist (statement statements)
-            (insert (format "use %s;%c" (car statement) ?\n)))
+            (phpinspect-codify-token (cdr statement))
+            (insert-char ?\n))
 
-          (if (and (looking-at "[[:blank:]\n]+"))
+          (if (looking-at "[[:blank:]\n]+")
               ;; Delete excess trailing whitespace (there's more than 2 between the
               ;; last use statement and the next token)
               (when (< 1 (- (match-end 0) (match-beginning 0)))
@@ -224,7 +273,7 @@ group."
                 (insert-char ?\n))
             ;; Insert an extra newline (there's only one between the last use
             ;; statement and the next token)
-            (insert-char ?\n)))))))
+              (insert-char ?\n)))))))
 
 (defun phpinspect-fix-imports ()
   "Find types that are used in the current buffer and make sure
@@ -298,7 +347,7 @@ that there are import (\"use\") statements for them."
              used-types buffer (append imports namespace-imports) project token-meta)
 
             (phpinspect-remove-unneeded-use-statements
-             used-types buffer namespace-imports token-meta)
+             used-types buffer (append imports namespace-imports) token-meta)
 
             (let ((parent (phpinspect-meta-find-parent-matching-token
                            token-meta #'phpinspect-namespace-or-root-p)))

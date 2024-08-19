@@ -46,6 +46,7 @@
             :documentation
             "When the type is a collection, this attribute is set to the type
 that the collection is expected to contain")
+  (-bare-name-sym-slot nil)
   (fully-qualified nil
                    :type bool
                    :documentation
@@ -131,6 +132,13 @@ See https://wiki.php.net/rfc/static_return_type ."
 (cl-defmethod phpinspect--type-bare-name ((type phpinspect--type))
   "Return just the name, without namespace part, of TYPE."
   (phpinspect--get-bare-class-name-from-fqn (phpinspect--type-name type)))
+
+(define-inline phpinspect--type-bare-name-sym (type)
+  "Return a `phpinspect-name' of the name, without namespace part, of TYPE."
+  (inline-letevals (type)
+    (inline-quote
+     (with-memoization (phpinspect--type--bare-name-sym-slot ,type)
+       (phpinspect-intern-name (phpinspect--type-bare-name ,type))))))
 
 (cl-defmethod phpinspect--type= ((type1 phpinspect--type) (type2 phpinspect--type))
   (eq (phpinspect--type-name-symbol type1) (phpinspect--type-name-symbol type2)))
