@@ -599,6 +599,16 @@ Returns a list of type name strings."
                     (phpinspect-var-annotation-type token))
                (setq used-types-rear
                      (setcdr used-types-rear (cons (phpinspect-var-annotation-type token) nil))))
+
+              ((and (phpinspect-list-p token)
+                    (phpinspect-word-p (cadr token))
+                    (or
+                     ;; type cast
+                     (= 1 (length (cdr token)))
+                     ;; Try/catch
+                     (and (phpinspect-word-p previous-token)
+                          (string= "catch" (cadr previous-token)))))
+               (setq used-types-rear (setcdr used-types-rear (cons (cadadr token) nil))))
               ((and (phpinspect-static-attrib-p token)
                     (phpinspect-word-p previous-token))
                (let ((type (cadr previous-token)))

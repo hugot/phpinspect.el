@@ -105,8 +105,11 @@ if ((new Monkey())->tree() === true) {
 return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->antiPotato(new OtherThing(function (InnerFunctionParam $param) {
 if ($param instanceof InstanceOffed) {
 /** @var VarAnnotation $bing */
-  $bing = [ 'bong' => [ 'nested' => NestedArray::call(), ], ];
+try {
+  $bing = [ 'bong' => [ 'nested' => (CastedType) NestedArray::call(), ], ];
+} catch (CaughtException $e) {
 // nothing
+}
 }
 })))));
 }")))
@@ -119,7 +122,7 @@ if ($param instanceof InstanceOffed) {
                          "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing"
                          "InnerFunctionParam" "PropertyType" "InstanceOffed"
                          "NestedArray" "UsedTrait" "VarAnnotation" "ParamAnnotation"
-                         "ThrowAnnotationException"))
+                         "ThrowAnnotationException" "CaughtException" "CastedType"))
                       #'string<))
              (sort used-types (lambda (s1 s2) (string< (phpinspect-name-string s1) (phpinspect-name-string s2))))))))
 
