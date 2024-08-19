@@ -260,10 +260,11 @@ group."
       (with-current-buffer (phpinspect-buffer-buffer buffer)
         (save-excursion
           (goto-char start)
-          (delete-region start end)
-          (dolist (statement statements)
-            (phpinspect-codify-token (cdr statement))
-            (insert-char ?\n))
+          (combine-after-change-calls
+            (delete-region start end)
+              (dolist (statement statements)
+                (phpinspect-codify-token (cdr statement))
+                (insert-char ?\n)))
 
           (if (looking-at "[[:blank:]\n]+")
               ;; Delete excess trailing whitespace (there's more than 2 between the
@@ -279,6 +280,7 @@ group."
   "Find types that are used in the current buffer and make sure
 that there are import (\"use\") statements for them."
   (interactive)
+
   (if phpinspect-current-buffer
       (let* ((buffer phpinspect-current-buffer)
              ;; use buffer-reparse to ensure fully structurally correct
@@ -345,6 +347,11 @@ that there are import (\"use\") statements for them."
 
             (phpinspect-add-use-statements-for-missing-types
              used-types buffer (append imports namespace-imports) project token-meta)
+
+            (with-current-buffer (get-buffer-create "attempt-before-namespace-removal-code")
+              (erase-buffer)
+              (insert (with-current-buffer (phpinspect-buffer-buffer buffer) (buffer-string))))
+
 
             (phpinspect-remove-unneeded-use-statements
              used-types buffer (append imports namespace-imports) token-meta)

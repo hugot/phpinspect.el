@@ -92,6 +92,8 @@
 
 use UsedTrait;
 
+private array $bong = [ PropertyArray::class => PropertyArrayItem::class ];
+
 private PropertyType $property;
 
 /** @param ParamAnnotation $par
@@ -106,7 +108,7 @@ return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->anti
 if ($param instanceof InstanceOffed) {
 /** @var VarAnnotation $bing */
 try {
-  $bing = [ 'bong' => [ 'nested' => (CastedType) NestedArray::call(), ], ];
+  $bing = [ ArrayKey::class => [ NestedArrayKey::class => (CastedType) NestedArray::call(), 'ba' => ArrayItem::class ], ];
 } catch (CaughtException $e) {
 // nothing
 }
@@ -122,7 +124,9 @@ try {
                          "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing"
                          "InnerFunctionParam" "PropertyType" "InstanceOffed"
                          "NestedArray" "UsedTrait" "VarAnnotation" "ParamAnnotation"
-                         "ThrowAnnotationException" "CaughtException" "CastedType"))
+                         "ThrowAnnotationException" "CaughtException" "CastedType"
+                         "NestedArrayKey" "ArrayKey" "ArrayItem" "PropertyArray"
+                         "PropertyArrayItem" "array"))
                       #'string<))
              (sort used-types (lambda (s1 s2) (string< (phpinspect-name-string s1) (phpinspect-name-string s2))))))))
 

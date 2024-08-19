@@ -261,7 +261,9 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
        (t
         (setq variable-name (cadr (seq-find #'phpinspect-variable-p scope)))))
 
-      (phpinspect--log "calling resolver from index-variable-from-scope")
+      (when add-used-types
+        (funcall add-used-types (phpinspect--find-used-types-in-tokens scope)))
+
       (phpinspect--make-variable
        ;; Static class variables are always prefixed with dollar signs when
        ;; referenced.
@@ -589,6 +591,7 @@ Returns a list of type name strings."
     (while tokens
       (let ((token (pop tokens))
             (previous-token (car previous-tokens)))
+
         (cond ((and (phpinspect-word-p previous-token)
                     (member (cadr previous-token) `("new" "instanceof"))
                     (phpinspect-word-p token))
@@ -633,7 +636,12 @@ Returns a list of type name strings."
                      (nconc used-types-rear
                             (phpinspect--find-used-types-in-tokens (cdr (phpinspect-function-block token))))
                      used-types-rear (last used-types-rear)))
-              ((or (phpinspect-list-p token) (phpinspect-block-p token) (phpinspect-array-p token))
+              ((or (phpinspect-list-p token)
+                   (phpinspect-block-p token)
+                   (phpinspect-array-p token)
+                   (phpinspect-scope-p token)
+                   (phpinspect-static-p token)
+                   (phpinspect-const-p token))
                (setq used-types-rear
                      (nconc used-types-rear (phpinspect--find-used-types-in-tokens (cdr token)))
                      used-types-rear (last used-types-rear))))

@@ -311,7 +311,7 @@ use CCC;
     (let ((switch nil)
           (delta 0))
 
-      (dotimes (i 100)
+      (dotimes (_i 100)
         (if switch
             (progn
               (setq delta 0)
