@@ -259,6 +259,9 @@ as first element and the type as second element.")
                "A phpinspect--type object representing the the
 return type of the function."))
 
+(defun phpinspect--function-argument-type (fn argument-name)
+  (alist-get argument-name (phpinspect--function-arguments fn) nil nil #'string=))
+
 (defun phpinspect--function-anonyous-p (fn)
   (eq (phpinspect-intern-name "anonymous") (phpinspect--function-name-symbol fn)))
 

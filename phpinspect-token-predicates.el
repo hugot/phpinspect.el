@@ -148,6 +148,9 @@ Type can be any of the token types returned by
 (defun phpinspect-var-annotation-p (token)
   (phpinspect-token-type-p token :var-annotation))
 
+(defun phpinspect-param-annotation-p (token)
+  (phpinspect-token-type-p token :param-annotation))
+
 (defun phpinspect-return-annotation-p (token)
   (phpinspect-token-type-p token :return-annotation))
 

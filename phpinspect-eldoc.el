@@ -242,8 +242,8 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                 (let ((doc-string
                        (concat "$" (truncate-string-to-width
                                     (car arg) phpinspect-eldoc-word-width)
-                               (if (cadr arg) " " "")
-                               (phpinspect--display-format-type-name (or (cadr arg) "")))))
+                               (if (cdr arg) " " "")
+                               (phpinspect--display-format-type-name (or (cdr arg) "")))))
                   (when (and arg-pos (= arg-count arg-pos))
                     (setq doc-string
                           (propertize

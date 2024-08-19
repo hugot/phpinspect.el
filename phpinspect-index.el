@@ -37,20 +37,35 @@
          (cadr scope))
         (t nil)))
 
-(defun phpinspect--index-function-arg-list (type-resolver arg-list &optional add-used-types)
+(defun phpinspect--index-function-arg-list (type-resolver arg-list &optional add-used-types comment-before)
   (let ((arg-index)
         (current-token)
+        param-annotation
         (arg-list (cl-copy-list arg-list)))
     (while (setq current-token (pop arg-list))
       (cond ((and (phpinspect-word-p current-token)
                   (phpinspect-variable-p (car arg-list)))
-             (push `(,(cadr (pop arg-list))
-                     ,(funcall type-resolver (phpinspect--make-type :name (cadr current-token))))
+             (push (cons (cadr (pop arg-list))
+                         (funcall type-resolver
+                                  (phpinspect--make-type :name (cadr current-token))))
                    arg-index)
              (when add-used-types (funcall add-used-types (list (cadr current-token)))))
+            ((and (phpinspect-variable-p (car arg-list))
+                  comment-before
+                  (setq param-annotation
+                        (phpinspect--find-var-annotation-for-variable
+                         comment-before (cadr (car arg-list)) #'phpinspect-param-annotation-p)))
+             (push (cons (cadr (car arg-list))
+                         (funcall type-resolver
+                                  (phpinspect--make-type
+                                   :name (phpinspect-var-annotation-type param-annotation))))
+                   arg-index)
+
+             (when add-used-types
+               (funcall add-used-types
+                        (list (phpinspect-var-annotation-type param-annotation)))))
             ((phpinspect-variable-p (car arg-list))
-             (push `(,(cadr (pop arg-list))
-                     nil)
+             (push (cons (cadr (pop arg-list)) nil)
                    arg-index))))
     (nreverse arg-index)))
 
@@ -60,7 +75,7 @@ of TYPE, if available."
   (or (not type)
       (phpinspect--type= type phpinspect--object-type)))
 
-(defun phpinspect--index-function-declaration (declaration type-resolver add-used-types)
+(defun phpinspect--index-function-declaration (declaration type-resolver add-used-types &optional comment-before)
   (let (current name function-args return-type)
     (catch 'break
       (while (setq current (pop declaration))
@@ -71,7 +86,7 @@ of TYPE, if available."
               ((phpinspect-list-p current)
                (setq function-args
                      (phpinspect--index-function-arg-list
-                      type-resolver current add-used-types))
+                      type-resolver current add-used-types comment-before))
 
                (when (setq return-type (seq-find #'phpinspect-word-p declaration))
                  (setq return-type (funcall type-resolver
@@ -127,7 +142,7 @@ function (think \"new\" statements, return types etc.)."
 
     (pcase-setq `(,name ,arguments ,type)
                 (phpinspect--index-function-declaration
-                 declaration type-resolver add-used-types))
+                 declaration type-resolver add-used-types comment-before))
 
     ;; FIXME: Anonymous functions should not be indexed! (or if they are, they
     ;; should at least not be visible from various UIs unless assigned to a
@@ -178,10 +193,10 @@ function (think \"new\" statements, return types etc.)."
 (define-inline phpinspect-var-annotation-type (annotation)
   (inline-quote (cadadr ,annotation)))
 
-(defun phpinspect--find-var-annotation-for-variable (annotation-list variable)
+(defun phpinspect--find-var-annotation-for-variable (annotation-list variable &optional predicate)
   (catch 'return
     (dolist (annotation annotation-list)
-      (when (and (phpinspect-var-annotation-p annotation)
+      (when (and (or (phpinspect-var-annotation-p annotation) (and predicate (funcall predicate annotation)))
                  (phpinspect-var-annotation-variable annotation)
                  (string= (phpinspect-var-annotation-variable annotation)
                           variable))
@@ -408,9 +423,8 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
             (phpinspect--log "Looking for variable type in constructor arguments (%s)"
                              variable)
             (let ((constructor-parameter-type
-                   (car (alist-get (phpinspect--variable-name variable)
-                                   (phpinspect--function-arguments constructor)
-                                   nil nil #'string=))))
+                   (phpinspect--function-argument-type
+                         constructor (phpinspect--variable-name variable))))
               (if constructor-parameter-type
                   (setf (phpinspect--variable-type variable)
                         (funcall type-resolver constructor-parameter-type))))))))
@@ -566,6 +580,13 @@ Returns a list of type name strings."
                (let ((type (cadr token)))
                  (when (not (string-match-p "\\\\" type))
                    (setq used-types-rear (setcdr used-types-rear (cons type nil))))))
+              ((phpinspect-comment-p token)
+               (setq used-types-rear
+                     (nconc used-types-rear (phpinspect--find-used-types-in-tokens (cdr token)))))
+              ((and (or (phpinspect-var-annotation-p token) (phpinspect-param-annotation-p token))
+                    (phpinspect-var-annotation-type token))
+               (setq used-types-rear
+                     (setcdr used-types-rear (cons (phpinspect-var-annotation-type token) nil))))
               ((and (phpinspect-static-attrib-p token)
                     (phpinspect-word-p previous-token))
                (let ((type (cadr previous-token)))

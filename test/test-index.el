@@ -70,8 +70,8 @@
                                                (:word "array")
                                                (:variable "things")))
                                                       (:block))
-                                   :arguments `(("untyped" nil)
-                                                ("things" ,(phpinspect--make-type :name "\\array"
+                                   :arguments `(("untyped" . nil)
+                                                ("things" . ,(phpinspect--make-type :name "\\array"
                                                                                   :collection t
                                                                                   :fully-qualified t)))
                                    :return-type phpinspect--null-type)))
@@ -94,13 +94,15 @@ use UsedTrait;
 
 private PropertyType $property;
 
-public function makeThing(): Thing
+/** @param ParamAnnotation $par */
+public function makeThing($par): Thing
 {
 if ((new Monkey())->tree() === true) {
    return new ExtendedThing();
 }
 return StaticThing::create(new ThingFactory())->makeThing((((new Potato())->antiPotato(new OtherThing(function (InnerFunctionParam $param) {
 if ($param instanceof InstanceOffed) {
+/** @var VarAnnotation $bing */
   $bing = [ 'bong' => [ 'nested' => NestedArray::call(), ], ];
 // nothing
 }
@@ -113,7 +115,8 @@ if ($param instanceof InstanceOffed) {
                       (copy-sequence
                        '("Cheese" "Bacon" "Ham" "Bagel" "Monkey" "ExtendedThing"
                          "StaticThing" "Thing" "ThingFactory" "Potato" "OtherThing"
-                         "InnerFunctionParam" "PropertyType" "InstanceOffed" "NestedArray" "UsedTrait"))
+                         "InnerFunctionParam" "PropertyType" "InstanceOffed"
+                         "NestedArray" "UsedTrait" "VarAnnotation" "ParamAnnotation"))
                       #'string<))
              (sort used-types (lambda (s1 s2) (string< (phpinspect-name-string s1) (phpinspect-name-string s2))))))))
 
@@ -163,12 +166,11 @@ if ($param instanceof InstanceOffed) {
              (should (= 2 (length (phpinspect--function-arguments method))))
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\array" :fully-qualified t)
-                      (car (alist-get
-                            "loose" (phpinspect--function-arguments method) nil nil #'string=))))
+                      (phpinspect--function-argument-type method "loose")))
+
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\bool" :fully-qualified t)
-                      (car (alist-get
-                            "fast" (phpinspect--function-arguments method) nil nil #'string=)))))
+                      (phpinspect--function-argument-type method "fast"))))
             ((string= (phpinspect--function-name method)
                       "hold")
              (should (phpinspect--type=
@@ -205,12 +207,10 @@ if ($param instanceof InstanceOffed) {
              (should (= 2 (length (phpinspect--function-arguments method))))
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\array" :fully-qualified t)
-                      (car (alist-get
-                            "loose" (phpinspect--function-arguments method) nil nil #'string=))))
+                      (phpinspect--function-argument-type method "loose")))
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\bool" :fully-qualified t)
-                      (car (alist-get
-                            "fast" (phpinspect--function-arguments method) nil nil #'string=)))))
+                      (phpinspect--function-argument-type method "fast"))))
             ((string= (phpinspect--function-name method)
                       "hold")
              (should (phpinspect--type=
@@ -260,7 +260,8 @@ use Example\\Thing;
 
 function test_func(): array {}
 
-function example(): Thing {}")
+/** @param \\array $bing */
+function example($bing): Thing {}")
          (tokens (phpinspect-parse-string code))
          (index (phpinspect--index-tokens tokens))
          functions)
@@ -269,6 +270,12 @@ function example(): Thing {}")
     (should (= 2 (length functions)))
     (should (string= "test_func" (phpinspect--function-name (cadr functions))))
     (should (string= "example" (phpinspect--function-name (car functions))))
+
+    (let ((example (car functions)))
+      (should (= 1 (length (phpinspect--function-arguments example))))
+      (should (phpinspect--type=
+               (phpinspect--make-type :name "\\array")
+               (phpinspect--function-argument-type example "bing"))))
 
     (should (phpinspect--type= (phpinspect--make-type :name "\\array")
                                (phpinspect--function-return-type (cadr functions))))

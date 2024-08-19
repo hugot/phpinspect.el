@@ -47,7 +47,7 @@
     :scope (quote ,(phpinspect--function-scope func))
     :arguments ,(append '(list)
                         (mapcar (lambda (arg)
-                                  `(list ,(car arg) ,(phpinspect--serialize-type (cadr arg))))
+                                  `(cons ,(car arg) ,(phpinspect--serialize-type (cdr arg))))
                                 (phpinspect--function-arguments func)))
     :return-type ,(when (phpinspect--function-return-type func)
                     (phpinspect--serialize-type
