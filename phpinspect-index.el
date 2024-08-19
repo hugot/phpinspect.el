@@ -55,7 +55,7 @@
                   (setq param-annotation
                         (phpinspect--find-var-annotation-for-variable
                          comment-before (cadr (car arg-list)) #'phpinspect-param-annotation-p)))
-             (push (cons (cadr (car arg-list))
+             (push (cons (cadr (pop arg-list))
                          (funcall type-resolver
                                   (phpinspect--make-type
                                    :name (phpinspect-var-annotation-type param-annotation))))
