@@ -251,7 +251,7 @@ Conditionally executes BODY depending on
 
 (define-inline phpinspect--scope-inherits-p (scope)
   "Returns non-nil when FN has a public or protected scope."
-  (inline-letevals (fn)
+  (inline-letevals (scope)
     (inline-quote (or (phpinspect-public-p ,scope)
                       (phpinspect-protected-p ,scope)))))
 
