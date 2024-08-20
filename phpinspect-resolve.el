@@ -606,14 +606,15 @@ value/type."
 
 
 (cl-defmethod phpinspect--class-resolve-property-type
-  ((class phpinspect--class) (property-name string) type-resolver class-token-meta)
+  ((class phpinspect--class) (project phpinspect-project) (property-name string) type-resolver class-token-meta)
   "Resolve type of POPERTY-NAME in the context of CLASS using
 CLASS-TOKEN-META as parse result."
   (let ((pattern (phpinspect--make-pattern
                   :m `(:variable "this")
                   :m `(:object-attrib (:word ,property-name))))
         (rctx (phpinspect--make-resolvecontext :enclosing-tokens (list (phpinspect-meta-token class-token-meta))
-                                               :enclosing-metadata (list class-token-meta)))
+                                               :enclosing-metadata (list class-token-meta)
+                                               :project project))
         (constructor-name (phpinspect-intern-name "__construct")))
 
     (or
@@ -627,7 +628,7 @@ CLASS-TOKEN-META as parse result."
        nil))))
 
 (cl-defmethod phpinspect--class-resolve-property-type
-  ((_class phpinspect--class) property-name &rest _ignored)
+  ((_class phpinspect--class) (_project phpinspect-project) property-name &rest _ignored)
   ;; Catch-all for cases where one attempts to resolve a nil property
   ;; name. Saves an if-statement for the caller.
   ;; Can't resolve property type when property name is nil, so we do nothing.

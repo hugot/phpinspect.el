@@ -433,7 +433,8 @@ linked with."
           (when (and (phpinspect-variable-p (phpinspect-meta-token var)) (not (phpinspect--variable-type indexed)))
             (setf (phpinspect--variable-type indexed)
                   (phpinspect--class-resolve-property-type
-                   class-obj (cadr (phpinspect-meta-token var)) type-resolver class)))
+                   class-obj (phpinspect-buffer-project buffer)
+                   (cadr (phpinspect-meta-token var)) type-resolver class)))
 
           (phpinspect--class-set-variable class-obj indexed)
 
