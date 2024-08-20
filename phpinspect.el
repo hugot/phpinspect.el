@@ -1,10 +1,10 @@
-;;; phpinspect.el --- PHP parsing and completion package  -*- lexical-binding: t; -*-
+;;; phpinspect.el --- PHP parsing and code intelligence package  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021-2023  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
-;; Version: 0
+;; Version: 1
 ;; Package-Requires: ((compat "29"))
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -161,6 +161,10 @@ in your project. It is also possible to index an entire directory
 by adding it as an include dir. To do this, use
 \\[phpinspect-project-add-include-dir]. Include directories can
 be edited at all times using \\[customize-group] RET phpinspect.
+
+Because of limitations in the current autoloader implementation,
+you will have to run \\[phpinspect-index-current-project] every
+time you create a new autoloadable file.
 
 Example configuration if you already have a completion
 UI (Company, Corfu) setup that can take advantage of completion
