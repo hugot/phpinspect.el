@@ -115,7 +115,7 @@
   (phpinspect--function--inherited candidate))
 
 ;; FIXME: when inheriting of variables is implemented
-(cl-defmethod phpinspect--candidate-inherited ((candidate phpinspect--variable))
+(cl-defmethod phpinspect--candidate-inherited ((_candidate phpinspect--variable))
   nil)
 
 (defun phpinspect-suggest-attributes-at-point
