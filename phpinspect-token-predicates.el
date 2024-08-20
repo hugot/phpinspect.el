@@ -128,6 +128,10 @@ Type can be any of the token types returned by
   (or (phpinspect-token-type-p token :list)
       (phpinspect-incomplete-list-p token)))
 
+(defsubst phpinspect-block-or-list-p (token)
+  (or (phpinspect-block-p token)
+      (phpinspect-list-p token)))
+
 (define-inline phpinspect-declaration-p (token)
   (inline-quote
    (phpinspect-token-type-p ,token :declaration)))
@@ -260,6 +264,5 @@ Type can be any of the token types returned by
 (define-inline phpinspect-not-comment-p (token)
   (inline-quote
    (not (phpinspect-comment-p ,token))))
-
 
 (provide 'phpinspect-token-predicates)

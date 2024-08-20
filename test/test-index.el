@@ -407,3 +407,29 @@ public function doStuff()
           (should method)
           (should (phpinspect--function-return-type method))
           (should (phpinspect--type= type (phpinspect--function-return-type method))))))))
+
+(ert-deftest phpinspect-index-nested-functions ()
+  (with-temp-buffer
+    (let* ((code "<php
+
+if (true) {
+    function conditional() {
+    }
+}
+
+if (something()) {
+    if (other()) {
+        function nestedConditional() {
+        }
+    }
+}")
+           (index (phpinspect--index-tokens (phpinspect-parse-string code)))
+           (functions (alist-get 'functions index)))
+
+      (should functions)
+      (should (= 2 (length functions)))
+
+      (let ((nestedConditional (car functions))
+            (conditional (cadr functions)))
+        (should (string= "conditional" (phpinspect--function-name conditional)))
+        (should (string= "nestedConditional" (phpinspect--function-name nestedConditional)))))))

@@ -544,18 +544,29 @@ NAMESPACE will be assumed the root namespace if not provided"
          namespaces type-resolver-factory location-resolver indexed))
     indexed))
 
-(defun phpinspect--index-functions-in-tokens (tokens type-resolver-factory &optional imports namespace add-used-types)
+
+
+(defun phpinspect--index-functions-in-tokens
+    (tokens type-resolver-factory &optional imports namespace add-used-types type-resolver)
   "Index functions in TOKENS."
-  (let ((type-resolver (funcall type-resolver-factory imports nil namespace))
-        comment-before functions)
+  (setq type-resolver (or type-resolver (funcall type-resolver-factory imports nil namespace)))
+  (let (comment-before functions function)
     (dolist (token tokens)
       (cond ((phpinspect-comment-p token)
              (setq comment-before token))
             ((phpinspect-function-p token)
-             (push (phpinspect--index-function-from-scope
-                    type-resolver `(:public ,token) comment-before add-used-types
-                    namespace)
-                   functions))))
+             (setq function (phpinspect--index-function-from-scope
+                             type-resolver `(:public ,token) comment-before add-used-types
+                             namespace))
+             (unless (phpinspect--function-anonyous-p function)
+             (push function functions)))
+            ((phpinspect-block-or-list-p token)
+             (dolist (fn (phpinspect--index-functions-in-tokens
+                          (cdr token) type-resolver-factory imports namespace
+                          add-used-types type-resolver))
+               (unless (phpinspect--function-anonyous-p fn)
+                 (push fn functions))))))
+
     functions))
 
 (defun phpinspect-function-declaration (function-token)

@@ -43,10 +43,6 @@
         :type phpinspect-token
         :documentation "The token that is assigned from"))
 
-(defsubst phpinspect-block-or-list-p (token)
-  (or (phpinspect-block-p token)
-      (phpinspect-list-p token)))
-
 (defsubst phpinspect-maybe-assignment-p (token)
   "Like `phpinspect-assignment-p', but includes \"as\" barewords as possible tokens."
   (or (phpinspect-assignment-p token)
