@@ -111,13 +111,6 @@
 (cl-defmethod phpinspect--candidate-scope ((candidate phpinspect--variable))
   (phpinspect--variable-scope candidate))
 
-(cl-defmethod phpinspect--candiate-inherited ((candidate phpinspect--function))
-  (phpinspect--function--inherited candidate))
-
-;; FIXME: when inheriting of variables is implemented
-(cl-defmethod phpinspect--candidate-inherited ((_candidate phpinspect--variable))
-  nil)
-
 (defun phpinspect-suggest-attributes-at-point
     (resolvecontext &optional static)
   "Suggest object or class attributes at point.
@@ -151,8 +144,7 @@ static variables and static methods."
                          static))
          (statement-type (phpinspect-resolve-type-from-context
                            resolvecontext
-                           type-resolver))
-         enclosing-class-name)
+                           type-resolver)))
 
     (phpinspect--log "Statement type: %s" statement-type)
     (when statement-type
@@ -163,20 +155,20 @@ static variables and static methods."
                            (funcall method-lister type))))
 
         ;; Filter out candidates according to scoping rules
-        (when (and enclosing-class
-                   (setq enclosing-class-name
-                         (phpinspect--get-class-name-from-token enclosing-class)))
-          (let* ((enclosing-type (funcall type-resolver (phpinspect--make-type :name enclosing-class-name)))
-                 (allow-protected (phpinspect--type= type enclosing-type))
-                 filtered-result)
+        (if-let ((enclosing-class-name
+                  (and enclosing-class
+                       (phpinspect--get-class-name-from-token enclosing-class)))
+                 (enclosing-type (funcall type-resolver (phpinspect--make-type :name enclosing-class-name)))
+                 ((phpinspect--type= type enclosing-type)))
+            ;; We're inside the class being completed. Return all possible
+            ;; attributes as scoping doesn't matter.
+            result
+          ;; We're outside the class being completed. Return only public
+          ;; attributes.
+          (let (filtered)
             (dolist (candidate result)
-              (if allow-protected
-                  (push candidate filtered-result)
-                (when (phpinspect-public-p (phpinspect--candidate-scope candidate))
-                  (push candidate filtered-result))))
-            (setq result filtered-result))
-
-          (phpinspect--log "Returning attributes %s" result)
-          result)))))
+              (when (phpinspect-public-p (phpinspect--candidate-scope candidate))
+                (push candidate filtered)))
+            filtered))))))
 
 (provide 'phpinspect-suggest)
