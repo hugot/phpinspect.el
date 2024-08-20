@@ -52,10 +52,10 @@
     (phpinspect--class-set-index class `(phpinspect--indexed-class (class-name . ,(phpinspect--make-type :name "Class"))))
     (phpinspect--class-set-index other-class `(phpinspect--indexed-class (class-name . ,(phpinspect--make-type :name "OtherClass"))))
     (phpinspect--class-update-method
-     class (phpinspect--make-function :name "test" :return-type phpinspect--null-type))
+     class (phpinspect--make-function :scope '(:private) :name "test" :return-type phpinspect--null-type))
 
     (phpinspect--class-update-method
-     other-class (phpinspect--make-function :name "other-test" :return-type phpinspect--null-type))
+     other-class (phpinspect--make-function :scope '(:protected) :name "other-test" :return-type phpinspect--null-type))
 
     (phpinspect--class-incorporate class other-class)
 

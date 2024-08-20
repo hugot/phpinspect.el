@@ -155,25 +155,35 @@ Conditionally executes BODY depending on
 
   (puthash (phpinspect--function-name-symbol method)
            method
-           map))
+           map)
+  method)
 
 (cl-defmethod phpinspect--class-set-method ((class phpinspect--class)
-                                            (method phpinspect--function))
+                                            (method phpinspect--function)
+                                            &optional extended)
   (phpinspect--class-edit class
     (phpinspect--log "Adding method by name %s to class"
                      (phpinspect--function-name method))
-    (phpinspect--add-method-copy-to-map
-     (phpinspect--class-methods class)
-     (phpinspect--class-name class)
-     method)))
+    (setq method (phpinspect--add-method-copy-to-map
+                  (phpinspect--class-methods class)
+                  (phpinspect--class-name class)
+                  method))
+    (when extended
+      (setf (phpinspect--function--inherited method) extended))))
 
 (cl-defmethod phpinspect--class-set-static-method ((class phpinspect--class)
-                                                   (method phpinspect--function))
+                                                   (method phpinspect--function)
+                                                   &optional extended)
   (phpinspect--class-edit class
-    (phpinspect--add-method-copy-to-map
-     (phpinspect--class-static-methods class)
-     (phpinspect--class-name class)
-     method)))
+    (setq method (phpinspect--add-method-copy-to-map
+                  (phpinspect--class-static-methods class)
+                  (phpinspect--class-name class)
+                  method))
+
+    (when extended
+      (setf (phpinspect--function--inherited method) extended))))
+
+
 
 (cl-defmethod phpinspect--class-delete-method ((class phpinspect--class) (method phpinspect--function))
   (phpinspect--class-edit class
@@ -226,8 +236,7 @@ Conditionally executes BODY depending on
                              (phpinspect--class-static-methods class))))
       (if existing
           (phpinspect--merge-method (phpinspect--class-name class) existing method extended)
-        (setf (phpinspect--function--inherited method) extended)
-        (phpinspect--class-set-static-method class method)))))
+        (phpinspect--class-set-static-method class method extended)))))
 
 (cl-defmethod phpinspect--class-update-method ((class phpinspect--class)
                                                (method phpinspect--function)
@@ -238,19 +247,30 @@ Conditionally executes BODY depending on
 
       (if existing
           (phpinspect--merge-method (phpinspect--class-name class) existing method extended)
-        (setf (phpinspect--function--inherited method) extended)
-        (phpinspect--class-set-method class method)))))
+        (phpinspect--class-set-method class method extended)))))
+
+(define-inline phpinspect--scope-inherits-p (scope)
+  "Returns non-nil when FN has a public or protected scope."
+  (inline-letevals (fn)
+    (inline-quote (or (phpinspect-public-p ,scope)
+                      (phpinspect-protected-p ,scope)))))
+
+(define-inline phpinspect--function-inherits-p (fn)
+  (inline-quote (phpinspect--scope-inherits-p (phpinspect--function-scope ,fn))))
 
 ;; FIXME: Remove inherited methods when they no longer exist in parent classes
 ;; (and/or the current class in the case of abstract methods).
+;; TODO: Check if above comment is still accurate ^^
 (cl-defmethod phpinspect--class-incorporate ((class phpinspect--class)
                                              (other-class phpinspect--class))
   (phpinspect--class-edit class
     (dolist (method (phpinspect--class-get-method-list other-class))
-      (phpinspect--class-update-method class method 'extended))
+      (when (phpinspect--function-inherits-p method)
+        (phpinspect--class-update-method class method 'extended)))
 
     (dolist (method (phpinspect--class-get-static-method-list other-class))
-      (phpinspect--class-update-static-method class method 'extended))
+      (when (phpinspect--function-inherits-p method)
+        (phpinspect--class-update-static-method class method 'extended)))
 
     (phpinspect--class-subscribe class other-class)))
 

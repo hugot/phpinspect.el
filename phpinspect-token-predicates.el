@@ -81,6 +81,12 @@ Type can be any of the token types returned by
   (or (phpinspect-token-type-p token :const)
       (phpinspect-incomplete-const-p token)))
 
+(define-inline phpinspect-public-p (token)
+  (inline-quote (phpinspect-token-type-p ,token :public)))
+
+(define-inline phpinspect-protected-p (token)
+  (inline-quote (phpinspect-token-type-p ,token :protected)))
+
 (define-inline phpinspect-scope-p (token)
   (inline-letevals (token)
     (inline-quote

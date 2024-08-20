@@ -105,6 +105,19 @@
   (lambda (fqn)
     (phpinspect--get-methods-for-class resolvecontext fqn static)))
 
+(cl-defmethod phpinspect--candidate-scope ((candidate phpinspect--function))
+  (phpinspect--function-scope candidate))
+
+(cl-defmethod phpinspect--candidate-scope ((candidate phpinspect--variable))
+  (phpinspect--variable-scope candidate))
+
+(cl-defmethod phpinspect--candiate-inherited ((candidate phpinspect--function))
+  (phpinspect--function--inherited candidate))
+
+;; FIXME: when inheriting of variables is implemented
+(cl-defmethod phpinspect--candidate-inherited ((candidate phpinspect--variable))
+  nil)
+
 (defun phpinspect-suggest-attributes-at-point
     (resolvecontext &optional static)
   "Suggest object or class attributes at point.
@@ -129,22 +142,41 @@ static variables and static methods."
     (setf (phpinspect--resolvecontext-subject resolvecontext)
           (butlast (phpinspect--resolvecontext-subject resolvecontext))))
 
-  (let* ((type-resolver (phpinspect--make-type-resolver-for-resolvecontext
+  (let* ((enclosing-class (seq-find #'phpinspect-class-p
+                                    (phpinspect--resolvecontext-enclosing-tokens resolvecontext)))
+         (type-resolver (phpinspect--make-type-resolver-for-resolvecontext
                          resolvecontext))
          (method-lister (phpinspect--make-method-lister
                          resolvecontext
-                         static)))
-    (let ((statement-type (phpinspect-resolve-type-from-context
+                         static))
+         (statement-type (phpinspect-resolve-type-from-context
                            resolvecontext
-                           type-resolver)))
-      (phpinspect--log "Statement type: %s" statement-type)
-      (when statement-type
-        (let ((type (funcall type-resolver statement-type)))
-          (when-let ((result
-                      (append (phpinspect--get-variables-for-class
-                               resolvecontext type static)
-                              (funcall method-lister type))))
-            (phpinspect--log "Returning attributes %s" result)
-            result))))))
+                           type-resolver))
+         enclosing-class-name)
+
+    (phpinspect--log "Statement type: %s" statement-type)
+    (when statement-type
+      (when-let* ((type (funcall type-resolver statement-type))
+                  (result
+                   (append (phpinspect--get-variables-for-class
+                            resolvecontext type static)
+                           (funcall method-lister type))))
+
+        ;; Filter out candidates according to scoping rules
+        (when (and enclosing-class
+                   (setq enclosing-class-name
+                         (phpinspect--get-class-name-from-token enclosing-class)))
+          (let* ((enclosing-type (funcall type-resolver (phpinspect--make-type :name enclosing-class-name)))
+                 (allow-protected (phpinspect--type= type enclosing-type))
+                 filtered-result)
+            (dolist (candidate result)
+              (if allow-protected
+                  (push candidate filtered-result)
+                (when (phpinspect-public-p (phpinspect--candidate-scope candidate))
+                  (push candidate filtered-result))))
+            (setq result filtered-result))
+
+          (phpinspect--log "Returning attributes %s" result)
+          result)))))
 
 (provide 'phpinspect-suggest)
