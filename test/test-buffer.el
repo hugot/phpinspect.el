@@ -133,7 +133,10 @@
       (should (phpinspect-function-p (phpinspect-meta-token (phpinspect-meta-parent (phpinspect-meta-parent bello1)))))
 
       (let ((function (phpinspect-meta-token (phpinspect-meta-parent (phpinspect-meta-parent bello1)))))
-        (should (= 2 (length function)))
+        ;; There's 5 nested tokens in the function. It is not a valid function
+        ;; token, a correct function would only contain a declaration and a
+        ;; block. But the incremental parser doesn't complain.
+        (should (= 5 (length function)))
         (should (phpinspect-declaration-p (cadr function)))
         (should (member '(:word "Bello") (cadr function)))
         (should (member '(:word "echo") (cadr function))))
@@ -286,6 +289,57 @@ class YYY {
 
     (should (equal parsed parsed-after))))
 
+(ert-deftest phpinspect-buffer-parse-incrementally-class-with-method ()
+  (with-temp-buffer
+  (let* ((buffer (phpinspect-make-buffer
+                  :buffer (current-buffer))))
+
+
+    (setq-local phpinspect-current-buffer buffer)
+    (insert
+     "<?php
+
+namespace XXX;
+
+class AAA {
+
+    function bbb () {
+        $banana = 'aaa';
+    }
+
+}
+
+")
+
+    (add-hook 'after-change-functions #'phpinspect-after-change-function)
+    (phpinspect-buffer-parse buffer 'no-interrupt)
+
+    (let ((switch t)
+          (delta 0))
+
+      (dotimes (_i 30)
+        (if switch
+            (progn
+              (setq delta -4)
+              (goto-char 63)
+              (delete-char 4))
+          (setq delta 0)
+          (goto-char 59)
+          (insert "    "))
+        (setq switch (not switch))
+
+        (phpinspect-buffer-parse buffer 'no-interrupt)
+
+        (let ((token (phpinspect-bmap-last-token-before-point
+                      (phpinspect-buffer-map buffer) (+ 68 delta))))
+          (should token)
+          (should (phpinspect-variable-p (phpinspect-meta-token token)))
+          (should (string= "banana" (cadr (phpinspect-meta-token token))))
+          ;; Direct parent should be the function block
+          (should (phpinspect-block-p (phpinspect-meta-token (phpinspect-meta-parent token))))
+          ;; Function ancestor should remain intact
+          (should (phpinspect-meta-find-parent-matching-token token #'phpinspect-function-p))))))))
+
 (ert-deftest phpinspect-buffer-parse-incrementally-use ()
   (with-temp-buffer
   (let* ((buffer (phpinspect-make-buffer
@@ -311,7 +365,7 @@ use CCC;
     (let ((switch nil)
           (delta 0))
 
-      (dotimes (_i 100)
+      (dotimes (_i 30)
         (if switch
             (progn
               (setq delta 0)

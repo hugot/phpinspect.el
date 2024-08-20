@@ -786,9 +786,10 @@ Returns the consumed text string without face properties."
                                                  (char-equal (char-after) ?})))))
          (declaration (phpinspect-parse-declaration (current-buffer) max-point continue-condition 'root)))
 
-    (if (or (phpinspect-end-of-token-p (car (last declaration)))
-            (not (looking-at (phpinspect-handler-regexp block))))
+    (if (phpinspect-end-of-token-p (car (last declaration)))
+        ;; Abstract function?
         (list :function declaration)
+      ;; Parse body.
       `(:function
         ,declaration
        ,@(cdr (phpinspect--parse-function-body (current-buffer) max-point))))))
