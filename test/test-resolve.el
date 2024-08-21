@@ -167,3 +167,25 @@
         (should result)
         (should (phpinspect--type= (phpinspect--make-type :name "\\string")
                                    result))))))
+
+(ert-deftest phpinspect-get-variable-type-in-block-function-return ()
+  (let ((base-code "$bar = foo();")
+        (paths (list (cons "$bar" "Foo")
+                     (cons "$bar->baz" "string")))
+
+        (project (phpinspect--make-dummy-project)))
+
+    (phpinspect-project-add-index
+     project
+     (phpinspect--index-tokens
+      (phpinspect-parse-string "class Foo { public string $baz; } function foo(): Foo { return 'bla'; }")))
+
+    (dolist (path paths)
+      (let* ((code (concat base-code (car path)))
+             (bmap (phpinspect-parse-string-to-bmap code))
+             (context (phpinspect-get-resolvecontext project bmap (length code)))
+             (result (phpinspect-resolve-type-from-context context)))
+
+        (should result)
+        (should (phpinspect--type= (phpinspect--make-type :name (concat "\\" (cdr path)))
+                                   result))))))

@@ -135,15 +135,22 @@ serious performance hits. Enable at your own risk (:")
              (phpinspect-project-function-index project))))
 
 (cl-defmethod phpinspect-project-get-function
+  ((project phpinspect-project) (name string))
+  (phpinspect-project-get-function project (phpinspect-intern-name name)))
+
+(cl-defmethod phpinspect-project-get-function
   ((project phpinspect-project) (name (head phpinspect-name)))
   (gethash name (phpinspect-project-function-index project)))
 
-(cl-defmethod phpinspect-project-get-function-or-extra
-  ((project phpinspect-project) (name (head phpinspect-name)))
+(cl-defmethod phpinspect-project-get-function-or-extra ((project phpinspect-project) name)
   (or (phpinspect-project-get-function project name)
       (and (phpinspect-project-extra-function-retriever project)
            (funcall (phpinspect-project-extra-function-retriever project)
                     name))))
+
+(defun phpinspect-project-get-function-return-type (project function-name)
+  (when-let ((fn (phpinspect-project-get-function-or-extra project function-name)))
+    (phpinspect--function-return-type fn)))
 
 (cl-defmethod phpinspect-project-delete-function
   ((project phpinspect-project) (name (head phpinspect-name)))

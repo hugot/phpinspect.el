@@ -500,6 +500,11 @@ value/type."
          (funcall
           type-resolver (phpinspect--make-type :name (cadadr expression))))
 
+        ((phpinspect--match-sequence expression
+           :f #'phpinspect-word-p
+           :f #'phpinspect-list-p)
+         (phpinspect-rctx-get-function-return-type resolvecontext (cadar expression)))
+
         ((and (phpinspect-list-p (car expression))
               (= 1 (length (cdar expression)))
               (phpinspect-word-p (cadar expression)))

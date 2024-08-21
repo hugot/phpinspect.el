@@ -221,6 +221,11 @@ accompanied by all of its enclosing tokens."
   (let ((project (phpinspect--resolvecontext-project rctx)))
     (phpinspect-project-get-class-extra-or-create project class-fqn no-enqueue)))
 
+(defun phpinspect-rctx-get-function-return-type (rctx function-name)
+  (cl-assert (phpinspect--resolvecontext-p rctx))
+  (let ((project (phpinspect--resolvecontext-project rctx)))
+    (phpinspect-project-get-function-return-type project function-name)))
+
 (defun phpinspect--make-type-resolver-for-resolvecontext
     (resolvecontext)
   (let ((namespace-or-root
