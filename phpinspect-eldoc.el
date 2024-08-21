@@ -81,7 +81,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
   (let ((attrib (car (last (phpinspect--resolvecontext-subject rctx))))
         type-before)
     (setf (phpinspect--resolvecontext-subject rctx) (butlast (phpinspect--resolvecontext-subject rctx)))
-    (setq type-before (phpinspect-resolve-type-from-context rctx))
+    (setq type-before (phpinspect-resolve-type-from-context rctx nil t))
 
     (when type-before
       (let ((class (phpinspect-project-get-class-extra-or-create
@@ -187,7 +187,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
               (mapcar #'phpinspect-meta-token (butlast statement 2)))
 
         (when-let* ((type-of-previous-statement
-                     (phpinspect-resolve-type-from-context rctx))
+                     (phpinspect-resolve-type-from-context rctx nil t))
                     (method-name (cadadr (phpinspect-meta-token (car match-result))))
                     (class (phpinspect-rctx-get-or-create-cached-project-class
                             rctx type-of-previous-statement 'no-enqueue))

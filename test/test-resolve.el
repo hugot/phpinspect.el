@@ -169,10 +169,10 @@
                                    result))))))
 
 (ert-deftest phpinspect-get-variable-type-in-block-function-return ()
-  (let ((base-code "$bar = foo();")
-        (paths (list (cons "$bar" "Foo")
-                     (cons "$bar->baz" "string")))
-
+  (let ((base-code "$bar = foo()")
+        (paths (list (cons ";$bar" "Foo")
+                     (cons ";$bar->baz" "string")
+                     (cons "->baz" "string")))
         (project (phpinspect--make-dummy-project)))
 
     (phpinspect-project-add-index
@@ -189,3 +189,66 @@
         (should result)
         (should (phpinspect--type= (phpinspect--make-type :name (concat "\\" (cdr path)))
                                    result))))))
+
+(ert-deftest phpinspect-resolve-type-from-context-static-method ()
+  (with-temp-buffer
+    (insert "
+class Thing
+{
+    static function doThing(\\DateTime $moment, Thing $thing, $other): static
+    {
+        return $this;
+    }
+
+    function doStuff()
+    {
+        self::doThing()->")
+  (let* ((bmap (phpinspect-make-bmap))
+         (tokens (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t
+                                                                      :bmap bmap)
+                   (phpinspect-parse-current-buffer)))
+         (index (phpinspect--index-tokens tokens))
+         (phpinspect-project-root-function (lambda () "phpinspect-test"))
+         (phpinspect-eldoc-word-width 100)
+         (project (phpinspect--make-dummy-project))
+         (context (phpinspect-get-resolvecontext project bmap (point))))
+
+    (phpinspect-purge-cache)
+    (phpinspect-project-add-index project index)
+
+    (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
+                               (phpinspect-resolve-type-from-context
+                                context
+                                (phpinspect--make-type-resolver-for-resolvecontext
+                                 context)))))))
+
+(ert-deftest phpinspect-resolve-type-from-context-static-method-with-preceding-words ()
+  (with-temp-buffer
+    (insert "
+class Thing
+{
+    static function doThing(\\DateTime $moment, Thing $thing, $other): static
+    {
+        return $this;
+    }
+
+    function doStuff()
+    {
+        if (true) {
+            return self::doThing()->")
+    (let* ((bmap (phpinspect-make-bmap))
+           (tokens (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t
+                                                                        :bmap bmap)
+                     (phpinspect-parse-current-buffer)))
+           (index (phpinspect--index-tokens tokens))
+           (phpinspect-eldoc-word-width 100)
+           (project (phpinspect--make-dummy-project))
+           (context (phpinspect-get-resolvecontext project bmap (point))))
+      (phpinspect-purge-cache)
+      (phpinspect-project-add-index project index)
+
+      (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
+                                 (phpinspect-resolve-type-from-context
+                                  context
+                                  (phpinspect--make-type-resolver-for-resolvecontext
+                                   context)))))))

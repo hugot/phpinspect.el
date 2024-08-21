@@ -149,6 +149,9 @@ Type can be any of the token types returned by
   "Get the argument list of a function"
   (seq-find #'phpinspect-list-p (seq-find #'phpinspect-declaration-p php-func nil) nil))
 
+(defun phpinspect-equals-p (token)
+  (phpinspect-token-type-p token :equals))
+
 (defun phpinspect-annotation-p (token)
   (phpinspect-token-type-p token :annotation))
 

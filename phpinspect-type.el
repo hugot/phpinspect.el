@@ -204,7 +204,13 @@ NAMESPACE may be nil, or a string with a namespace FQN."
       (phpinspect--type-resolve
        types
        namespace
-       (if (and inside-class-name (phpinspect--type= type phpinspect--self-type))
+       (if (and inside-class-name
+                (or (phpinspect--type= type phpinspect--self-type)
+                    ;; Type has not yet been resolved, so we can compare bare
+                    ;; names to detect a "self" type.
+                    (and (not (phpinspect--type-fully-qualified type))
+                         (eq (phpinspect--type-bare-name-sym type)
+                             (phpinspect--type-bare-name-sym phpinspect--self-type)))))
            (progn
              (phpinspect--log "Returning inside class name for %s : %s"
                               type inside-class-name)

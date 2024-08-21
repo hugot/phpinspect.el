@@ -65,6 +65,7 @@
      (complete . ,,(alist-get 'complete class))
      (class-name . ,,(phpinspect--serialize-type (alist-get 'class-name class)))
      (declaration . ,(quote ,(alist-get 'declaration class)))
+     (location . ,(quote ,(alist-get 'location class)))
      (imports . ,,(append '(list)
                           (mapcar #'phpinspect--serialize-import
                                   (alist-get 'imports class))))
@@ -88,7 +89,9 @@
                                   (alist-get 'extends class))))
      (implements . ,,(append '(list)
                              (mapcar #'phpinspect--serialize-type
-                                     (alist-get 'implements class))))))
+                                     (alist-get 'implements class))))
+     (used-types . ,(list ,@(mapcar #'phpinspect--serialize-name
+                                    (alist-get 'used-types class))))))
 
 (cl-defmethod phpinspect--serialize-root-index ((index (head phpinspect--root-index)))
   ``(phpinspect--root-index
@@ -99,7 +102,9 @@
                  ,@(mapcar (lambda (cons-class)
                               `(cons ,(phpinspect--serialize-type (car cons-class))
                                      ,(phpinspect--serialize-indexed-class (cdr cons-class))))
-                            (alist-get 'classes index))))
+                           (alist-get 'classes index))))
+     (used-types . ,(list ,@(mapcar #'phpinspect--serialize-name
+                                    (alist-get 'used-types index))))
      (functions . ,,(append '(list)
                             (mapcar #'phpinspect--serialize-function
                                     (alist-get 'functions index))))))
@@ -109,6 +114,9 @@
   `(cons
     (phpinspect-intern-name ,(phpinspect-name-string (car import)))
     ,(phpinspect--serialize-type (cdr import))))
+
+(defun phpinspect--serialize-name (name)
+  `(phpinspect-intern-name ,(phpinspect-name-string name)))
 
 (provide 'phpinspect-serialize)
 ;;; phpinspect-serialize.el ends here

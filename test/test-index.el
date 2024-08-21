@@ -46,11 +46,11 @@
                                                (:word "array")
                                                (:variable "things")))
                           (:block)))))))
-         (index (phpinspect--index-tokens class-tokens))
+         (index (eval (phpinspect--serialize-root-index
+                       (phpinspect--index-tokens class-tokens))))
          (expected-index
           `(phpinspect--root-index
             (imports)
-            (namespaces)
             (classes
              (,(phpinspect--make-type :name "\\Potato" :fully-qualified t)
               phpinspect--indexed-class
@@ -227,11 +227,14 @@ try {
                       (phpinspect--make-type :name "\\void" :fully-qualified t)
                       (phpinspect--function-return-type method))))))))
 
+(require 'phpinspect-serialize)
 
 (ert-deftest phpinspect-index-tokens-class ()
   (let* ((index1
-          (phpinspect--index-tokens
-           (phpinspect-test-read-fixture-data "IndexClass1")))
+          (eval
+           (phpinspect--serialize-root-index
+            (phpinspect--index-tokens
+             (phpinspect-test-read-fixture-data "IndexClass1")))))
          (index2
           (phpinspect-test-read-fixture-serialization "IndexClass1-indexed"))
          (index1-class (car (alist-get 'classes index1)))
@@ -248,10 +251,13 @@ try {
       (insert-file-contents (expand-file-name "IndexClass1.php" phpinspect-test-php-file-directory))
       (setf (phpinspect-pctx-bmap pctx) (phpinspect-make-bmap))
       (phpinspect-with-parse-context pctx (setq tree (phpinspect-parse-current-buffer))))
-    (let* ((index1 (phpinspect--index-tokens tree
-                                             nil
-                                             (phpinspect-bmap-make-location-resolver
-                                              (phpinspect-pctx-bmap pctx))))
+    (let* ((index1
+            (eval
+             (phpinspect--serialize-root-index
+              (phpinspect--index-tokens tree
+                                        nil
+                                        (phpinspect-bmap-make-location-resolver
+                                         (phpinspect-pctx-bmap pctx))))))
            (index2
             (phpinspect-test-read-fixture-serialization "IndexClass1-indexed"))
            (index1-class (car (alist-get 'classes index1)))

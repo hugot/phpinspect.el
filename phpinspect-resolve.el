@@ -215,6 +215,10 @@ $variable = $variable->method();"
    (or assignments (phpinspect--find-assignment-ctxs-in-token php-block))
    type-resolver function-arg-list))
 
+(defun phpinspect-no-derivation-p (token)
+  (not (or (phpinspect-attrib-p token)
+           (phpinspect-array-p token))))
+
 (defun phpinspect--get-derived-statement-type-in-block
     (resolvecontext statement php-block assignments type-resolver &optional function-arg-list)
   "Determine the type that STATEMENT evaluates to in RESOLVECONTEXT.
@@ -228,92 +232,67 @@ a derived statement. In the statement $foo->bar which is parsed
 into ((:variable foo) (:object-attrib (:word bar))), the
 value/type of ->bar must be derived from the type of $foo. So
 ->bar derives from the base token $foo."
+  (phpinspect--log "Get derived statement type in block: (truncated, real length: %d) %s"
+                   (length statement)
+                   (take 10 statement))
 
-    ;; A derived statement can be an assignment itself.
-    (when (seq-find #'phpinspect-assignment-p statement)
-      (phpinspect--log "Derived statement is an assignment: %s" statement)
-      (setq statement (cdr (seq-drop-while #'phpinspect-not-assignment-p statement))))
-    (phpinspect--log "Get derived statement type in block: (truncated, real length: %d) %s"
-                     (length statement)
-                     (take 10 statement))
-    (let* ((first-token (pop statement))
-           (current-token)
-           (previous-attribute-type))
-      ;; No first token means we were passed an empty list.
-      (when (and first-token
-                 (setq previous-attribute-type
-                       (or
-                           ;; Statements starting with a bare word can indicate a static
-                           ;; method call. These could be statements with "return" or
-                           ;; another bare-word at the start though, so we drop preceding
-                           ;; barewords when they are present.
-                           (when (phpinspect-word-p first-token)
-                             (when (phpinspect-word-p (car statement))
-                               (setq statement (phpinspect-drop-preceding-barewords
-                                                statement))
-                               (setq first-token (pop statement)))
-                             (funcall type-resolver (phpinspect--make-type
-                                                     :name (cadr first-token))))
+  (when-let ((start-expression (seq-take-while #'phpinspect-no-derivation-p statement))
+             (statement (nthcdr (length start-expression) statement))
+             (type-before
+              (if (phpinspect--match-sequence start-expression :f #'phpinspect-word-p)
+                  (progn
+                    (funcall type-resolver (phpinspect--make-type :name (cadar start-expression))))
+                (phpinspect--interpret-expression-type-in-context
+                 resolvecontext php-block type-resolver start-expression
+                 function-arg-list assignments))))
 
-                           ;; First token is a list, for example "(new DateTime())"
-                           (when (phpinspect-list-p first-token)
-                             (phpinspect--interpret-expression-type-in-context
-                              resolvecontext php-block type-resolver (cdr first-token)
-                              function-arg-list assignments))
-
-                           ;; No bare word, assume we're dealing with a variable.
-                           (when (phpinspect-variable-p first-token)
-                             (phpinspect--get-variable-type-in-block
-                              resolvecontext (cadr first-token) php-block assignments
-                              type-resolver function-arg-list)))))
-
-        (phpinspect--log "Statement: %s" statement)
-        (phpinspect--log "Starting attribute type: %s" previous-attribute-type)
-        (while (setq current-token (pop statement))
-          (phpinspect--log "Current derived statement token: %s" current-token)
-          (cond ((phpinspect-object-attrib-p current-token)
-                 (let ((attribute-word (cadr current-token)))
-                   (when (phpinspect-word-p attribute-word)
-                     (if (phpinspect-list-p (car statement))
-                         (progn
-                           (pop statement)
-                           (setq previous-attribute-type
-                                 (or
-                                 (phpinspect-get-cached-project-class-method-type
-                                  resolvecontext
-                                  (funcall type-resolver previous-attribute-type)
-                                  (cadr attribute-word))
-                                  previous-attribute-type)))
-                       (setq previous-attribute-type
+    (phpinspect--log "Rest of statement: %s" statement)
+    (phpinspect--log "Starting attribute type: %s" type-before)
+    (while-let ((current-token (pop statement)))
+      (phpinspect--log "Current derived statement token: %s" current-token)
+      (cond ((phpinspect-object-attrib-p current-token)
+             (let ((attribute-word (cadr current-token)))
+               (when (phpinspect-word-p attribute-word)
+                 (if (phpinspect-list-p (car statement))
+                     (progn
+                       (pop statement)
+                       (setq type-before
                              (or
-                              (phpinspect-get-cached-project-class-variable-type
-                                resolvecontext
-                               (funcall type-resolver previous-attribute-type)
+                              (phpinspect-get-cached-project-class-method-type
+                               resolvecontext
+                               (funcall type-resolver type-before)
                                (cadr attribute-word))
-                              previous-attribute-type))))))
-                ((phpinspect-static-attrib-p current-token)
-                 (let ((attribute-word (cadr current-token)))
-                   (phpinspect--log "Found attribute word: %s" attribute-word)
-                   (phpinspect--log "checking if next token is a list. Token: %s"
-                                    (car statement))
-                   (when (phpinspect-word-p attribute-word)
-                     (if (phpinspect-list-p (car statement))
-                         (progn
-                           (pop statement)
-                           (setq previous-attribute-type
-                                 (or
-                                  (phpinspect-get-cached-project-class-static-method-type
-                                   resolvecontext
-                                   (funcall type-resolver previous-attribute-type)
-                                   (cadr attribute-word))
-                                  previous-attribute-type)))))))
-                ((and previous-attribute-type (phpinspect-array-p current-token))
-                 (setq previous-attribute-type
-                       (or (phpinspect--type-contains previous-attribute-type)
-                           previous-attribute-type)))))
-        (phpinspect--log "Found derived type: %s" previous-attribute-type)
-        ;; Make sure to always return a FQN
-        (funcall type-resolver previous-attribute-type))))
+                              type-before)))
+                   (setq type-before
+                         (or
+                          (phpinspect-get-cached-project-class-variable-type
+                           resolvecontext
+                           (funcall type-resolver type-before)
+                           (cadr attribute-word))
+                          type-before))))))
+            ((phpinspect-static-attrib-p current-token)
+             (let ((attribute-word (cadr current-token)))
+               (phpinspect--log "Found attribute word: %s" attribute-word)
+               (phpinspect--log "checking if next token is a list. Token: %s"
+                                (car statement))
+               (when (phpinspect-word-p attribute-word)
+                 (if (phpinspect-list-p (car statement))
+                     (progn
+                       (pop statement)
+                       (setq type-before
+                             (or
+                              (phpinspect-get-cached-project-class-static-method-type
+                               resolvecontext
+                               (funcall type-resolver type-before)
+                               (cadr attribute-word))
+                              type-before)))))))
+            ((and type-before (phpinspect-array-p current-token))
+             (setq type-before
+                   (or (phpinspect--type-contains type-before)
+                       type-before)))))
+    (phpinspect--log "Found derived type: %s" type-before)
+    ;; Make sure to always return a FQN
+    (funcall type-resolver type-before)))
 
 (defun phpinspect-get-variable-type-in-block
     (resolvecontext variable-name php-block type-resolver &optional function-arg-list)
@@ -335,7 +314,7 @@ resolve types of function argument variables."
 
   (phpinspect--log "Looking for assignments of variable %s in php block" variable-name)
   (if (string= variable-name "this")
-      (funcall type-resolver (phpinspect--make-type :name "self"))
+      (funcall type-resolver (phpinspect--make-type :name "\\self" :fully-qualified t))
     (phpinspect--get-pattern-type-in-block
      resolvecontext (phpinspect--make-pattern :m `(:variable ,variable-name))
      php-block assignments type-resolver function-arg-list)))
@@ -461,6 +440,18 @@ ARG-LIST. ARG-LIST should be a list token as returned by
                        (phpinspect--make-type :name (car (last arg))))
             nil)))))
 
+(define-inline phpinspect-new-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (and (phpinspect-word-p ,token)
+          (string= "new" (cadr ,token))))))
+
+(defun phpinspect-interpret-expression-type-in-context
+    (resolvecontext php-block type-resolver expression &optional function-arg-list assignments)
+  (phpinspect--interpret-expression-type-in-context
+   resolvecontext php-block type-resolver expression function-arg-list
+   (or assignments (phpinspect--find-assignment-ctxs-in-token php-block))))
+
 (defun phpinspect--interpret-expression-type-in-context
     (resolvecontext php-block type-resolver expression &optional function-arg-list assignments)
   "Infer EXPRESSION's type from provided context.
@@ -474,6 +465,9 @@ value/type."
   (phpinspect--log "Interpreting type of expression (truncated, full-length: %s) %s"
                    (length expression)
                    (take 10 expression))
+
+  (unless (phpinspect-new-p (car expression))
+    (setq expression (phpinspect-drop-preceding-barewords expression)))
 
   (cond ((phpinspect-array-p (car expression))
          (let ((collection-contains)
@@ -496,7 +490,7 @@ value/type."
                                   :collection t
                                   :contains collection-contains)))
         ((phpinspect--match-sequence expression
-           :m '(:word "new")
+           :f #'phpinspect-new-p
            :f #'phpinspect-word-p
            :f #'phpinspect-list-p)
          (funcall
@@ -506,6 +500,14 @@ value/type."
            :f #'phpinspect-word-p
            :f #'phpinspect-list-p)
          (phpinspect-rctx-get-function-return-type resolvecontext (cadar expression)))
+
+        ;; Expression is a (chain of) assignments. The right-most subexpression
+        ;; is the type it evaluates to.
+        ((seq-find #'phpinspect-assignment-p expression)
+         (phpinspect--interpret-expression-type-in-context
+          resolvecontext php-block type-resolver
+          (car (last (phpinspect--split-statements expression #'phpinspect-maybe-assignment-p)))
+          function-arg-list assignments))
 
         ((and (phpinspect-list-p (car expression))
               (= 1 (length (cdar expression)))
@@ -527,13 +529,6 @@ value/type."
          (phpinspect--interpret-expression-type-in-context
           resolvecontext php-block type-resolver (cdar expression)
           function-arg-list assignments))
-        ;; Expression is a (chain of) assignments. The right-most subexpression
-        ;; is the type it evaluates to.
-        ((seq-find #'phpinspect-assignment-p expression)
-         (phpinspect--interpret-expression-type-in-context
-          resolvecontext php-block type-resolver
-          (car (last (phpinspect--split-statements expression #'phpinspect-maybe-assignment-p)))
-          function-arg-list assignments))
 
         ;; If the right of an assignment is just $variable;, we can check if it is a
         ;; function argument and otherwise recurse to find the type of that variable.
@@ -548,8 +543,14 @@ value/type."
               resolvecontext (cadar expression) php-block assignments type-resolver function-arg-list)))))
 
 
-(defun phpinspect-resolve-type-from-context (resolvecontext &optional type-resolver)
-  "Resolve the type that RESOLVECONTEXT's subject evaluates to."
+(defun phpinspect-resolve-type-from-context (resolvecontext &optional type-resolver assume-derived)
+  "Resolve the type that RESOLVECONTEXT's subject evaluates to.
+
+When ASSUME-DERIVED is non-nil, it will be assumed that
+RESOLVECONTEXT's subject precedes a token that passes
+`phpinspect-attrib-p'. In this case, when the subject is a single
+bare word, it is assumed to be a type name at the start of a
+static method call and resolved to a fully qualified type. (`phpinspect--type-p')"
   ;; Subject should be a statement, not a single token.
   (when (phpinspect-probably-token-p (phpinspect--resolvecontext-subject resolvecontext))
     (setf (phpinspect--resolvecontext-subject resolvecontext)
@@ -573,31 +574,29 @@ value/type."
       ;;(phpinspect--log "Trying to find type in %s" enclosing-token)
       (setq enclosing-token (pop enclosing-tokens))
 
-      (setq type
-            (cond ((phpinspect-namespace-p enclosing-token)
-                   (phpinspect-get-derived-statement-type-in-block
-                    resolvecontext
-                    (phpinspect--resolvecontext-subject
-                     resolvecontext)
-                    (or (phpinspect-namespace-block enclosing-token)
-                        enclosing-token)
-                    type-resolver))
-                  ((or (phpinspect-block-p enclosing-token)
-                       (phpinspect-root-p enclosing-token))
-                   (phpinspect-get-derived-statement-type-in-block
-                    resolvecontext
-                    (phpinspect--resolvecontext-subject
-                     resolvecontext)
-                    enclosing-token
-                    type-resolver))
-                  ((phpinspect-function-p enclosing-token)
-                   (phpinspect-get-derived-statement-type-in-block
-                    resolvecontext
-                    (phpinspect--resolvecontext-subject
-                     resolvecontext)
-                    (phpinspect-function-block enclosing-token)
-                    type-resolver
-                    (phpinspect-function-argument-list enclosing-token))))))
+      (let ((subject (phpinspect--resolvecontext-subject resolvecontext)))
+        (setq type
+              (cond ((and assume-derived
+                          (phpinspect--match-sequence subject :f #'phpinspect-word-p))
+                     (funcall type-resolver (phpinspect--make-type :name (cadar subject))))
+
+                    ((phpinspect-namespace-p enclosing-token)
+                     (phpinspect-interpret-expression-type-in-context
+                      resolvecontext
+                      (or (phpinspect-namespace-block enclosing-token) enclosing-token)
+                      type-resolver subject))
+
+                    ((or (phpinspect-block-p enclosing-token)
+                         (phpinspect-root-p enclosing-token))
+                     (phpinspect-interpret-expression-type-in-context
+                      resolvecontext enclosing-token type-resolver subject))
+
+                    ((phpinspect-function-p enclosing-token)
+                     (phpinspect-interpret-expression-type-in-context
+                      resolvecontext
+                      (phpinspect-function-block enclosing-token)
+                      type-resolver subject
+                      (phpinspect-function-argument-list enclosing-token)))))))
     type))
 
 (defun phpinspect--function-get-pattern-type (fn rctx pattern type-resolver)
