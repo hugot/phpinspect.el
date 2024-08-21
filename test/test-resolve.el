@@ -126,7 +126,8 @@
         (paths (list "$banana->bar"
                      "if ($baz = $banana) { $bar = $banana; } $bar->bar"
                      "$baz = new \\DateTime(); /** @var \\DateTime $pear */} $banana->bar"
-                     "if ($baz = $banana->bar) { $baz"))
+                     "if ($baz = $banana->bar) { $baz"
+                     "if ($baz = $banana->bar . 'a string') { $baz"))
         (project (phpinspect--make-dummy-project)))
 
     (phpinspect-project-add-index
@@ -172,7 +173,8 @@
   (let ((base-code "$bar = foo()")
         (paths (list (cons ";$bar" "Foo")
                      (cons ";$bar->baz" "string")
-                     (cons "->baz" "string")))
+                     (cons "->baz" "string")
+                     (cons "; curl('aaa' . $bar->baz" "string")))
         (project (phpinspect--make-dummy-project)))
 
     (phpinspect-project-add-index

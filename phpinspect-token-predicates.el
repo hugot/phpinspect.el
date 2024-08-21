@@ -35,6 +35,9 @@ Type can be any of the token types returned by
 (defsubst phpinspect-object-attrib-p (token)
   (phpinspect-token-type-p token :object-attrib))
 
+(defun phpinspect-string-concatenator-p (token)
+  (phpinspect-token-type-p token :string-concatenator))
+
 (defsubst phpinspect-static-attrib-p (token)
   (phpinspect-token-type-p token :static-attrib))
 

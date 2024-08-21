@@ -283,7 +283,7 @@ root token, in string form without \":\" prefix.")
                       assignment-operator whitespace scope-keyword
                       static-keyword const-keyword use-keyword
                       class-keyword function-keyword word terminator
-                      here-doc string comment block)
+                      here-doc string string-concatenator comment block)
               :type list
               :read-only t
               :documentation "A list of symbols referring to the
@@ -448,7 +448,7 @@ parsing incrementally."
   :handlers '(array tag equals list comma
                     attribute-reference variable assignment-operator
                     whitespace function-keyword word terminator here-doc
-                    string comment block-without-scopes))
+                    string string-concatenator comment block-without-scopes))
 
 (phpinspect-defhandler list (start-token max-point)
   "Handler for php syntactic lists (Note: this does not include
@@ -587,6 +587,11 @@ nature like argument lists"
   ((regexp . "[+-]?="))
   (phpinspect-munch-token-without-attribs operator :assignment))
 
+(phpinspect-defhandler string-concatenator (token &rest _ignored)
+  "Handler for string concatenator tokens. (the . operator)."
+  ((regexp . "\\."))
+  (phpinspect-munch-token-without-attribs token :string-concatenator))
+
 (phpinspect-defhandler terminator (terminator &rest _ignored)
   "Handler for statement terminators."
   ((regexp . ";"))
@@ -645,7 +650,7 @@ nature like argument lists"
 
 (phpinspect-defparser const
   :tree-keyword "const"
-  :handlers '(word comment assignment-operator string array terminator)
+  :handlers '(word comment assignment-operator string string-concatenator array terminator)
   :delimiter-predicate #'phpinspect-end-of-token-p)
 
 (phpinspect-defhandler const-keyword (start-token max-point)
@@ -666,7 +671,7 @@ nature like argument lists"
 
 (phpinspect-defparser block-without-scopes
   :tree-keyword "block"
-  :handlers '(array tag equals list comma attribute-reference variable
+  :handlers '(array tag equals string-concatenator list comma attribute-reference variable
                     assignment-operator whitespace function-keyword word
                     terminator here-doc string comment block-without-scopes))
 
@@ -687,10 +692,10 @@ static keywords with the same meaning as in a class block."
 
 (phpinspect-defparser class-block
   :tree-keyword "block"
-  :handlers '(array tag equals list comma attribute-reference class-variable
-                    assignment-operator whitespace scope-keyword static-keyword
-                    const-keyword use-keyword function-keyword word terminator
-                    here-doc string comment block))
+  :handlers '(array tag equals list comma string-concatenator attribute-reference
+                    class-variable assignment-operator whitespace scope-keyword
+                    static-keyword const-keyword use-keyword function-keyword
+                    word terminator here-doc string comment block))
 
 (phpinspect-defhandler class-block (start-token max-point)
   "Handler for code blocks that cannot contain classes"
@@ -799,19 +804,22 @@ Returns the consumed text string without face properties."
 (phpinspect-defparser scope-public
   :tree-keyword "public"
   :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
-                               string terminator tag comment assignment-operator array word)
+                               string string-concatenator terminator tag comment
+                               assignment-operator array word)
   :delimiter-predicate #'phpinspect--scope-terminator-p)
 
 (phpinspect-defparser scope-private
   :tree-keyword "private"
   :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
-                               string terminator tag comment assignment-operator array word)
+                               string string-concatenator terminator tag comment
+                               assignment-operator array word)
   :delimiter-predicate #'phpinspect--scope-terminator-p)
 
 (phpinspect-defparser scope-protected
   :tree-keyword "protected"
   :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
-                               string terminator tag comment assignment-operator array word)
+                               string string-concatenator terminator tag comment
+                               assignment-operator array word)
   :delimiter-predicate #'phpinspect--scope-terminator-p)
 
 (phpinspect-defhandler scope-keyword (start-token max-point)
@@ -900,8 +908,8 @@ the properties of the class"
   :handlers '(namespace array equals list comma attribute-reference variable
                         assignment-operator whitespace scope-keyword
                         static-keyword const-keyword use-keyword class-keyword
-                        function-keyword word terminator here-doc string comment
-                        tag block))
+                        function-keyword word terminator here-doc string string-concatenator
+                        comment tag block))
 
 (defun phpinspect-parse-current-buffer ()
   (phpinspect-parse-buffer-until-point
