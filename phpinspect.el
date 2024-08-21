@@ -4,7 +4,7 @@
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
-;; Version: 1
+;; Version: 1.1.0
 ;; Package-Requires: ((compat "29"))
 
 ;; This program is free software; you can redistribute it and/or modify
