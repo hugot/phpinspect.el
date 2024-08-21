@@ -550,7 +550,8 @@ When ASSUME-DERIVED is non-nil, it will be assumed that
 RESOLVECONTEXT's subject precedes a token that passes
 `phpinspect-attrib-p'. In this case, when the subject is a single
 bare word, it is assumed to be a type name at the start of a
-static method call and resolved to a fully qualified type. (`phpinspect--type-p')"
+static method call and resolved to a fully qualified
+type. (`phpinspect--type-p')"
   ;; Subject should be a statement, not a single token.
   (when (phpinspect-probably-token-p (phpinspect--resolvecontext-subject resolvecontext))
     (setf (phpinspect--resolvecontext-subject resolvecontext)
