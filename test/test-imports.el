@@ -201,8 +201,8 @@ class Baz {
 namespace Not\\App;
 
 use App\\Bar;
-use App\\Foo as FooBar;
 use App\\Foo;
+use App\\Foo as FooBar;
 
 function bar(): Bar {}
 

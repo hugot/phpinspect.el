@@ -231,6 +231,24 @@ determine the scope of the imports (global or local namespace)."
           (phpinspect-add-use-interactive type buffer project namespace)
           (phpinspect-buffer-parse buffer 'no-interrupt))))))
 
+(defcustom phpinspect-import-sort-comparison  #'string<
+  "The comparison function used to sort use statements."
+  :type 'function
+  :group 'phpinspect)
+
+(defun phpinspect-sort-compare-import-strings (str1 str2)
+  (funcall phpinspect-import-sort-comparison str1 str2))
+
+(defun phpinspect-seq-sorted-p (pred seq)
+  (let (prev)
+    (catch 'sorted
+      (seq-doseq (el seq)
+        (when prev
+          (unless (funcall pred prev el)
+            (throw 'sorted nil)))
+        (setq prev el))
+      t)))
+
 (defun phpinspect-format-use-statements (buffer first-meta)
   "Format a group of use statements to be sorted in alphabetical
 order and have the right amount of whitespace.
@@ -254,27 +272,39 @@ group."
                     current)
               statements))
 
-      (sort statements (lambda (a b) (string< (car a) (car b))))
+      (setq statements (nreverse statements))
 
-      ;; Re-insert use statements
       (with-current-buffer (phpinspect-buffer-buffer buffer)
         (save-excursion
-          (goto-char start)
-          (combine-after-change-calls
-            (delete-region start end)
+          ;; Check if use statements are already sorted
+          (if (phpinspect-seq-sorted-p
+               (lambda (a b)
+                 (phpinspect-sort-compare-import-strings (car a) (car b)))
+                 statements)
+              ;; statements are sorted, skip to the end of the region
+              (goto-char end)
+
+            ;; else: sort and re-insert
+            (sort statements (lambda (a b) (phpinspect-sort-compare-import-strings (car a) (car b))))
+            (goto-char start)
+            (combine-after-change-calls
+              (delete-region start end)
               (dolist (statement statements)
                 (phpinspect-codify-token (cdr statement))
                 (insert-char ?\n)))
+            ;; go char backward for accurate whitespace detection in the code
+            ;; below that removes/adds whitespace.
+            (backward-char))
 
           (if (looking-at "[[:blank:]\n]+")
               ;; Delete excess trailing whitespace (there's more than 2 between the
               ;; last use statement and the next token)
-              (when (< 1 (- (match-end 0) (match-beginning 0)))
+              (when (< 2 (- (match-end 0) (match-beginning 0)))
                 (delete-region (match-beginning 0) (match-end 0))
-                (insert-char ?\n))
+                (insert-char ?\n 2))
             ;; Insert an extra newline (there's only one between the last use
             ;; statement and the next token)
-              (insert-char ?\n)))))))
+            (insert-char ?\n)))))))
 
 (defun phpinspect-fix-imports ()
   "Find types that are used in the current buffer and make sure
