@@ -495,8 +495,10 @@ value/type."
                                   :fully-qualified t
                                   :collection t
                                   :contains collection-contains)))
-        ((and (phpinspect-word-p (car expression))
-              (string= (cadar expression) "new"))
+        ((phpinspect--match-sequence expression
+           :m '(:word "new")
+           :f #'phpinspect-word-p
+           :f #'phpinspect-list-p)
          (funcall
           type-resolver (phpinspect--make-type :name (cadadr expression))))
 
