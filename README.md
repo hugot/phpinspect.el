@@ -1,3 +1,5 @@
+![elpa build badge](https://elpa.gnu.org/packages/phpinspect.svg)
+
 # phpinspect.el
 PHPInspect is a minor mode that provides code intelligence for PHP in Emacs. At
 its core is a PHP parser implemented in Emacs Lisp. PHPInspect comes with
@@ -6,6 +8,28 @@ backends for `completion-at-point`, `company-mode` and `eldoc`. A backend for
 implemented at a later date. The main documentation of the mode is in the
 docstring of the mode itself (`C-h f phpinspect-mode RET` to view, or read it in
 the source code of [phpinspect.el](phpinspect.el)).
+
+## Installation
+phpinspect.el is available as a
+[package](https://elpa.gnu.org/packages/phpinspect.html) in GNU ELPA. Install it
+via package.el or an emacs package manager of your choice.
+
+### Install from git
+When installing from git, make sure to checkout the master branch instead of the
+devel branch if you prioritize stability. The devel branch will be home to the
+latest features, but also the latest bugs 🐛 .
+
+```bash
+git clone https://github.com/hugot/phpinspect.el ~/projects/phpinspect.el
+cd ~/projects/phpinspect.el
+make
+```
+
+```elisp
+(add-to-list 'load-path "~/projects/phpinspect.el")
+(require 'phpinspect)
+```
+
 
 ## Projects and Finding Types
 By default, phpinspect will recognize composer projects and read their
@@ -63,19 +87,6 @@ configuration to get the most out of phpinspect is the following:
   (phpinspect-mode))
 
 (add-hook 'php-mode-hook #'my-php-personal-hook)
-```
-
-## Install from git
-
-```bash
-git clone https://git.snorba.art/hugo/phpinspect.el ~/projects/phpinspect.el
-cd ~/projects/phpinspect.el
-make
-```
-
-```elisp
-(add-to-list 'load-path "~/projects/phpinspect.el")
-(require 'phpinspect)
 ```
 
 ## Compilation
