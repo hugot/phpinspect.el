@@ -4,8 +4,9 @@
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
-;; Version: 1.1.0
+;; Version: 1.2.0
 ;; Package-Requires: ((compat "29"))
+;; Website: https://github.com/hugot/phpinspect.el
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -22,7 +23,24 @@
 
 ;;; Commentary:
 
-;; See docstrings for documentation, starting with `phpinspect-mode'.
+;; PHPInspect is a minor mode that provides code intelligence for PHP in Emacs.
+;; At its core is a PHP parser implemented in Emacs Lisp.  PHPInspect comes with
+;; backends for `completion-at-point`, `company-mode` and `eldoc`.  A backend
+;; for `xref` (which provides go-to-definition functionality) is planned to be
+;; implemented at a later date.
+;;
+;; See docstrings for elaborate documentation on how to use the mode, starting
+;; with `phpinspect-mode'. Also see M-x customize-group RET phpinspect RET.
+
+;;; News:
+
+;; Version 1.2.0
+
+;; - Fixed bug in the resolving of function call return types.
+;; - Implemented parsing of string concatenation tokens (.), allowing a more
+;;   accurate determination of the statement to provide information about.
+;;   (read: "\'a string\' . $foo->" now actually yields completion results
+;;   instead of failing).
 
 ;;; Code:
 
