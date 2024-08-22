@@ -1,4 +1,4 @@
-![elpa build badge](https://elpa.gnu.org/packages/phpinspect.svg)
+[![elpa build badge](https://elpa.gnu.org/packages/phpinspect.svg)](https://elpa.gnu.org/packages/phpinspect.html)
 
 # phpinspect.el
 PHPInspect is a minor mode that provides code intelligence for PHP in Emacs. At
