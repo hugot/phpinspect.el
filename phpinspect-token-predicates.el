@@ -51,6 +51,9 @@ Type can be any of the token types returned by
 (defun phpinspect-comma-p (token)
   (phpinspect-token-type-p token :comma))
 
+(defun phpinspect-not-comma-p (token)
+  (not (phpinspect-comma-p token)))
+
 (defsubst phpinspect-terminator-p (token)
   (phpinspect-token-type-p token :terminator))
 
@@ -72,7 +75,7 @@ Type can be any of the token types returned by
 
 (defun phpinspect-end-of-use-p (token)
   (or (phpinspect-block-p token)
-      (phpinspect-end-of-token-p token)))
+      (phpinspect-terminator-p token)))
 
 (defun phpinspect-static-p (token)
   (phpinspect-token-type-p token :static))

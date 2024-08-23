@@ -599,7 +599,7 @@ nature like argument lists"
 
 (phpinspect-defparser use
   :tree-keyword "use"
-  :handlers '(word tag block-without-scopes terminator)
+  :handlers '(comment word tag block-without-scopes comma terminator)
   :delimiter-predicate #'phpinspect-end-of-use-p)
 
 (phpinspect-defhandler use-keyword (start-token max-point)

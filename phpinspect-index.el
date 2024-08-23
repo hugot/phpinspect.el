@@ -707,5 +707,64 @@ Returns a list of type name strings."
   "Index a PHP file for classes and the methods they have"
   (phpinspect--index-tokens (phpinspect-parse-current-buffer)))
 
+
+(defun phpinspect--index-trait-use (token type-resolver add-used-types)
+  (cl-assert (phpinspect-use-p token))
+  (setq token (cddr (seq-filter #'phpinspect-not-comment-p token)))
+
+  (let ((block? (car (last token)))
+        used-types config match)
+    (when (phpinspect-end-of-statement-p block?)
+      (setq token (butlast token)))
+
+    (setq token (seq-filter #'phpinspect-not-comma-p token))
+
+    (dolist (word token)
+      (when (phpinspect-word-p word)
+        (push (cadr token) used-types)
+        (push `(,(funcall type-resolver (phpinspect--make-type :name (cadr word))))
+              config)))
+
+    (when (phpinspect-block-p block?)
+      (setq block? (cdr (seq-filter #'phpinspect-not-comment-p block?)))
+
+      (while block?
+        (cond ((phpinspect-comma-p (car block?))
+               (pop block?))
+              ;; Override
+              ((phpinspect--match-sequence block?
+                 :f #'phpinspect-word-p
+                 :f #'phpinspect-static-attrib-p
+                 :m '(:word "insteadof")
+                 :f #'phpinspect-word-p
+                 :rest *)
+               (let* ((type (funcall type-resolver (phpinspect--make-type :name (cadr (nth 3 block?)))))
+                      (t-config (assoc type config #'phpinspect--type=)))
+                 (when t-config
+                   (push `(override ,(cadadr (cadr block?))
+                                    ,(funcall type-resolver
+                                              (phpinspect--make-type :name (cadar block?))))
+                         (cdr t-config))))
+
+               (setq block? (nthcdr 4 block?)))
+
+              ;; alias
+              ((phpinspect--match-sequence block?
+                 :f #'phpinspect-word-p
+                 :f #'phpinspect-static-attrib-p
+                 :m '(:word "as")
+                 :f #'phpinspect-word-p
+                 :rest *)
+               (let* ((type (funcall type-resolver (phpinspect--make-type :name (cadar block?))))
+                      (t-config (assoc type config #'phpinspect--type=)))
+
+                 (when t-config
+                   (push `(alias ,(cadadr (cadr block?)) ,(cadr (nth 3 block?)))
+                         (cdr t-config))))
+
+               (setq block? (nthcdr 4 block?)))))
+
+      config)))
+
 (provide 'phpinspect-index)
 ;;; phpinspect-index.el ends here

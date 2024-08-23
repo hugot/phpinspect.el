@@ -144,3 +144,16 @@ class TestClass {
         (expected-result (phpinspect--index-tokens
                           (phpinspect-test-read-fixture-data "IndexClass1"))))
     (should (equal index expected-result))))
+
+(ert-deftest phpinspect-parse-class-with-trait-uses ()
+  (let ((tree (phpinspect-parse-string "class A { use B, C { C::foo insteadof A } }")))
+
+    (should tree)
+    (should (equal
+             '(:root (:class (:declaration (:word "class") (:word "A"))
+                             (:block
+                              (:use (:word "B") (:comma ",") (:word "C")
+                                    (:block
+                                     (:word "C") (:static-attrib (:word "foo"))
+                                     (:word "insteadof") (:word "A"))))))
+            tree))))

@@ -439,3 +439,17 @@ if (something()) {
             (conditional (cadr functions)))
         (should (string= "conditional" (phpinspect--function-name conditional)))
         (should (string= "nestedConditional" (phpinspect--function-name nestedConditional)))))))
+
+(ert-deftest phpinspect-index-trait-use ()
+  (let* ((tree (with-temp-buffer
+                 (insert "use B, C { C::foo insteadof B, B::bar as banana }")
+                 (goto-char (point-min))
+                 (phpinspect--parse-use (current-buffer) (point-max))))
+         (expected `((,(phpinspect--make-type :name "\\C" :fully-qualified t))
+                     (,(phpinspect--make-type :name "\\B" :fully-qualified t)
+                      (alias "bar" "banana")
+                      (override "foo" ,(phpinspect--make-type :name "\\C" :fully-qualified t)))))
+         (index (phpinspect--index-trait-use tree (phpinspect--make-type-resolver nil nil nil) nil)))
+
+    (should index)
+    (should (equal expected index))))
