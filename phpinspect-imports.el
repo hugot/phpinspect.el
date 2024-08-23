@@ -103,7 +103,7 @@ buffer position to insert the use statement at."
           ((> (length fqns) 1)
            (phpinspect-add-use (completing-read "Class: " (phpinspect-names-to-alist fqns))
                                buffer namespace-token))
-          (t (phpinspect-message "No import found for type %s" typename)))))
+          (t (phpinspect-message "No import found for type %s" (phpinspect-name-string typename))))))
 
 (defun phpinspect-namespace-part-of-typename (typename)
   (string-trim-right typename "\\\\?[^\\]+"))

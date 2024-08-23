@@ -89,6 +89,7 @@ of TYPE, if available."
                       type-resolver current add-used-types comment-before))
 
                (when (setq return-type (seq-find #'phpinspect-word-p declaration))
+                 (funcall add-used-types (list (cadr return-type)))
                  (setq return-type (funcall type-resolver
                                             (phpinspect--make-type :name (cadr return-type)))))
 
@@ -144,9 +145,10 @@ function (think \"new\" statements, return types etc.)."
                 (phpinspect--index-function-declaration
                  declaration type-resolver add-used-types comment-before))
 
-    ;; FIXME: Anonymous functions should not be indexed! (or if they are, they
+    ;; Note: Anonymous functions should not be indexed! (or if they are, they
     ;; should at least not be visible from various UIs unless assigned to a
-    ;; variable as a closure).
+    ;; variable as a closure). It is up to the caller of this function to
+    ;; determine the right behavior.
     (unless name (setq name "anonymous"))
 
     (phpinspect--log "Checking function return annotations")
@@ -170,7 +172,6 @@ function (think \"new\" statements, return types etc.)."
       (setq used-types (nconc used-types
                               (phpinspect--find-used-types-in-tokens
                                `(,(seq-find #'phpinspect-block-p php-func)))))
-      (when type (push (phpinspect--type-bare-name type) used-types))
       (funcall add-used-types used-types))
 
     (phpinspect--log "Creating function object")
