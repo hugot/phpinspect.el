@@ -656,3 +656,38 @@ class AccountStatisticsController {
             (should (phpinspect--type=
                      relation-type
                      (phpinspect--type-contains (phpinspect--variable-type relations))))))))))
+
+
+(ert-deftest phpinspect-buffer-parse-incrementally-unfinished-variable-scope ()
+  (with-temp-buffer
+  (let* ((buffer (phpinspect-make-buffer
+                  :buffer (current-buffer)
+                  :-project (phpinspect--make-dummy-project))))
+
+
+    (setq-local phpinspect-current-buffer buffer)
+    (insert
+     "<?php
+
+namespace XXX;
+
+class AAA {
+
+    function bbb () {
+        $banana = 'aaa';
+    }
+}
+
+")
+
+    (add-hook 'after-change-functions #'phpinspect-after-change-function)
+    (phpinspect-buffer-parse buffer 'no-interrupt)
+
+    ;; move to after class brace
+    (goto-char 35)
+    (insert "\n public Foo ")
+    (phpinspect-buffer-parse buffer 'no-interrupt)
+    (phpinspect-buffer-update-project-index buffer)
+
+    ;; We're just confirming that the above code doesn't error
+    (should t))))

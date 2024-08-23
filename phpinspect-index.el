@@ -89,7 +89,8 @@ of TYPE, if available."
                       type-resolver current add-used-types comment-before))
 
                (when (setq return-type (seq-find #'phpinspect-word-p declaration))
-                 (funcall add-used-types (list (cadr return-type)))
+                 (when add-used-types
+                   (funcall add-used-types (list (cadr return-type))))
                  (setq return-type (funcall type-resolver
                                             (phpinspect--make-type :name (cadr return-type)))))
 
@@ -137,7 +138,7 @@ If ADD-USED-TYPES is set, it must be a function and will be
 called with a list of the types that are used within the
 function (think \"new\" statements, return types etc.)."
   (phpinspect--log "Indexing function")
-  (let* ((php-func (cadr scope))
+  (let* ((php-func (seq-find #'phpinspect-function-p scope))
          (declaration (cadr php-func))
          name type arguments throws used-types)
 
