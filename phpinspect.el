@@ -4,7 +4,7 @@
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
-;; Version: 1.2.0
+;; Version: 1.2.1
 ;; Package-Requires: ((compat "29"))
 ;; Website: https://github.com/hugot/phpinspect.el
 
