@@ -102,7 +102,7 @@ as keys and project caches as values."))
     (phpinspect--log "Getting stub class for %s" fqn)
     (catch 'return
       (maphash (lambda (_name project)
-                 (when-let ((class (phpinspect-project-get-class project fqn)))
+                 (when-let ((class (phpinspect-project-get-typedef project fqn)))
                    (throw 'return class)))
                (phpinspect--cache-projects stub-cache)))))
 
@@ -176,7 +176,7 @@ then returned."
                        (phpinspect--make-project
                         :fs (phpinspect-make-fs)
                         :root project-root
-                        :extra-class-retriever (phpinspect--cache-extra-class-retriever cache)
+                        :extra-typedef-retriever (phpinspect--cache-extra-class-retriever cache)
                         :extra-function-retriever (phpinspect--cache-extra-function-retriever cache)
                         :worker (phpinspect-make-dynamic-worker))
                        (phpinspect--cache-projects cache)))

@@ -424,11 +424,11 @@ use CCC;
     (phpinspect-buffer-index-namespaces buffer namespaces)
     (phpinspect-buffer-index-classes buffer classes)
 
-    (should (phpinspect-project-get-class (phpinspect-buffer-project buffer) (phpinspect--make-type :name "\\TestNamespace\\TestClass")))
+    (should (phpinspect-project-get-typedef (phpinspect-buffer-project buffer) (phpinspect--make-type :name "\\TestNamespace\\TestClass")))
 
-    (should (= 2 (hash-table-count (phpinspect-project-class-index (phpinspect-buffer-project buffer)))))
-    (should (= 1 (length (phpinspect--class-extended-classes
-                          (phpinspect-project-get-class
+    (should (= 2 (hash-table-count (phpinspect-project-typedef-index (phpinspect-buffer-project buffer)))))
+    (should (= 1 (length (phpi-typedef-subscribed-to-types
+                          (phpinspect-project-get-typedef
                            (phpinspect-buffer-project buffer)
                            (phpinspect--make-type :name "\\TestNamespace\\TestClass"))))))
 
@@ -451,12 +451,12 @@ use CCC;
 
       (phpinspect-buffer-index-declarations buffer new-declarations)
       (phpinspect-buffer-index-classes buffer new-classes)
-      (should (phpinspect-project-get-class
+      (should (phpinspect-project-get-typedef
                (phpinspect-buffer-project buffer)
                (phpinspect--make-type :name "\\TestNamespace\\TestClass")))
 
-      (should (= 0 (length (phpinspect--class-extended-classes
-                          (phpinspect-project-get-class
+      (should (= 0 (length (phpi-typedef-subscribed-to-types
+                          (phpinspect-project-get-typedef
                            (phpinspect-buffer-project buffer)
                            (phpinspect--make-type :name "\\TestNamespace\\TestClass")))))))
 
@@ -465,11 +465,11 @@ use CCC;
       (setf (phpinspect-bmap--root-meta (phpinspect-buffer-map buffer)) new-root)
       (phpinspect-buffer-index-classes buffer new-classes)
 
-      (should-not (phpinspect-project-get-class
+      (should-not (phpinspect-project-get-typedef
                    (phpinspect-buffer-project buffer)
                    (phpinspect--make-type :name "\\TestNamespace\\TestClass")))
 
-      (should (= 1 (hash-table-count (phpinspect-project-class-index (phpinspect-buffer-project buffer))))))))
+      (should (= 1 (hash-table-count (phpinspect-project-typedef-index (phpinspect-buffer-project buffer))))))))
 
 (ert-deftest phpinspect-buffer-index-functions ()
   (with-temp-buffer
@@ -486,23 +486,23 @@ class TestClass
       (phpinspect-buffer-update-project-index buffer)
 
 
-      (should (phpinspect-project-get-class
+      (should (phpinspect-project-get-typedef
                (phpinspect-buffer-project buffer)
                (phpinspect--make-type :name "\\NS\\TestClass")))
 
-      (should (= 1 (hash-table-count (phpinspect--class-methods
-                                      (phpinspect-project-get-class
-                                       (phpinspect-buffer-project buffer)
-                                       (phpinspect--make-type :name "\\NS\\TestClass"))))))
+      (should (= 1 (length (phpi-typedef-get-methods
+                            (phpinspect-project-get-typedef
+                             (phpinspect-buffer-project buffer)
+                             (phpinspect--make-type :name "\\NS\\TestClass"))))))
 
       (setf (phpinspect-buffer-map buffer) (phpinspect-make-bmap :-root-meta (phpinspect-make-meta nil 1 400 "" 'root)))
 
       (phpinspect-buffer-index-functions buffer (phpinspect-make-splayt))
 
-      (should (= 0 (hash-table-count (phpinspect--class-methods
-                                      (phpinspect-project-get-class
-                                       (phpinspect-buffer-project buffer)
-                                       (phpinspect--make-type :name "\\NS\\TestClass")))))))))
+      (should (= 0 (length (phpi-typedef-get-methods
+                            (phpinspect-project-get-typedef
+                             (phpinspect-buffer-project buffer)
+                             (phpinspect--make-type :name "\\NS\\TestClass")))))))))
 
 (ert-deftest phpinspect-buffer-index-class-variables ()
   (let ((buffer (phpinspect-make-buffer :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))
@@ -542,25 +542,25 @@ class TestClass
 
     (phpinspect-buffer-index-class-variables buffer variables)
 
-    (should (phpinspect-project-get-class
+    (should (phpinspect-project-get-typedef
              (phpinspect-buffer-project buffer)
              (phpinspect--make-type :name "\\TestClass")))
 
-    (should (= 2 (length (phpinspect--class-variables
-                          (phpinspect-project-get-class
+    (should (= 2 (length (phpi-typedef-variables
+                          (phpinspect-project-get-typedef
                            (phpinspect-buffer-project buffer)
                            (phpinspect--make-type :name "\\TestClass"))))))
 
 
-    (should (= 1 (length (phpinspect--class-get-constants
-                          (phpinspect-project-get-class
+    (should (= 1 (length (phpi-typedef-get-constants
+                          (phpinspect-project-get-typedef
                            (phpinspect-buffer-project buffer)
                            (phpinspect--make-type :name "\\TestClass"))))))
 
     (should (phpinspect--type= (phpinspect--make-type :name "\\array")
                               (phpinspect--variable-type
-                               (phpinspect--class-get-variable
-                                (phpinspect-project-get-class
+                               (phpi-typedef-get-variable
+                                (phpinspect-project-get-typedef
                                  (phpinspect-buffer-project buffer)
                                  (phpinspect--make-type :name "\\TestClass"))
                                 "banana"))))))
@@ -616,19 +616,19 @@ class AccountStatisticsController {
 
       (phpinspect-buffer-update-project-index buffer)
 
-      (let ((class (phpinspect-project-get-class
+      (let ((class (phpinspect-project-get-typedef
                     (phpinspect-buffer-project buffer)
                     (phpinspect--make-type
                      :name "\\App\\Controller\\Api\\V1\\AccountStatisticsController"
                      :fully-qualified t))))
         (should class)
 
-        (let ((model (phpinspect--class-get-variable class "model"))
-              (priv-model (phpinspect--class-get-variable class "privModel"))
+        (let ((model (phpi-typedef-get-variable class "model"))
+              (priv-model (phpi-typedef-get-variable class "privModel"))
               ;; Static variables are stored with "$" prefix
-              (relation (phpinspect--class-get-variable class "$relation"))
-              (static-relation (phpinspect--class-get-variable class "$staticRelation"))
-              (relations (phpinspect--class-get-variable class "relations")))
+              (relation (phpi-typedef-get-variable class "$relation"))
+              (static-relation (phpi-typedef-get-variable class "$staticRelation"))
+              (relations (phpi-typedef-get-variable class "relations")))
           (should model)
           (should priv-model)
           (should relation)

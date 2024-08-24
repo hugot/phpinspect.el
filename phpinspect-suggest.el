@@ -28,7 +28,7 @@
 (require 'phpinspect-token-predicates)
 (require 'phpinspect-type)
 (require 'phpinspect-project)
-(require 'phpinspect-class)
+(require 'phpinspect-typedef)
 
 (phpinspect--declare-log-group 'suggest)
 
@@ -75,31 +75,31 @@
 
       variable-list)))
 
-(defun phpinspect-get-cached-project-class-methods (rctx class-fqn &optional static)
+(defun phpinspect-get-cached-project-typedef-methods (rctx class-fqn &optional static)
   (phpinspect--log "Getting cached project class methods for %s" class-fqn)
-  (let ((class (phpinspect-rctx-get-or-create-cached-project-class rctx class-fqn 'no-enqueue)))
+  (let ((class (phpinspect-rctx-get-typedef rctx class-fqn 'no-enqueue)))
     (phpinspect--log (if class
                          "Retrieved class index, starting method collection %s"
                        "No class index found for %s")
                      class-fqn)
     (when class
       (if static
-          (phpinspect--class-get-static-method-list class)
-        (phpinspect--class-get-method-list class)))))
+          (phpi-typedef-get-static-methods class)
+        (phpi-typedef-get-methods class)))))
 
 (defun phpinspect--get-methods-for-class
     (resolvecontext class &optional static)
   "Find all known cached methods for CLASS."
-  (or (phpinspect-get-cached-project-class-methods resolvecontext class static)
+  (or (phpinspect-get-cached-project-typedef-methods resolvecontext class static)
       (progn (phpinspect--log "Failed to find methods for class %s :(" class) nil)))
 
 (defun phpinspect--get-variables-for-class (rctx class-name &optional static)
-  (let ((class (phpinspect-rctx-get-or-create-cached-project-class
+  (let ((class (phpinspect-rctx-get-typedef
                 rctx class-name 'no-enqueue)))
     (when class
       (if static
-          (append (phpinspect--class-get-static-variables class) (phpinspect--class-get-constants class))
-        (phpinspect--class-get-variables class)))))
+          (append (phpi-typedef-get-static-variables class) (phpi-typedef-get-constants class))
+        (phpi-typedef-get-variables class)))))
 
 (defun phpinspect--make-method-lister (resolvecontext &optional static)
   (lambda (fqn)
@@ -107,6 +107,9 @@
 
 (cl-defmethod phpinspect--candidate-scope ((candidate phpinspect--function))
   (phpinspect--function-scope candidate))
+
+(cl-defmethod phpinspect--candidate-scope ((candidate phpinspect-method))
+  (phpinspect--function-scope (phpi-method-definition candidate)))
 
 (cl-defmethod phpinspect--candidate-scope ((candidate phpinspect--variable))
   (phpinspect--variable-scope candidate))

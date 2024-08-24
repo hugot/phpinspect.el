@@ -35,15 +35,15 @@ should never be changed.
 
 When this slot has a non-nil value:
 
-- Methods and functions that are meant to manipulate class data
+- Methods and functions that are meant to manipulate typedef data
 should become no-ops.
-- All classes retrieved from it should be marked as read-only as well.")
-  (extra-class-retriever nil
+- All typedefes retrieved from it should be marked as read-only as well.")
+  (extra-typedef-retriever nil
                          :type lambda
                          :documentation
                          "A function that should accept a `phpinspect--type' and return
-matching `phpinspect--class' instances or nil. Used to discover
-classes that are defined outside of project code.")
+matching `phpinspect--typedef' instances or nil. Used to discover
+typedefes that are defined outside of project code.")
   (extra-function-retriever nil
                             :type lambda
                             :documentation
@@ -51,11 +51,11 @@ classes that are defined outside of project code.")
 `phpinspect-intern-name') and return matching `phpinspect--function'
 instances or nil. Used to discover functions that are defined
 outside of project code.")
-  (class-index (make-hash-table :test 'eq :size 100 :rehash-size 1.5)
+  (typedef-index (make-hash-table :test 'eq :size 100 :rehash-size 1.5)
                :type hash-table
                :documentation
                "A `hash-table` that contains all of the currently
-indexed classes in the project")
+indexed typedefs in the project")
   (function-index (make-hash-table :test 'eq :size 100 :rehash-size 2.0)
                   :type hash-table
                   :documentation

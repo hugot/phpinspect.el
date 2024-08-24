@@ -77,7 +77,7 @@ class Thing
 
           (should (phpinspect-function-doc-p result))
           (should (= (cdr expected) (phpinspect-function-doc-arg-pos result)))
-          (should (string= "getThis" (phpinspect--function-name (phpinspect-function-doc-fn result)))))))))
+          (should (string= "getThis" (phpi-fn-name (phpinspect-function-doc-fn result)))))))))
 
 
 (ert-deftest phpinspect-eldoc-function-for-object-method ()

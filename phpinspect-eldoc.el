@@ -84,30 +84,30 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
     (setq type-before (phpinspect-resolve-type-from-context rctx nil t))
 
     (when type-before
-      (let ((class (phpinspect-project-get-class-extra-or-create
+      (let ((class (phpinspect-project-get-typedef-extra-or-create
                     (phpinspect--resolvecontext-project rctx)
                     type-before 'no-enqueue))
             (attribute-name (cadadr attrib))
             variable method result)
         (when attribute-name
           (cond ((phpinspect-static-attrib-p attrib)
-                 (setq variable (phpinspect--class-get-variable class attribute-name))
+                 (setq variable (phpi-typedef-get-variable class attribute-name))
 
                  (if (and variable
                           (or (phpinspect--variable-static-p variable)
                               (phpinspect--variable-const-p variable)))
                      (setq result variable)
-                   (setq method (phpinspect--class-get-static-method
+                   (setq method (phpi-typedef-get-static-method
                                  class (phpinspect-intern-name attribute-name)))
                    (when method
                      (setq result (phpinspect-make-function-doc :fn method)))))
                 ((phpinspect-object-attrib-p attrib)
-                 (setq variable (phpinspect--class-get-variable class attribute-name))
+                 (setq variable (phpi-typedef-get-variable class attribute-name))
 
                  (if (and variable
                           (phpinspect--variable-vanilla-p variable))
                      (setq result variable)
-                   (setq method (phpinspect--class-get-method
+                   (setq method (phpi-typedef-get-method
                                  class (phpinspect-intern-name attribute-name)))
                    (when method
                      (setq result (phpinspect-make-function-doc :fn method))))))
@@ -170,6 +170,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
        ((setq match-result (phpinspect--match-sequence (last statement 2)
                              :f (phpinspect-meta-wrap-token-pred #'phpinspect-attrib-p)
                              :f (phpinspect-meta-wrap-token-pred #'phpinspect-list-p)))
+        (phpinspect--log "Eldoc context is a method call")
 
         (setq arg-list (car (last match-result))
               static (phpinspect-static-attrib-p (phpinspect-meta-token (car match-result)))
@@ -189,11 +190,12 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
         (when-let* ((type-of-previous-statement
                      (phpinspect-resolve-type-from-context rctx nil t))
                     (method-name (cadadr (phpinspect-meta-token (car match-result))))
-                    (class (phpinspect-rctx-get-or-create-cached-project-class
+
+                    (class (phpinspect-rctx-get-typedef
                             rctx type-of-previous-statement 'no-enqueue))
                     (method (if static
-                                (phpinspect--class-get-static-method class method-name)
-                              (phpinspect--class-get-method class method-name))))
+                                (phpi-typedef-get-static-method class method-name)
+                              (phpi-typedef-get-method class method-name))))
 
           (when method
             (phpinspect-make-function-doc :fn method :arg-pos arg-pos))))
@@ -231,12 +233,13 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
       :type phpinspect--function)
   (arg-pos nil))
 
+
 (cl-defmethod phpinspect-eldoc-string ((doc phpinspect-function-doc))
   (let ((fn (phpinspect-function-doc-fn doc))
         (arg-pos (phpinspect-function-doc-arg-pos doc))
         (arg-count 0))
     (concat (truncate-string-to-width
-             (phpinspect--function-name fn) phpinspect-eldoc-word-width) ": ("
+             (phpi-fn-name fn) phpinspect-eldoc-word-width) ": ("
              (mapconcat
               (lambda (arg)
                 (let ((doc-string
@@ -250,10 +253,10 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                            doc-string 'face 'eldoc-highlight-function-argument)))
                   (setq arg-count (+ arg-count 1))
                   doc-string))
-              (phpinspect--function-arguments fn)
+              (phpi-fn-arguments fn)
               ", ")
              "): "
-              (phpinspect--display-format-type-name (phpinspect--function-return-type fn)))))
+              (phpinspect--display-format-type-name (phpi-fn-return-type fn)))))
 
 (defvar phpinspect-eldoc-strategies (list (phpinspect-make-eld-attribute)
                                           (phpinspect-make-eld-function-args)

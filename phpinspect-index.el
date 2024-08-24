@@ -181,7 +181,7 @@ function (think \"new\" statements, return types etc.)."
      :token php-func
      :name (concat (if namespace (concat namespace "\\") "") name)
      :throws throws
-     :return-type (or type phpinspect--null-type)
+     :return-type type
      :arguments arguments)))
 
 (define-inline phpinspect--safe-cadr (list)
@@ -329,6 +329,7 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
   "Create an alist with relevant attributes of a parsed class."
   (phpinspect--log "INDEXING CLASS")
   (let ((methods)
+        (trait-config)
         (static-methods)
         (static-variables)
         (variables)
@@ -414,9 +415,10 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
 
             ;; Prevent comments from sticking around too long
             ((and (phpinspect-use-p token) (phpinspect-word-p (cadr token)))
-             ;; FIXME: Actually implement indexation of trait usage. This just
-             ;; marks the type as used for now.
-             (push (cadadr token) used-types))
+             ;; Trait use statement
+             (setq trait-config
+                   (nconc trait-config
+                          (phpinspect--index-trait-use token type-resolver add-used-types))))
             (t
              (phpinspect--log "Unsetting comment-before")
              (setq comment-before nil))))
@@ -458,6 +460,7 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
     `(,class-name .
                   (phpinspect--indexed-class
                    (complete . ,(not (phpinspect-incomplete-class-p class)))
+                   (trait-confg . ,trait-config)
                    (class-name . ,class-name)
                    (declaration . ,(seq-find #'phpinspect-declaration-p class))
                    (location . ,(funcall location-resolver class))
@@ -560,13 +563,13 @@ NAMESPACE will be assumed the root namespace if not provided"
              (setq function (phpinspect--index-function-from-scope
                              type-resolver `(:public ,token) comment-before add-used-types
                              namespace))
-             (unless (phpinspect--function-anonyous-p function)
+             (unless (phpinspect--function-anonymous-p function)
              (push function functions)))
             ((phpinspect-block-or-list-p token)
              (dolist (fn (phpinspect--index-functions-in-tokens
                           (cdr token) type-resolver-factory imports namespace
                           add-used-types type-resolver))
-               (unless (phpinspect--function-anonyous-p fn)
+               (unless (phpinspect--function-anonymous-p fn)
                  (push fn functions))))))
 
     functions))
@@ -710,10 +713,10 @@ Returns a list of type name strings."
 
 (defun phpinspect--index-trait-use (token type-resolver add-used-types)
   (cl-assert (phpinspect-use-p token))
-  (setq token (cddr (seq-filter #'phpinspect-not-comment-p token)))
+  (setq token (cdr (seq-filter #'phpinspect-not-comment-p token)))
 
   (let ((block? (car (last token)))
-        used-types config match)
+        used-types config)
     (when (phpinspect-end-of-statement-p block?)
       (setq token (butlast token)))
 
@@ -721,7 +724,7 @@ Returns a list of type name strings."
 
     (dolist (word token)
       (when (phpinspect-word-p word)
-        (push (cadr token) used-types)
+        (push (cadr word) used-types)
         (push `(,(funcall type-resolver (phpinspect--make-type :name (cadr word))))
               config)))
 
@@ -762,9 +765,11 @@ Returns a list of type name strings."
                    (push `(alias ,(cadadr (cadr block?)) ,(cadr (nth 3 block?)))
                          (cdr t-config))))
 
-               (setq block? (nthcdr 4 block?)))))
+               (setq block? (nthcdr 4 block?))))))
 
-      config)))
+    (when add-used-types
+      (funcall add-used-types used-types))
+    config))
 
 (provide 'phpinspect-index)
 ;;; phpinspect-index.el ends here

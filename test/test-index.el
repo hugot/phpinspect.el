@@ -55,6 +55,7 @@
              (,(phpinspect--make-type :name "\\Potato" :fully-qualified t)
               phpinspect--indexed-class
               (complete . t)
+              (trait-config)
               (class-name . ,(phpinspect--make-type :name "\\Potato" :fully-qualified t))
               (declaration . (:declaration (:word "class") (:word "Potato")))
               (location . (0 0))
@@ -74,7 +75,7 @@
                                                 ("things" . ,(phpinspect--make-type :name "\\array"
                                                                                   :collection t
                                                                                   :fully-qualified t)))
-                                   :return-type phpinspect--null-type)))
+                                   :return-type nil)))
               (static-variables)
               (variables)
               (constants)
@@ -116,6 +117,7 @@ try {
 })))));
 }")))
          (used-types (alist-get 'used-types (car (alist-get 'classes result)))))
+
     (should (equal
              (mapcar #'phpinspect-intern-name
                      (sort
@@ -159,33 +161,33 @@ try {
          (methods (alist-get 'methods class)))
     (should (= 3 (length methods)))
     (dolist (method methods)
-      (should (member (phpinspect--function-name method)
+      (should (member (phpi-fn-name method)
                       '("duplicate" "hold" "peel")))
 
-      (cond ((string= (phpinspect--function-name method)
+      (cond ((string= (phpi-fn-name method)
                       "duplicate")
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\Banana" :fully-qualified t)
-                      (phpinspect--function-return-type method))))
-            ((string= (phpinspect--function-name method)
+                      (phpi-fn-return-type method))))
+            ((string= (phpi-fn-name method)
                       "peel")
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\int" :fully-qualified t)
-                      (phpinspect--function-return-type method)))
+                      (phpi-fn-return-type method)))
 
-             (should (= 2 (length (phpinspect--function-arguments method))))
+             (should (= 2 (length (phpi-fn-arguments method))))
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\array" :fully-qualified t)
-                      (phpinspect--function-argument-type method "loose")))
+                      (phpi-fn-argument-type method "loose")))
 
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\bool" :fully-qualified t)
-                      (phpinspect--function-argument-type method "fast"))))
-            ((string= (phpinspect--function-name method)
+                      (phpi-fn-argument-type method "fast"))))
+            ((string= (phpi-fn-name method)
                       "hold")
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\void" :fully-qualified t)
-                      (phpinspect--function-return-type method))))))))
+                      (phpi-fn-return-type method))))))))
 
 (ert-deftest phpinspect-index-static-method-annotations ()
   (let* ((result (phpinspect--index-tokens
@@ -200,32 +202,32 @@ try {
          (methods (alist-get 'static-methods class)))
     (should (= 3 (length methods)))
     (dolist (method methods)
-      (should (member (phpinspect--function-name method)
+      (should (member (phpi-fn-name method)
                       '("create" "hold" "peel")))
 
-      (cond ((string= (phpinspect--function-name method)
+      (cond ((string= (phpi-fn-name method)
                       "duplicate")
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\Banana" :fully-qualified t)
-                      (phpinspect--function-return-type method))))
-            ((string= (phpinspect--function-name method)
+                      (phpi-fn-return-type method))))
+            ((string= (phpi-fn-name method)
                       "peel")
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\int" :fully-qualified t)
-                      (phpinspect--function-return-type method)))
+                      (phpi-fn-return-type method)))
 
-             (should (= 2 (length (phpinspect--function-arguments method))))
+             (should (= 2 (length (phpi-fn-arguments method))))
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\array" :fully-qualified t)
-                      (phpinspect--function-argument-type method "loose")))
+                      (phpi-fn-argument-type method "loose")))
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\bool" :fully-qualified t)
-                      (phpinspect--function-argument-type method "fast"))))
-            ((string= (phpinspect--function-name method)
+                      (phpi-fn-argument-type method "fast"))))
+            ((string= (phpi-fn-name method)
                       "hold")
              (should (phpinspect--type=
                       (phpinspect--make-type :name "\\void" :fully-qualified t)
-                      (phpinspect--function-return-type method))))))))
+                      (phpi-fn-return-type method))))))))
 
 (require 'phpinspect-serialize)
 
@@ -284,19 +286,19 @@ function example($bing): Thing {}")
 
     (should (setq functions (alist-get 'functions index)))
     (should (= 2 (length functions)))
-    (should (string= "test_func" (phpinspect--function-name (cadr functions))))
-    (should (string= "example" (phpinspect--function-name (car functions))))
+    (should (string= "test_func" (phpi-fn-name (cadr functions))))
+    (should (string= "example" (phpi-fn-name (car functions))))
 
     (let ((example (car functions)))
-      (should (= 1 (length (phpinspect--function-arguments example))))
+      (should (= 1 (length (phpi-fn-arguments example))))
       (should (phpinspect--type=
                (phpinspect--make-type :name "\\array")
-               (phpinspect--function-argument-type example "bing"))))
+               (phpi-fn-argument-type example "bing"))))
 
     (should (phpinspect--type= (phpinspect--make-type :name "\\array")
-                               (phpinspect--function-return-type (cadr functions))))
+                               (phpi-fn-return-type (cadr functions))))
     (should (phpinspect--type= (phpinspect--make-type :name "\\Example\\Thing")
-                               (phpinspect--function-return-type (car functions))))))
+                               (phpi-fn-return-type (car functions))))))
 
 (ert-deftest phpinspect-index-functions-in-namespace ()
   (let* ((code "<?php
@@ -316,13 +318,13 @@ function example(Firewall $wall): Thing {}")
 
     (should (setq functions (alist-get 'functions index)))
     (should (= 2 (length functions)))
-    (should (string= "Local\\test_func" (phpinspect--function-name (cadr functions))))
-    (should (string= "Local\\example" (phpinspect--function-name (car functions))))
+    (should (string= "Local\\test_func" (phpi-fn-name (cadr functions))))
+    (should (string= "Local\\example" (phpi-fn-name (car functions))))
 
     (should (phpinspect--type= (phpinspect--make-type :name "\\array")
-                               (phpinspect--function-return-type (cadr functions))))
+                               (phpi-fn-return-type (cadr functions))))
     (should (phpinspect--type= (phpinspect--make-type :name "\\Example\\Thing")
-                               (phpinspect--function-return-type (car functions))))
+                               (phpi-fn-return-type (car functions))))
     (should (alist-get 'used-types namespace))
     (should (= 3 (length (alist-get 'used-types namespace))))
     (should (member (phpinspect-intern-name "Firewall") (alist-get 'used-types namespace)))
@@ -350,18 +352,18 @@ class AccountStatisticsController {
 }")
       (phpinspect-project-add-index project (phpinspect-index-current-buffer))
 
-      (let ((class (phpinspect-project-get-class
+      (let ((class (phpinspect-project-get-typedef
                    project
                     (phpinspect--make-type
                      :name "\\App\\Controller\\Api\\V1\\AccountStatisticsController"
                      :fully-qualified t))))
         (should class)
 
-        (let ((model (phpinspect--class-get-variable class "model"))
-              (priv-model (phpinspect--class-get-variable class "privModel"))
+        (let ((model (phpi-typedef-get-variable class "model"))
+              (priv-model (phpi-typedef-get-variable class "privModel"))
               ;; Static variables are stored with "$" prefix
-              (relation (phpinspect--class-get-variable class "$relation"))
-              (static-relation (phpinspect--class-get-variable class "$staticRelation")))
+              (relation (phpi-typedef-get-variable class "$relation"))
+              (static-relation (phpi-typedef-get-variable class "$staticRelation")))
           (should model)
           (should priv-model)
           (should relation)
@@ -405,14 +407,14 @@ public function doStuff()
       (let* ((type (phpinspect--make-type
                      :name "\\App\\Controller\\Api\\V1\\AccountStatisticsController"
                      :fully-qualified t))
-             (class (phpinspect-project-get-class project type)))
+             (class (phpinspect-project-get-typedef project type)))
 
         (should class)
 
-        (let ((method (phpinspect--class-get-method class "doStuff")))
+        (let ((method (phpi-typedef-get-method class "doStuff")))
           (should method)
-          (should (phpinspect--function-return-type method))
-          (should (phpinspect--type= type (phpinspect--function-return-type method))))))))
+          (should (phpi-method-return-type method))
+          (should (phpinspect--type= type (phpi-method-return-type method))))))))
 
 (ert-deftest phpinspect-index-nested-functions ()
   (with-temp-buffer
@@ -437,12 +439,12 @@ if (something()) {
 
       (let ((nestedConditional (car functions))
             (conditional (cadr functions)))
-        (should (string= "conditional" (phpinspect--function-name conditional)))
-        (should (string= "nestedConditional" (phpinspect--function-name nestedConditional)))))))
+        (should (string= "conditional" (phpi-fn-name conditional)))
+        (should (string= "nestedConditional" (phpi-fn-name nestedConditional)))))))
 
 (ert-deftest phpinspect-index-trait-use ()
   (let* ((tree (with-temp-buffer
-                 (insert "use B, C { C::foo insteadof B, B::bar as banana }")
+                 (insert "B, C { C::foo insteadof B, B::bar as banana }")
                  (goto-char (point-min))
                  (phpinspect--parse-use (current-buffer) (point-max))))
          (expected `((,(phpinspect--make-type :name "\\C" :fully-qualified t))

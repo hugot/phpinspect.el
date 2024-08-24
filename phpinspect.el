@@ -54,7 +54,7 @@
 (require 'phpinspect-util)
 (require 'phpinspect-type)
 (require 'phpinspect-index)
-(require 'phpinspect-class)
+(require 'phpinspect-typedef)
 (require 'phpinspect-worker)
 (require 'phpinspect-autoload)
 (require 'phpinspect-imports)

@@ -24,7 +24,7 @@
 ;;; Code:
 
 (require 'phpinspect-type)
-(require 'phpinspect-class)
+(require 'phpinspect-typedef)
 
 (cl-defgeneric phpinspect--serialize-type (_type)
   nil)
@@ -63,6 +63,8 @@
 (cl-defmethod phpinspect--serialize-indexed-class ((class (head phpinspect--indexed-class)))
   ``(phpinspect--indexed-class
      (complete . ,,(alist-get 'complete class))
+     (trait-config . ,,(mapcar (lambda (conf) (list (phpinspect--serialize-type (car conf)) (cdr conf)))
+                               (alist-get 'trait-config class)))
      (class-name . ,,(phpinspect--serialize-type (alist-get 'class-name class)))
      (declaration . ,(quote ,(alist-get 'declaration class)))
      (location . ,(quote ,(alist-get 'location class)))

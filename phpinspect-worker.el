@@ -27,7 +27,7 @@
 (require 'phpinspect-util)
 (require 'phpinspect-project-struct)
 (require 'phpinspect-index)
-(require 'phpinspect-class)
+(require 'phpinspect-typedef)
 (require 'phpinspect-queue)
 (require 'phpinspect-pipeline)
 

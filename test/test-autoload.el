@@ -175,7 +175,7 @@
     (should-not (hash-table-empty-p (phpinspect-autoloader-own-types autoloader)))
     (should-not (hash-table-empty-p (phpinspect-autoloader-types autoloader)))
 
-    (should (phpinspect-project-get-class project (phpinspect--make-type :name "\\FilesList")))
+    (should (phpinspect-project-get-typedef project (phpinspect--make-type :name "\\FilesList")))
 
     (should (string= "/project/root/vendor/runescape/client/src/Runescape/Banana/App.php"
                      (phpinspect-autoloader-resolve

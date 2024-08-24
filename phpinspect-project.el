@@ -27,9 +27,11 @@
 (require 'phpinspect-autoload)
 (require 'phpinspect-worker)
 (require 'phpinspect-index)
-(require 'phpinspect-class)
+(require 'phpinspect-typedef)
 (require 'phpinspect-type)
 (require 'phpinspect-fs)
+(require 'phpinspect-typedef)
+(require 'phpinspect-method-cell)
 (require 'filenotify)
 
 (defvar phpinspect-auto-reindex nil
@@ -74,10 +76,10 @@ serious performance hits. Enable at your own risk (:")
   ((project phpinspect-project) methods)
   (phpinspect-project-edit project
     (dolist (method methods)
-      (when (phpinspect--function-return-type method)
+      (when (phpi-method-return-type method)
         (phpinspect-project-enqueue-if-not-present
          project
-         (phpinspect--function-return-type method))))))
+         (phpi-method-return-type method))))))
 
 (cl-defmethod phpinspect-project-add-variable-types-to-index-queue
   ((project phpinspect-project) variables)
@@ -90,27 +92,27 @@ serious performance hits. Enable at your own risk (:")
   ((project phpinspect-project) (type phpinspect--type))
   (phpinspect-project-edit project
     (unless (phpinspect--type-is-native type)
-      (let ((class (phpinspect-project-get-class project type)))
-        (when (or (not class)
-                  (not (or (phpinspect--class-initial-index class))))
+      (let ((typedef (phpinspect-project-get-typedef project type)))
+        (when (or (not typedef)
+                  (not (or (phpi-typedef-initial-index typedef))))
           (unless (or (phpinspect--type= phpinspect--null-type type)
                       (phpinspect--type-is-native type))
-            (phpinspect--log "Adding unpresent class %s to index queue" type)
+            (phpinspect--log "Adding unpresent typedef %s to index queue" type)
             (phpinspect-worker-enqueue (phpinspect-project-worker project)
                                        (phpinspect-make-index-task project type))))))))
 
-(cl-defmethod phpinspect-project-add-class-attribute-types-to-index-queue
-  ((project phpinspect-project) (class phpinspect--class))
+(cl-defmethod phpinspect-project-add-typedef-attribute-types-to-index-queue
+  ((project phpinspect-project) (typedef phpinspect-typedef))
   (phpinspect-project-edit project
     (phpinspect-project-add-return-types-to-index-queueue
      project
-     (phpinspect--class-get-method-list class))
+     (phpi-typedef-get-methods typedef))
     (phpinspect-project-add-return-types-to-index-queueue
      project
-     (phpinspect--class-get-static-method-list class))
+     (phpi-typedef-get-static-methods typedef))
     (phpinspect-project-add-variable-types-to-index-queue
      project
-     (phpinspect--class-variables class))))
+     (phpi-typedef-variables typedef))))
 
 (cl-defmethod phpinspect-project-add-index
   ((project phpinspect-project) (index (head phpinspect--root-index)) &optional index-imports)
@@ -118,8 +120,8 @@ serious performance hits. Enable at your own risk (:")
     (when index-imports
       (phpinspect-project-enqueue-imports project (alist-get 'imports (cdr index))))
 
-    (dolist (indexed-class (alist-get 'classes (cdr index)))
-      (phpinspect-project-add-class project (cdr indexed-class) index-imports))
+    (dolist (indexed-typedef (alist-get 'classes (cdr index)))
+      (phpinspect-project-add-typedef project (cdr indexed-typedef) index-imports))
 
     (dolist (func (alist-get 'functions (cdr index)))
       (phpinspect-project-set-function project func))))
@@ -183,107 +185,106 @@ serious performance hits. Enable at your own risk (:")
         (phpinspect--log "Adding import to index queue: %s" import)
         (phpinspect-project-enqueue-if-not-present project (cdr import))))))
 
-(cl-defmethod phpinspect-project-delete-class ((project phpinspect-project) (class phpinspect--class))
-  (phpinspect-project-delete-class project (phpinspect--class-name class)))
+(cl-defmethod phpinspect-project-delete-typedef ((project phpinspect-project) (typedef phpinspect-typedef))
+  (phpinspect-project-delete-typedef project (phpi-typedef-name typedef)))
 
-(cl-defmethod phpinspect-project-delete-class ((project phpinspect-project) (class-name phpinspect--type))
+(cl-defmethod phpinspect-project-delete-typedef ((project phpinspect-project) (typedef-name phpinspect--type))
   (phpinspect-project-edit project
-    (remhash (phpinspect--type-name-symbol class-name) (phpinspect-project-class-index project))))
+    (remhash (phpinspect--type-name-symbol typedef-name) (phpinspect-project-typedef-index project))))
 
-(cl-defmethod phpinspect-project-add-class
-  ((project phpinspect-project) (indexed-class (head phpinspect--indexed-class)) &optional index-imports)
+(cl-defmethod phpinspect-project-add-typedef
+  ((project phpinspect-project) (indexed-typedef (head phpinspect--indexed-class)) &optional index-imports)
   (phpinspect-project-edit project
-    (if (not (alist-get 'class-name (cdr indexed-class)))
-        (phpinspect--log "Error: Class with declaration %s does not have a name" (alist-get 'declaration indexed-class))
+    (if (not (alist-get 'class-name (cdr indexed-typedef)))
+        (phpinspect--log "Error: Typedef with declaration %s does not have a name" (alist-get 'declaration indexed-typedef))
       ;; Else
-      (let* ((class-name (phpinspect--type-name-symbol
-                          (alist-get 'class-name (cdr indexed-class))))
-             (class (gethash class-name
-                             (phpinspect-project-class-index project))))
-        (unless class
-          (setq class (phpinspect--make-class-generated
-                       :class-retriever (phpinspect-project-make-class-retriever project))))
+      (let* ((typedef-type-name (alist-get 'class-name (cdr indexed-typedef)))
+             (typedef-name (phpinspect--type-name-symbol typedef-type-name))
+             (typedef (gethash typedef-name
+                               (phpinspect-project-typedef-index project))))
+        (unless typedef
+          (setq typedef (phpinspect-make-typedef typedef-type-name (phpinspect-project-make-typedef-retriever project))))
+        ;; :typedef-retriever (phpinspect-project-make-typedef-retriever project))))
 
         (when index-imports
           (phpinspect-project-enqueue-imports
-           project (alist-get 'imports (cdr indexed-class))))
+           project (alist-get 'imports (cdr indexed-typedef))))
 
-        (phpinspect--class-set-index class indexed-class)
-        (puthash class-name class (phpinspect-project-class-index project))
-        (phpinspect-project-add-class-attribute-types-to-index-queue project class)))))
+        (phpi-typedef-set-index typedef indexed-typedef)
+        (puthash typedef-name typedef (phpinspect-project-typedef-index project))
+        (phpinspect-project-add-typedef-attribute-types-to-index-queue project typedef)))))
 
-(cl-defmethod phpinspect-project-set-class
-  ((project phpinspect-project) (class-fqn phpinspect--type) (class phpinspect--class))
+(cl-defmethod phpinspect-project-set-typedef
+  ((project phpinspect-project) (typedef-fqn phpinspect--type) (typedef phpinspect-typedef))
   (phpinspect-project-edit project
-    (puthash (phpinspect--type-name-symbol class-fqn)
-             class
-             (phpinspect-project-class-index project))))
+    (puthash (phpinspect--type-name-symbol typedef-fqn)
+             typedef
+             (phpinspect-project-typedef-index project))))
 
-(cl-defmethod phpinspect-project-create-class
-  ((project phpinspect-project) (class-fqn phpinspect--type))
+(cl-defmethod phpinspect-project-create-typedef
+  ((project phpinspect-project) (typedef-fqn phpinspect--type))
   (phpinspect-project-edit project
-    (let ((class (phpinspect--make-class-generated
-                  :class-retriever (phpinspect-project-make-class-retriever project))))
-      (phpinspect-project-set-class project class-fqn class)
-      class)))
+    (let ((typedef (phpinspect-make-typedef typedef-fqn (phpinspect-project-make-typedef-retriever project))))
+      (phpinspect-project-set-typedef project typedef-fqn typedef)
+      typedef)))
 
-(cl-defmethod phpinspect-project-get-class-create
-  ((project phpinspect-project) (class-fqn phpinspect--type) &optional no-enqueue)
-  "Get class object belonging to CLASS-FQN from PROJECT.
+(cl-defmethod phpinspect-project-get-typedef-create
+  ((project phpinspect-project) (typedef-fqn phpinspect--type) &optional no-enqueue)
+  "Get typedef object belonging to TYPEDEF-FQN from PROJECT.
 
-If the class does exist on the filesystem but has not yet been
-indexed, it will be queued for indexation and an empty class
+If the typedef does exist on the filesystem but has not yet been
+indexed, it will be queued for indexation and an empty typedef
 object (awaiting indedaxation) is returned.
 
-If NO-ENQUEUE is non-nil, the class will not be queued for
+If NO-ENQUEUE is non-nil, the typedef will not be queued for
 indexation, but indexed synchronously before returning."
-  (let ((class (phpinspect-project-get-class project class-fqn)))
-    (unless class
+  (let ((typedef (phpinspect-project-get-typedef project typedef-fqn)))
+    (unless typedef
       (phpinspect-project-edit project
-        (setq class (phpinspect-project-create-class project class-fqn))
+        (setq typedef (phpinspect-project-create-typedef project typedef-fqn))
         (unless no-enqueue
-          (phpinspect-project-enqueue-if-not-present project class-fqn))))
+          (phpinspect-project-enqueue-if-not-present project typedef-fqn))))
 
-    (phpinspect--log "Got project class, no-enqueue is set to: %s, initial-index is: %s"
-                     no-enqueue (phpinspect--class-initial-index class))
+    (phpinspect--log "Got project typedef, no-enqueue is set to: %s, initial-index is: %s"
+                     no-enqueue (phpi-typedef-initial-index typedef))
 
     (phpinspect-project-edit project
-      (when  (and no-enqueue (phpinspect--class-initial-index class))
-        (phpinspect--log "Indexing type file for %s" class-fqn)
+      (when  (and no-enqueue (phpi-typedef-initial-index typedef))
+        (phpinspect--log "Indexing type file for %s" typedef-fqn)
         (phpinspect-project-add-index
          project
-         (phpinspect-project-index-type-file project class-fqn))))
-    class))
+         (phpinspect-project-index-type-file project typedef-fqn))))
+    typedef))
 
-(cl-defmethod phpinspect-project-get-class-extra-or-create
-  ((project phpinspect-project) (class-fqn phpinspect--type) &optional no-enqueue)
-  (or (phpinspect-project-get-class-or-extra project class-fqn no-enqueue)
-      (phpinspect-project-get-class-create project class-fqn no-enqueue)))
+(cl-defmethod phpinspect-project-get-typedef-extra-or-create
+  ((project phpinspect-project) (typedef-fqn phpinspect--type) &optional no-enqueue)
+  (or (phpinspect-project-get-typedef-or-extra project typedef-fqn no-enqueue)
+      (phpinspect-project-get-typedef-create project typedef-fqn no-enqueue)))
 
 
-(cl-defmethod phpinspect-project-get-class
-  ((project phpinspect-project) (class-fqn phpinspect--type) &optional index)
-  "Get indexed class by name of CLASS-FQN stored in PROJECT."
-  (let ((class (gethash (phpinspect--type-name-symbol class-fqn)
-                        (phpinspect-project-class-index project))))
-    (when class
+(cl-defmethod phpinspect-project-get-typedef
+  ((project phpinspect-project) (typedef-fqn phpinspect--type) &optional index)
+  "Get indexed typedef by name of TYPEDEF-FQN stored in PROJECT."
+  (let ((typedef (gethash (phpinspect--type-name-symbol typedef-fqn)
+                          (phpinspect-project-typedef-index project))))
+    (when typedef
       (when (and (phpinspect-project-read-only-p project)
-                 (not (phpinspect--class-read-only-p class)))
-        (setf (phpinspect--class-read-only-p class) t))
+                 (not (phpi-typedef-read-only-p typedef)))
+        (setf (phpi-typedef-read-only-p typedef) t))
 
-      (when (and index (not (phpinspect--class-initial-index class)))
+      (when (and index (not (phpi-typedef-initial-index typedef)))
         (phpinspect-project-add-index
          project
-         (phpinspect-project-index-type-file project class-fqn))))
+         (phpinspect-project-index-type-file project typedef-fqn))))
 
-    class))
+    typedef))
 
-(cl-defmethod phpinspect-project-get-class-or-extra
-  ((project phpinspect-project) (class-fqn phpinspect--type) &optional index)
-  (or (phpinspect-project-get-class project class-fqn index)
-      (and (phpinspect-project-extra-class-retriever project)
-           (funcall (phpinspect-project-extra-class-retriever project)
-                    class-fqn))))
+(cl-defmethod phpinspect-project-get-typedef-or-extra
+  ((project phpinspect-project) (typedef-fqn phpinspect--type) &optional index)
+  (or (phpinspect-project-get-typedef project typedef-fqn index)
+      (and (phpinspect-project-extra-typedef-retriever project)
+           (funcall (phpinspect-project-extra-typedef-retriever project)
+                    typedef-fqn))))
 
 (cl-defmethod phpinspect-project-get-type-filepath
   ((project phpinspect-project) (type phpinspect--type) &optional index-new)
@@ -348,10 +349,10 @@ before the search is executed."
 (defun phpinspect-project-make-root-resolver (project)
   (lambda () (phpinspect-project-root project)))
 
-(defun phpinspect-project-make-class-retriever (project)
+(defun phpinspect-project-make-typedef-retriever (project)
   (lambda (type)
-    (or (phpinspect-project-get-class-or-extra project type)
-        (phpinspect-project-get-class-create project type))))
+    (or (phpinspect-project-get-typedef-or-extra project type)
+        (phpinspect-project-get-typedef-create project type))))
 
 ;;; INDEX TASK
 (cl-defstruct (phpinspect-index-task
@@ -387,7 +388,7 @@ before the search is executed."
   (let ((project (phpinspect-index-task-project task))
         (is-native-type (phpinspect--type-is-native
                          (phpinspect-index-task-type task))))
-    (phpinspect--log "Indexing class %s for project in %s as task."
+    (phpinspect--log "Indexing typedef %s for project in %s as task."
                      (phpinspect-index-task-type task)
                      (phpinspect-project-root project))
 

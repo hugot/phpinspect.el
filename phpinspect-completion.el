@@ -244,24 +244,34 @@ Returns list of `phpinspect--completion'."
     (phpinspect--log "Returning completion list %s" completion-list)
     (setq phpinspect--last-completion-list completion-list)))
 
-(cl-defmethod phpinspect--make-completion
-  ((completion-candidate phpinspect--function))
-  "Create a `phpinspect--completion` for COMPLETION-CANDIDATE."
+
+(defun phpinspect-make-fn-completion (completion-candidate)
   (phpinspect--construct-completion
-   :value (phpinspect--function-name completion-candidate)
+   :value (phpi-fn-name completion-candidate)
    :meta (concat "(" (mapconcat (lambda (arg)
                                   (concat "$" (if (> (length (car arg)) 8)
                                                   (truncate-string-to-width (car arg) 8 nil)
                                                 (car arg))))
-                                (phpinspect--function-arguments completion-candidate)
+                                (phpi-fn-arguments completion-candidate)
                                 ", ")
                  ") "
-                 (phpinspect--display-format-type-name (phpinspect--function-return-type completion-candidate)))
+                 (phpinspect--display-format-type-name (phpi-fn-return-type completion-candidate)))
    :annotation (concat " "
                        (phpinspect--type-bare-name
-                        (phpinspect--function-return-type completion-candidate)))
+                        (phpi-fn-return-type completion-candidate)))
    :target completion-candidate
    :kind 'function))
+
+
+(cl-defmethod phpinspect--make-completion
+  ((completion-candidate phpinspect--function))
+  "Create a `phpinspect--completion` for COMPLETION-CANDIDATE."
+  (phpinspect-make-fn-completion completion-candidate))
+
+(cl-defmethod phpinspect--make-completion
+  ((completion-candidate phpinspect-method))
+  "Create a `phpinspect--completion` for COMPLETION-CANDIDATE."
+  (phpinspect-make-fn-completion completion-candidate))
 
 (cl-defmethod phpinspect--make-completion
   ((completion-candidate phpinspect--variable))
@@ -312,7 +322,7 @@ Returns list of `phpinspect--completion'."
                      (when (and (eq 'finished state)
                                 (eq 'function (phpinspect--completion-kind comp)))
                        (insert "(")
-                       (when (= 0 (length (phpinspect--function-arguments
+                       (when (= 0 (length (phpi-fn-arguments
                                            (phpinspect--completion-target comp))))
                          (insert ")")))))
                  :company-kind (lambda (comp-name)

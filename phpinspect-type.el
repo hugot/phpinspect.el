@@ -107,11 +107,10 @@ See https://wiki.php.net/rfc/static_return_type ."
   (or (phpinspect--type= type phpinspect--static-type)
       (phpinspect--type= type phpinspect--this-type)))
 
-(cl-defmethod phpinspect--resolve-late-static-binding
-  ((type phpinspect--type)
-   (class-type phpinspect--type))
+(defun phpinspect--resolve-late-static-binding (type origin-type)
+  "Resolve TYPE late static binding using ORIGIN-TYPE."
   (if (phpinspect--type-does-late-static-binding type)
-      class-type
+      origin-type
     type))
 
 (defsubst phpinspect--type-is-native (type)
@@ -284,7 +283,7 @@ return type of the function."))
 (defun phpinspect--function-argument-type (fn argument-name)
   (alist-get argument-name (phpinspect--function-arguments fn) nil nil #'string=))
 
-(defun phpinspect--function-anonyous-p (fn)
+(defun phpinspect--function-anonymous-p (fn)
   (eq (phpinspect-intern-name "anonymous") (phpinspect--function-name-symbol fn)))
 
 (defmacro phpinspect--make-function (&rest property-list)
@@ -368,7 +367,7 @@ mutability of the variable")
 
 (defun phpinspect--index-class-declaration (decl type-resolver)
   ;; Find out what the class extends or implements
-  (let (encountered-extends encountered-implements encountered-class
+  (let (keyword encountered-extends encountered-implements encountered-class
         class-name extends implements used-types)
     (dolist (word decl)
       (if (phpinspect-word-p word)
@@ -383,7 +382,8 @@ mutability of the variable")
                   (eval-when-compile
                     (concat "^" (phpinspect--class-keyword-handler-regexp) "?$"))
                   (cadr word))
-                 (setq encountered-class t))
+                 (setq keyword word
+                       encountered-class t))
                 (t
                  (phpinspect--log "Calling Resolver from index-class on %s" (cadr word))
                  (cond (encountered-extends
@@ -397,7 +397,15 @@ mutability of the variable")
                               implements)
                         (push (cadr word) used-types))
                        (encountered-class
-                        (setq class-name (funcall type-resolver (phpinspect--make-type :name (cadr word)))
+                        (setq class-name
+                              (funcall type-resolver (phpinspect--make-type
+                                                      :category (pcase (cadr keyword)
+                                                                  ("class" 'class)
+                                                                  ("trait" 'trait)
+                                                                  ("interface" 'interface)
+                                                                  ("enum" 'enum)
+                                                                  (_ 'class))
+                                                      :name (cadr word)))
                               encountered-class nil)))))))
 
     (list class-name extends implements used-types)))

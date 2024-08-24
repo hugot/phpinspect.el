@@ -25,7 +25,7 @@
 
 (require 'phpinspect-resolvecontext)
 (require 'phpinspect-cache)
-(require 'phpinspect-class)
+(require 'phpinspect-typedef)
 (require 'phpinspect-type)
 (require 'phpinspect-token-predicates)
 
@@ -151,50 +151,50 @@ Destructively removes tokens from the end of ASSIGNMENT-TOKENS."
   statement)
 
 (defsubst phpinspect-get-cached-project-class (rctx class-fqn)
-  (phpinspect-project-get-class-or-extra (phpinspect--resolvecontext-project rctx) class-fqn))
+  (phpinspect-project-get-typedef-or-extra (phpinspect--resolvecontext-project rctx) class-fqn))
 
-(defun phpinspect-get-cached-project-class-methods (rctx class-fqn &optional static)
+(defun phpinspect-get-cached-project-typedef-methods (rctx class-fqn &optional static)
     (phpinspect--log "Getting cached project class methods for %s"
                      class-fqn)
-    (let ((class (phpinspect-rctx-get-or-create-cached-project-class rctx class-fqn)))
+    (let ((class (phpinspect-rctx-get-typedef rctx class-fqn)))
       (when class
         (phpinspect--log "Retrieved class index, starting method collection for %s"
                          class-fqn)
         (if static
-            (phpinspect--class-get-static-method-list class)
-          (phpinspect--class-get-method-list class)))))
+            (phpi-typedef-get-static-methods class)
+          (phpi-typedef-get-methods class)))))
 
-(defsubst phpinspect-get-cached-project-class-method-type (rctx class-fqn method-name)
-  (let* ((class (phpinspect-rctx-get-or-create-cached-project-class rctx class-fqn))
+(defsubst phpinspect-get-cached-project-typedef-method-type (rctx class-fqn method-name)
+  (let* ((class (phpinspect-rctx-get-typedef rctx class-fqn))
          (method))
     (when class
       (setq method
-            (phpinspect--class-get-method class (phpinspect-intern-name method-name)))
+            (phpi-typedef-get-method class (phpinspect-intern-name method-name)))
       (when method
-        (phpinspect--function-return-type method)))))
+        (phpi-fn-return-type method)))))
 
-(defsubst phpinspect-get-cached-project-class-variable-type
+(defsubst phpinspect-get-cached-project-typedef-variable-type
   (rctx class-fqn variable-name)
   (phpinspect--log "Getting cached project class variable type %s::%s"
                    class-fqn variable-name)
   (let ((found-variable
-         (phpinspect--class-get-variable
-          (phpinspect-rctx-get-or-create-cached-project-class rctx class-fqn)
+         (phpi-typedef-get-variable
+          (phpinspect-rctx-get-typedef rctx class-fqn)
           variable-name)))
     (when found-variable
       (phpinspect--variable-type found-variable))))
 
-(defsubst phpinspect-get-cached-project-class-static-method-type
+(defsubst phpinspect-get-cached-project-typedef-static-method-type
   (rctx class-fqn method-name)
-  (let* ((class (phpinspect-rctx-get-or-create-cached-project-class rctx class-fqn))
+  (let* ((class (phpinspect-rctx-get-typedef rctx class-fqn))
          (method))
     (when class
       (setq method
-            (phpinspect--class-get-static-method
+            (phpi-typedef-get-static-method
              class
              (phpinspect-intern-name method-name)))
       (when method
-        (phpinspect--function-return-type method)))))
+        (phpi-fn-return-type method)))))
 
 (defun phpinspect-get-derived-statement-type-in-block
     (resolvecontext statement php-block type-resolver &optional function-arg-list assignments)
@@ -258,14 +258,14 @@ value/type of ->bar must be derived from the type of $foo. So
                        (pop statement)
                        (setq type-before
                              (or
-                              (phpinspect-get-cached-project-class-method-type
+                              (phpinspect-get-cached-project-typedef-method-type
                                resolvecontext
                                (funcall type-resolver type-before)
                                (cadr attribute-word))
                               type-before)))
                    (setq type-before
                          (or
-                          (phpinspect-get-cached-project-class-variable-type
+                          (phpinspect-get-cached-project-typedef-variable-type
                            resolvecontext
                            (funcall type-resolver type-before)
                            (cadr attribute-word))
@@ -281,7 +281,7 @@ value/type of ->bar must be derived from the type of $foo. So
                        (pop statement)
                        (setq type-before
                              (or
-                              (phpinspect-get-cached-project-class-static-method-type
+                              (phpinspect-get-cached-project-typedef-static-method-type
                                resolvecontext
                                (funcall type-resolver type-before)
                                (cadr attribute-word))
@@ -603,13 +603,13 @@ type. (`phpinspect--type-p')"
 (defun phpinspect--function-get-pattern-type (fn rctx pattern type-resolver)
   (phpinspect-get-pattern-type-in-block
    rctx pattern
-   (phpinspect-function-block (phpinspect--function-token fn))
+   (phpinspect-function-block (phpi-fn-token fn))
    type-resolver
-   (phpinspect-function-argument-list (phpinspect--function-token fn))))
+   (phpinspect-function-argument-list (phpi-fn-token fn))))
 
 
-(cl-defmethod phpinspect--class-resolve-property-type
-  ((class phpinspect--class) (project phpinspect-project) (property-name string) type-resolver class-token-meta)
+(cl-defmethod phpi-typedef-resolve-property-type
+  ((typedef phpinspect-typedef) (project phpinspect-project) (property-name string) type-resolver class-token-meta)
   "Resolve type of POPERTY-NAME in the context of CLASS using
 CLASS-TOKEN-META as parse result."
   (let ((pattern (phpinspect--make-pattern
@@ -621,17 +621,18 @@ CLASS-TOKEN-META as parse result."
         (constructor-name (phpinspect-intern-name "__construct")))
 
     (or
-     (when-let ((constructor (phpinspect--class-get-method class constructor-name)))
-       (phpinspect--function-get-pattern-type constructor rctx pattern type-resolver))
+     (when-let ((constructor (phpi-typedef-get-method typedef constructor-name)))
+       (phpinspect--function-get-pattern-type (phpi-method-definition constructor) rctx pattern type-resolver))
      (catch 'found
-       (dolist (method (phpinspect--class-get-method-list class))
-         (unless (eq constructor-name (phpinspect--function-name-symbol method))
-           (when-let ((result (phpinspect--function-get-pattern-type method rctx pattern type-resolver)))
+       (dolist (method (phpi-typedef-get-methods typedef))
+         (unless (eq constructor-name (phpi-method-name method))
+           (when-let ((result (phpinspect--function-get-pattern-type
+                               (phpi-method-definition method) rctx pattern type-resolver)))
              (throw 'found result))))
        nil))))
 
-(cl-defmethod phpinspect--class-resolve-property-type
-  ((_class phpinspect--class) (_project phpinspect-project) property-name &rest _ignored)
+(cl-defmethod phpi-typedef-resolve-property-type
+  ((_typedef phpinspect-typedef) (_project phpinspect-project) property-name &rest _ignored)
   ;; Catch-all for cases where one attempts to resolve a nil property
   ;; name. Saves an if-statement for the caller.
   ;; Can't resolve property type when property name is nil, so we do nothing.
