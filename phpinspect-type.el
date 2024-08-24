@@ -47,6 +47,10 @@
             "When the type is a collection, this attribute is set to the type
 that the collection is expected to contain")
   (-bare-name-sym-slot nil)
+  (category nil
+            :documentation
+            "A symbol declaring whether this type is a class,
+ trait, abstract-class or interface.")
   (fully-qualified nil
                    :type bool
                    :documentation

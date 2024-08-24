@@ -33,6 +33,9 @@ PHP code. Used to optimize string comparison. See also `phpinspect-intern-name'"
 (define-inline phpinspect-name-string (name)
   (inline-quote (cdr ,name)))
 
+(define-inline phpinspect-name-p (name)
+  (inline-quote (eq 'phpinspect-name (car ,name))))
+
 (defvar phpinspect-project-root-file-list
   '("composer.json" "composer.lock" ".git" ".svn" ".hg")
   "List of files that could indicate a project root directory.")
