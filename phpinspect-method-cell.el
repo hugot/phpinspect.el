@@ -104,7 +104,7 @@
 (defun phpi-mcol-delete (mcol method-name)
   (phpi-mcol-find-cell mcol method-name 'remove))
 
-(defun phpi-mc-emtpy-p (cell)
+(defun phpi-mc-empty-p (cell)
   "CELL is empty when it contains no methods."
   (not (phpi-mc-get-active cell)))
 
