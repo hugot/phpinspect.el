@@ -1,4 +1,29 @@
+;;; phpinspect-method-cell.el --- Models for PHP method definitions  -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2021-2023  Free Software Foundation, Inc
+
+;; Author: Hugo Thunnissen <devel@hugot.nl>
+;; Keywords: php, languages, tools, convenience
+;; Version: 1.2.1
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;;; Code:
+
+(require 'cl-macs)
 
 (cl-defstruct (phpinspect-method
                (:constructor phpinspect-make-method)
@@ -120,3 +145,6 @@ When NAME is provided, only method with NAME is deleted."
             (setcdr cons nil))))
       ;; Delete all empty cells
       (setf (phpi-mcol-cells mcol) (delete (cons nil nil) cells)))))
+
+(provide 'phpinspect-method-cell)
+;;; phpinspect-method-cell.el ends here

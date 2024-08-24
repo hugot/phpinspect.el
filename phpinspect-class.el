@@ -1,4 +1,4 @@
-;;; phpinspect-class.el --- PHP parsing module  -*- lexical-binding: t; -*-
+;;; phpinspect-class.el --- A model for php type definitions  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021-2023  Free Software Foundation, Inc
 
