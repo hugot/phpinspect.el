@@ -1,10 +1,34 @@
+;;; phpinspect-typedef.el --- Models for PHP type definitions  -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2021-2023  Free Software Foundation, Inc
 
+;; Author: Hugo Thunnissen <devel@hugot.nl>
+;; Keywords: php, languages, tools, convenience
+;; Version: 1.2.1
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;;; Code:
 (require 'phpinspect-method-cell)
 
 (cl-defstruct (phpinspect-typedef
                (:constructor phpinspect-make-typedef-generated)
                (:conc-name phpi-typedef-))
+  "A typedef represents the definition of a PHP type, be it class,
+interface, trait or enum."
   (read-only-p nil
                :type boolean
                :documentation
@@ -185,6 +209,9 @@ structure returned by `phpinspect--index-trait-use'."
   (phpi-typedef-delete-method def (phpinspect--function-name-symbol fn)))
 
 (defun phpi-typedef-set-trait-config (def config)
+  "Configures CONFIG for typedef DEF.
+
+Note: this function returns all types found in CONFIG."
   (phpi--typedef-edit def
     (let ((existing-config (phpi-typedef-trait-config def))
           types)
@@ -250,6 +277,9 @@ extended classes, used traits or implemented interfaces."
       (phpi-typedef-trigger-subscriber-update foreign-def))))
 
 (defun phpi-typedef-trigger-subscriber-method-update (def method &optional static)
+  "Update downstream subscribers of DEF by setting METHOD.
+
+If STATIC is non-nil, updates static method."
   (dolist (type (phpi-typedef-subscribed-types def))
     (when-let ((foreign-def (phpi--typedef-get-foreign-type def type)))
       (if static
@@ -257,6 +287,7 @@ extended classes, used traits or implemented interfaces."
         (phpi-typedef-set-method foreign-def method)))))
 
 (defun phpi-typedef-trigger-subscriber-method-delete (def type method-name &optional static)
+  "Update subscribers of DEF by deleting METHOD-NAME of origin TYPE."
   (dolist (subtype (phpi-typedef-subscribed-types def))
     (when-let ((foreign-def (phpi--typedef-get-foreign-type def subtype)))
       (phpi-mcol-delete-for-type
@@ -280,6 +311,18 @@ TYPE must be a structure of type `phpinspect--type'."
         (phpi-mcol-set-home-type (phpi-typedef-static-methods def) type)))))
 
 (defun phpi-typedef-update-declaration (def declaration imports namespace-name trait-config)
+  "Update declaration of DEF.
+
+DECLARATION must be a token of type `phpinspect-declaration-p`.
+
+IMPORTS must be an alist of imported types as returned by
+`phpinspect--uses-to-types'.
+
+NAMESPACE-NAME must be a string containing the name of the
+namespace enclosing DEF.
+
+TRAIT-CONFIG must be a trait configuration as returned by
+`phpinspect--index-trait-use'."
   (phpi--typedef-edit def
     (pcase-let ((`(,type ,extends ,implements ,_used-types)
                  (phpinspect--index-class-declaration
@@ -291,6 +334,11 @@ TYPE must be a structure of type `phpinspect--type'."
        def `(,@extends ,@implements ,@(phpi-typedef-set-trait-config def trait-config))))))
 
 (defun phpi-typedef-update-extensions (def extensions)
+  "Sets extended types of DEF to EXTENSIONS.
+
+EXTENSIONS must be a list of structures of the type
+`phpinspect--type'. These are used to fetch typedefs belonging to
+them, which are then incorporated into DEF's properties."
   (phpi--typedef-edit def
     (when-let ((subscriptions (phpi-typedef-subscribed-to-types def)))
       (dolist (sub subscriptions)
@@ -318,6 +366,7 @@ TYPE must be a structure of type `phpinspect--type'."
 
 (cl-defmethod phpi-typedef-set-index ((def phpinspect-typedef)
                                       (index (head phpinspect--indexed-class)))
+  "Update all of DEF's properties using the contents of INDEX."
   (phpi--typedef-edit def
     (setf (phpi-typedef-declaration def) (alist-get 'declaration index))
 
@@ -329,7 +378,11 @@ TYPE must be a structure of type `phpinspect--type'."
     ;; Override methods when class seems syntactically correct (has balanced braces)
       (when (alist-get 'complete index)
         ;; Delete all known own methods
-        (phpi-mcol-delete-for-type mcol home-type))
+        (phpi-mcol-delete-for-type mcol home-type)
+        (phpi-mcol-delete-for-type stmcol home-type)
+
+        ;; FIXME: delete variables
+        )
 
       (dolist (method (alist-get 'methods index))
         (phpi-ma-add ma mcol (phpinspect-make-method home-type method) 'overwrite))
@@ -392,6 +445,10 @@ TYPE must be a structure of type `phpinspect--type'."
         (throw 'found variable)))))
 
 (defun phpi-typedef-get-dependencies (def)
+  "Gets types that DEF directly depends on.
+
+Return value is a list if structures of the type
+`phpinspect--type'."
   (let ((deps (phpi-typedef-subscribed-to-types def)))
     (dolist (method (phpi-typedef-get-methods def))
       (when (phpi-method-return-type method)
