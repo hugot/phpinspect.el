@@ -254,6 +254,7 @@ Note: this function returns all types found in CONFIG."
 
 This undoes any links and data sharing between this type and any
 extended classes, used traits or implemented interfaces."
+
   (setf (phpi-typedef-subscribed-types foreign-def)
         (cl-remove (phpi-typedef-name def) (phpi-typedef-subscribed-types foreign-def)
                    :test #'phpinspect--type=))
@@ -381,7 +382,9 @@ them, which are then incorporated into DEF's properties."
         (phpi-mcol-delete-for-type mcol home-type)
         (phpi-mcol-delete-for-type stmcol home-type)
 
-        ;; FIXME: delete variables
+        ;; FIXME: delete variables. This will require some way to keep track of
+        ;; a variables origin as we would otherwise risk deleting variables that
+        ;; originate from extended classes.
         )
 
       (dolist (method (alist-get 'methods index))

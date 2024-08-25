@@ -25,7 +25,6 @@
 
 (require 'ert)
 (require 'phpinspect-project)
-
 (require 'phpinspect-test-env
          (expand-file-name "phpinspect-test-env.el"
                            (file-name-directory (macroexp-file-name))))
@@ -47,48 +46,6 @@
     (phpinspect-project-purge project)
 
     (should (= 0 (length (hash-table-values (phpinspect-project-file-watchers project)))))))
-
-(defun phpinspect--make-dummy-composer-project-with-code ()
-  (let ((fs (phpinspect-make-virtual-fs)))
-    (phpinspect-virtual-fs-set-file
-      fs
-      "/project/root/composer.json"
-      "{ \"autoload\": { \"psr-4\": {\"App\\\\\": [\"src/\", \"lib\"]}}}")
-
-    (phpinspect-virtual-fs-set-file fs
-      "/project/root/src/Foo.php"
-      "<?php namespace App; trait Foo { public function do(): static {} public static function dont(): Baz {} }")
-
-    (phpinspect-virtual-fs-set-file fs
-      "/project/root/src/Baz.php"
-      "<?php namespace App; class Baz { public function amBaz(): bool {} }")
-
-    (phpinspect-virtual-fs-set-file fs
-      "/project/root/src/Bar.php"
-      "<?php namespace App; class Bar { use Foo; public function foo(): Foo {} }")
-
-    (phpinspect-virtual-fs-set-file fs
-      "/project/root/src/Harry.php"
-      "<?php namespace App; class Harry { public function amBarry(): bool {} }")
-
-
-    (phpinspect-virtual-fs-set-file fs
-      "/project/root/src/Barry.php"
-      "<?php namespace App; class Barry { public function getHarry(): Harry {} }")
-
-
-    (let* ((project (phpinspect--make-dummy-project fs "/project/root"))
-           (autoload (phpinspect-project-autoload project))
-           result error)
-
-      (phpinspect-autoloader-refresh autoload (lambda (res err)
-                                                (setq result res error err)))
-
-      (while (not (or result error))
-        (thread-yield))
-
-      project)))
-
 
 (ert-deftest phpinspect-project-no-enqueue ()
   (let* ((project (phpinspect--make-dummy-composer-project-with-code))

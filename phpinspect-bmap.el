@@ -59,6 +59,9 @@
   (imports (phpinspect-make-splayt)
            :type phpinspect-splayt
            :documentation "The import statements encountered.")
+  (used-traits (phpinspect-make-splayt)
+               :type phpinspect-splayt
+               :documentation "The trait use statements encountered.")
   (functions (phpinspect-make-splayt)
              :type phpinspect-splayt
              :documentation "The function definitions encountered.")
@@ -146,9 +149,12 @@
     (puthash start token-meta starts)
 
     (cond
-     ((phpinspect-use-p (phpinspect-meta-token token-meta))
+     ((phpinspect-use-import-p (phpinspect-meta-token token-meta))
       (phpinspect-splayt-insert
        (phpinspect-bmap-imports bmap) (phpinspect-meta-start token-meta) token-meta))
+     ((phpinspect-use-trait-p (phpinspect-meta-token token-meta))
+      (phpinspect-splayt-insert
+       (phpinspect-bmap-used-traits bmap) (phpinspect-meta-start token-meta) token-meta))
      ((phpinspect-class-p (phpinspect-meta-token token-meta))
       (phpinspect-splayt-insert
        (phpinspect-bmap-classes bmap) (phpinspect-meta-start token-meta) token-meta))

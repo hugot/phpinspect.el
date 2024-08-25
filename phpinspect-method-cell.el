@@ -162,7 +162,7 @@ Also updates all members of MCOL with the same origin-type."
         ('trait (setf (phpi-mc-trait cell) method))
         ('interface (setf (phpi-mc-interface cell) method))
         ;; class or abstract class
-        (_ (setf (phpi-mc-inherited cell) method))))))
+        (_ (setf (phpi-mc-inherited cell) method) home-type)))))
 
 (defun phpi-mc-get-for-type-category (cell home-type type)
   (if (phpinspect--type= home-type type)

@@ -246,8 +246,16 @@ Type can be any of the token types returned by
   (or (phpinspect-namespace-p object)
       (phpinspect-root-p object)))
 
+(define-inline phpinspect-use-import-p (token)
+  (inline-quote (phpinspect-token-type-p ,token :use)))
+
+(define-inline phpinspect-use-trait-p (token)
+  (inline-quote (phpinspect-token-type-p ,token :use-trait)))
+
 (define-inline phpinspect-use-p (object)
-  (inline-quote (phpinspect-token-type-p ,object :use)))
+  (inline-quote
+   (or (phpinspect-use-import-p ,object)
+       (phpinspect-use-trait-p ,object))))
 
 (defun phpinspect-comment-p (token)
   (or (phpinspect-token-type-p token :comment)

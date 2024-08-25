@@ -40,14 +40,16 @@
      (progn
        (substring ,string 0 (- (length ,string) 1))))))
 
-(defsubst phpinspect-munch-token-without-attribs (string token-keyword)
+(define-inline phpinspect-munch-token-without-attribs (string token-keyword)
   "Return a token of type TOKEN-KEYWORD with STRING as value.
 If STRING has text properties, they are stripped."
-  (let ((value (copy-sequence string))
-        (length (length string)))
-    (forward-char length)
-    (set-text-properties 0 length nil value)
-    (list token-keyword value)))
+  (inline-letevals (string token-keyword)
+    (inline-quote
+     (let ((value (copy-sequence ,string))
+           (length (length ,string)))
+       (forward-char length)
+       (set-text-properties 0 length nil value)
+       (list ,token-keyword value)))))
 
 (eval-and-compile
   (defun phpinspect-handler-func-name (handler-name)
@@ -602,12 +604,26 @@ nature like argument lists"
   :handlers '(comment word tag block-without-scopes comma terminator)
   :delimiter-predicate #'phpinspect-end-of-use-p)
 
+(phpinspect-defparser use-trait
+  :tree-keyword "use-trait"
+  :handlers '(comment word tag block-without-scopes comma terminator)
+  :delimiter-predicate #'phpinspect-end-of-use-p)
+
+
 (phpinspect-defhandler use-keyword (start-token max-point)
   "Handler for the use keyword and tokens that might follow to give it meaning"
   ((regexp . (concat "use" (phpinspect--word-end-regex))))
   (setq start-token (phpinspect--strip-word-end-space start-token))
   (forward-char (length start-token))
   (phpinspect--parse-use (current-buffer) max-point))
+
+(phpinspect-defhandler use-trait-keyword (start-token max-point)
+  "Handler for the use keyword within the body of a class."
+  ((regexp . (concat "use" (phpinspect--word-end-regex))))
+  (setq start-token (phpinspect--strip-word-end-space start-token))
+  (forward-char (length start-token))
+  (phpinspect--parse-use-trait (current-buffer) max-point))
+
 
 (phpinspect-defhandler attribute-reference (start-token &rest _ignored)
   "Handler for references to object attributes, or static class attributes."
@@ -694,7 +710,7 @@ static keywords with the same meaning as in a class block."
   :tree-keyword "block"
   :handlers '(array tag equals list comma string-concatenator attribute-reference
                     class-variable assignment-operator whitespace scope-keyword
-                    static-keyword const-keyword use-keyword function-keyword
+                    static-keyword const-keyword use-trait-keyword function-keyword
                     word terminator here-doc string comment block))
 
 (phpinspect-defhandler class-block (start-token max-point)

@@ -152,8 +152,8 @@ class TestClass {
     (should (equal
              '(:root (:class (:declaration (:word "class") (:word "A"))
                              (:block
-                              (:use (:word "B") (:comma ",") (:word "C")
-                                    (:block
-                                     (:word "C") (:static-attrib (:word "foo"))
-                                     (:word "insteadof") (:word "A"))))))
+                              (:use-trait (:word "B") (:comma ",") (:word "C")
+                                          (:block
+                                           (:word "C") (:static-attrib (:word "foo"))
+                                           (:word "insteadof") (:word "A"))))))
             tree))))

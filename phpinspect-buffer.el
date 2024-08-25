@@ -54,6 +54,8 @@ emacs buffer."
   (-last-indexed-bmap nil)
   (imports nil
            :type phpinspect-toc)
+  (used-traits nil
+               :type phpinspect-toc)
   (namespaces nil
               :type phpinspect-toc)
   (classes nil
@@ -185,6 +187,74 @@ linked with."
                     point)))
     (and namespace (phpinspect-meta-overlaps-point namespace point) namespace)))
 
+(defun phpinspect-buffer-get-type-resolver-for-class (buffer class-token)
+  (pcase-let* ((`(,imports ,namespace-name)
+                (phpinspect-get-token-index-context
+                 (phpinspect-buffer-namespaces buffer)
+                 (phpinspect-buffer-imports buffer)
+                 class-token)))
+    (phpinspect--make-type-resolver
+     imports
+     (phpinspect-class-block (phpinspect-meta-token class-token))
+     namespace-name)))
+
+(defun phpinspect-buffer-apply-use-trait-config (buffer class-token uses)
+  (pcase-let* ((`(,imports ,namespace-name)
+                (phpinspect-get-token-index-context
+                 (phpinspect-buffer-namespaces buffer)
+                 (phpinspect-buffer-imports buffer)
+                 class-token))
+               (type-resolver (phpinspect--make-type-resolver
+                               imports
+                               (phpinspect-class-block (phpinspect-meta-token class-token))
+                               namespace-name))
+               (config))
+
+    (dolist (use uses)
+      (setq config
+            (nconc config
+                   (phpinspect--index-trait-use
+                    (phpinspect-meta-token use) type-resolver nil))))
+
+    (when-let ((typedef (phpinspect-buffer-get-index-for-token buffer (phpinspect-meta-token class-token))))
+      (let ((new-extensions (seq-uniq (append (phpi-typedef-subscribed-to-types typedef)
+                                              (phpi-typedef-set-trait-config typedef config))
+                                      #'phpinspect--type=)))
+        (phpi-typedef-update-extensions typedef new-extensions)))))
+
+(cl-defmethod phpinspect-buffer-index-used-traits ((buffer phpinspect-buffer) (uses (head phpinspect-splayt)))
+  (let ((update t))
+    (if (phpinspect-buffer-used-traits buffer)
+        (pcase-let ((`(,new ,deleted)
+                     (phpinspect-toc-update
+                      (phpinspect-buffer-used-traits buffer) uses (phpinspect-buffer-root-meta buffer))))
+          (unless (or new deleted)
+            ;; Nothing changed, don't update
+            (setq update nil)))
+      (setf (phpinspect-buffer-used-traits buffer) (phpinspect-make-toc uses)))
+
+    (when update
+      (let ((class-toc (phpinspect-buffer-classes buffer)))
+        (phpinspect-splayt-traverse-lr (class (phpinspect-toc-tree class-toc))
+          (let ((config (phpinspect-buffer-get-trait-configuration-between-points
+                         buffer (phpinspect-meta-start class) (phpinspect-meta-end class)
+                         (phpinspect-buffer-get-type-resolver-for-class buffer class))))
+
+            (when-let ((typedef (phpinspect-buffer-get-index-for-token buffer (phpinspect-meta-token class))))
+              (let ((new-extensions (seq-uniq (append
+                                               (phpi-typedef-set-trait-config typedef config)
+                                               (phpi-typedef-subscribed-to-types typedef))
+                                              #'phpinspect--type=)))
+                (phpi-typedef-update-extensions typedef new-extensions)))))))))
+
+(defun phpinspect-buffer-get-trait-configuration-between-points (buffer start end type-resolver)
+  (let ((uses (phpinspect-toc-tokens-in-region (phpinspect-buffer-used-traits buffer) start end))
+        config)
+    (dolist (use uses)
+      (setq config (nconc config (phpinspect--index-trait-use (phpinspect-meta-token use) type-resolver nil))))
+
+    config))
+
 (cl-defmethod phpinspect-buffer-index-imports ((buffer phpinspect-buffer) (imports (head phpinspect-splayt)))
   (let (to-be-indexed)
     (if (phpinspect-buffer-imports buffer)
@@ -224,6 +294,14 @@ linked with."
 
     (list imports namespace-name)))
 
+(defun phpinspect--buffer-update-type-declaration (buffer typedef declaration class-token imports namespace-name)
+  (phpi-typedef-update-declaration
+   typedef declaration imports namespace-name
+   (phpinspect-buffer-get-trait-configuration-between-points
+    buffer (phpinspect-meta-start class-token) (phpinspect-meta-end class-token)
+    (phpinspect--make-type-resolver
+     imports (phpinspect-class-block (phpinspect-meta-token class-token)) namespace-name))))
+
 (cl-defmethod phpinspect-buffer-index-classes ((buffer phpinspect-buffer) (classes (head phpinspect-splayt)))
   (let ((declarations (phpinspect-buffer-declarations buffer))
         (namespaces (phpinspect-buffer-namespaces buffer))
@@ -234,10 +312,12 @@ linked with."
                                                         (phpinspect-buffer-classes buffer)
                                                         classes (phpinspect-buffer-root-meta buffer)))
                      (new-declarations) (declaration) (replaced) (indexed) (class))
+          ;; Collect declarations of new classes
           (dolist (class new-classes)
             (when (setq declaration (phpinspect-toc-token-at-or-after-point declarations (phpinspect-meta-start class)))
               (push (cons (phpinspect-meta-token declaration) class) new-declarations)))
 
+          ;; Delete no longer existing classes from the index
           (dolist (deleted deleted-classes)
             (if (and (setq class (phpinspect-buffer-get-index-for-token
                                   buffer (phpinspect-meta-token deleted)))
@@ -245,14 +325,16 @@ linked with."
                 (pcase-let ((`(,imports ,namespace-name) (phpinspect-get-token-index-context namespaces buffer-imports (cdr replaced))))
                   (phpinspect-buffer-update-index-reference-for-token
                    buffer (phpinspect-meta-token deleted) (phpinspect-meta-token (cdr replaced)))
-                  (phpi-typedef-update-declaration class (car replaced) imports namespace-name nil)
+                  (phpinspect--buffer-update-type-declaration
+                   buffer class (car replaced) (cdr replaced) imports namespace-name)
                   (push (cdr replaced) indexed))
               (phpinspect-buffer-delete-index-for-token buffer (phpinspect-meta-token deleted))))
 
           (dolist (class new-declarations)
             (unless (memq (cdr class) indexed)
               (let (imports namespace-name class-name class-obj)
-                (pcase-setq `(,imports ,namespace-name) (phpinspect-get-token-index-context namespaces buffer-imports (cdr class))
+                (pcase-setq `(,imports ,namespace-name)
+                            (phpinspect-get-token-index-context namespaces buffer-imports (cdr class))
                             `(,class-name) (phpinspect--index-class-declaration
                                             (car class)
                                             (phpinspect--make-type-resolver
@@ -262,7 +344,8 @@ linked with."
                 (when class-name
                   (setq  class-obj (phpinspect-project-get-typedef-create project class-name 'no-enqueue))
                   (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token (cdr class)) class-obj)
-                  (phpi-typedef-update-declaration class-obj (car class) imports namespace-name nil))))))
+                  (phpinspect--buffer-update-type-declaration
+                   buffer class-obj (car class) (cdr class) imports namespace-name))))))
       ;; Else: Index all classes
       (setf (phpinspect-buffer-classes buffer) (phpinspect-make-toc classes))
       (phpinspect-splayt-traverse (class classes)
@@ -278,7 +361,8 @@ linked with."
           (when class-name
             (setq class-obj (phpinspect-project-get-typedef-create project class-name 'no-enqueue))
             (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token class) class-obj)
-            (phpi-typedef-update-declaration class-obj (phpinspect-meta-token declaration) imports namespace-name nil)))))))
+            (phpinspect--buffer-update-type-declaration
+             buffer class-obj (phpinspect-meta-token declaration) class imports namespace-name)))))))
 
 (cl-defmethod phpinspect-buffer-index-functions ((buffer phpinspect-buffer) (functions (head phpinspect-splayt)))
   (let ((classes (phpinspect-buffer-classes buffer))
@@ -485,6 +569,7 @@ continuing execution."
       (let ((map (phpinspect-buffer-map buffer)))
         (unless (eq map (phpinspect-buffer--last-indexed-bmap buffer))
           (phpinspect--log "Updating project index")
+          (phpinspect-buffer-index-used-traits buffer (phpinspect-bmap-used-traits map))
           (phpinspect-buffer-index-imports buffer (phpinspect-bmap-imports map))
           (phpinspect-buffer-index-declarations buffer (phpinspect-bmap-declarations map))
           (phpinspect-buffer-index-namespaces buffer (phpinspect-bmap-namespaces map))

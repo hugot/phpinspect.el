@@ -691,3 +691,47 @@ class AAA {
 
     ;; We're just confirming that the above code doesn't error
     (should t))))
+
+(ert-deftest phpinspect-buffer-parse-incrementally-trait-config ()
+  (with-temp-buffer
+    (let* ((project (phpinspect--make-dummy-composer-project-with-code))
+           (buffer (phpinspect-make-buffer :-project project :buffer (current-buffer))))
+
+      (insert "<?php
+
+namespace Foo;
+
+class Bar {
+
+    function baz(): string {}
+}")
+
+      ;; Make sure trait typedef is loaded
+      (should (phpinspect-project-get-typedef-extra-or-create
+               project (phpinspect--make-type :name "\\App\\Foo") 'no-enqueue))
+
+      (setq-local phpinspect-current-buffer buffer)
+      (add-hook 'after-change-functions #'phpinspect-after-change-function)
+      (phpinspect-buffer-parse buffer 'no-interrupt)
+      (phpinspect-buffer-update-project-index buffer)
+
+      (let ((class (phpinspect-project-get-typedef
+                    project (phpinspect--make-type :name "\\Foo\\Bar"))))
+
+        (should class)
+        (should (= 1 (length (phpi-typedef-get-methods class))))
+
+        (goto-char 36)
+        (insert "use \\App\\Foo { \\App\\Foo::do as dooo }")
+
+        (phpinspect-buffer-parse buffer 'no-interrupt)
+        (phpinspect-buffer-update-project-index buffer)
+
+        (should (= 2 (length (phpi-typedef-get-methods class))))
+
+        (goto-char 36)
+        (kill-line)
+        (phpinspect-buffer-parse buffer 'no-interrupt)
+        (phpinspect-buffer-update-project-index buffer)
+
+        (should (= 1 (length (phpi-typedef-get-methods class))))))))
