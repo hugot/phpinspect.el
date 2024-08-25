@@ -561,8 +561,8 @@ type. (`phpinspect--type-p')"
     (setq type-resolver
           (phpinspect--make-type-resolver-for-resolvecontext resolvecontext)))
 
-  (phpinspect--log "Looking for type of statement: %s in nested token"
-                   (phpinspect--resolvecontext-subject resolvecontext))
+  (phpinspect--log "Looking for type of statement: %s in nested token, assume-derived is: %s"
+                   (phpinspect--resolvecontext-subject resolvecontext) assume-derived)
   ;; Find all enclosing tokens that aren't classes. Classes do not contain variable
   ;; assignments which have effect in the current scope, which is what we're trying
   ;; to find here to infer the statement type.

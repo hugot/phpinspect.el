@@ -142,13 +142,24 @@ structure returned by `phpinspect--index-trait-use'."
 (cl-defmethod phpi-typedef-get-static-method ((def phpinspect-typedef) (method-name string))
   (phpi-typedef-get-static-method def (phpinspect-intern-name method-name)))
 
-(cl-defmethod phpi-typedef-set-method ((def phpinspect-typedef) (fn phpinspect--function))
-  (let ((method (phpinspect-make-method (phpi-typedef-name def) fn)))
-    (phpi-ma-add (phpi-typedef-method-adder def)
-                 (phpi-typedef-methods def)
-                 method 'overwrite)))
+(cl-defmethod phpi-typedef-set-method ((def phpinspect-typedef) (m phpinspect-method) &optional no-propagate)
+  (phpi-ma-add (phpi-typedef-method-adder def) (phpi-typedef-methods def) m 'overwrite)
+  (unless no-propagate
+    (phpi-typedef-trigger-subscriber-method-update def m)))
 
-(cl-defmethod phpi-typedef-set-static-method ((def phpinspect-typedef) (fn phpinspect--function))
+(cl-defmethod phpi-typedef-set-method ((def phpinspect-typedef) (fn phpinspect--function) &optional no-propagate)
+  (phpi-typedef-set-method def (phpinspect-make-method (phpi-typedef-name def) fn)))
+
+(cl-defmethod phpi-typedef-set-static-method ((def phpinspect-typedef) (m phpinspect-method) &optional no-propagate)
+  (phpi-ma-add (phpi-typedef-method-adder def) (phpi-typedef-static-methods def) m 'overwrite)
+  (unless no-propagate
+    (phpi-typedef-trigger-subscriber-method-update def m 'static)))
+
+(cl-defmethod phpi-typedef-set-static-method ((def phpinspect-typedef) (fn phpinspect--function) &optional no-propagate)
+  (phpi-typedef-set-static-method def (phpinspect-make-method (phpi-typedef-name def) fn)))
+
+
+(cl-defmethod phpi-typedef-set-static-method ((def phpinspect-typedef) (fn phpinspect--function) &optional no-propagate)
   (let ((method (phpinspect-make-method (phpi-typedef-name def) fn)))
     (phpi-ma-add (phpi-typedef-method-adder def)
                  (phpi-typedef-static-methods def)
@@ -158,9 +169,14 @@ structure returned by `phpinspect--index-trait-use'."
 (cl-defmethod phpi-typedef-delete-method ((def phpinspect-typedef) (name (head phpinspect-name)))
   (phpi-mcol-delete-for-type
    (phpi-typedef-methods def) (phpi-typedef-name def) name)
+  (phpi-typedef-trigger-subscriber-method-delete def (phpi-typedef-name def) name)
 
   (phpi-mcol-delete-for-type
-   (phpi-typedef-static-methods def) (phpi-typedef-name def) name))
+   (phpi-typedef-static-methods def) (phpi-typedef-name def) name)
+  (phpi-typedef-trigger-subscriber-method-delete def (phpi-typedef-name def) name 'static))
+
+(cl-defmethod phpi-typedef-delete-method ((def phpinspect-typedef) (name string))
+  (phpi-typedef-delete-method def (phpinspect-intern-name name)))
 
 (cl-defmethod phpi-typedef-delete-method ((def phpinspect-typedef) (fn phpinspect--function))
   (phpi-typedef-delete-method def (phpinspect--function-name-symbol fn)))
@@ -179,7 +195,7 @@ structure returned by `phpinspect--index-trait-use'."
         (progn
           (phpi-ma-set-config (phpi-typedef-method-adder def) config)
           (dolist (cons config)
-            (push (car config) types))))
+            (push (car cons) types))))
       ;; return all types that were in config
       types)))
 
@@ -190,7 +206,7 @@ structure returned by `phpinspect--index-trait-use'."
       (phpi-ma-add (phpi-typedef-method-adder def) (phpi-typedef-methods def) method))
 
     (dolist (method (phpi-typedef-get-static-methods foreign-def))
-      (phpi-ma-add (phpi-typedef-method-adder def) (phpi-typedef-methods def) method))
+      (phpi-ma-add (phpi-typedef-method-adder def) (phpi-typedef-static-methods def) method))
 
     (dolist (var (phpi-typedef-variables foreign-def))
       (phpi-typedef-set-variable def var))))
@@ -222,7 +238,25 @@ extended classes, used traits or implemented interfaces."
   "Incorporate DEF into subscribed typedefs."
   (dolist (type (phpi-typedef-subscribed-types def))
     (when-let ((foreign-def (phpi--typedef-get-foreign-type def type)))
-      (phpi-typedef-add-foreign-members foreign-def def))))
+      (phpi-typedef-add-foreign-members foreign-def def)
+      ;; Notify subscribers of upstream changes
+      (phpi-typedef-trigger-subscriber-update foreign-def))))
+
+(defun phpi-typedef-trigger-subscriber-method-update (def method &optional static)
+  (dolist (type (phpi-typedef-subscribed-types def))
+    (when-let ((foreign-def (phpi--typedef-get-foreign-type def type)))
+      (if static
+          (phpi-typedef-set-static-method foreign-def method)
+        (phpi-typedef-set-method foreign-def method)))))
+
+(defun phpi-typedef-trigger-subscriber-method-delete (def type method-name &optional static)
+  (dolist (subtype (phpi-typedef-subscribed-types def))
+    (when-let ((foreign-def (phpi--typedef-get-foreign-type def subtype)))
+      (phpi-mcol-delete-for-type
+       (if static (phpi-typedef-static-methods foreign-def) (phpi-typedef-methods foreign-def))
+       type method-name)
+
+      (phpi-typedef-trigger-subscriber-method-delete foreign-def type method-name static))))
 
 (defun phpi-typedef-set-name (def type)
   "Set the TYPE name of DEF.
@@ -235,7 +269,8 @@ TYPE must be a structure of type `phpinspect--type'."
       ;; Only update if type name is actually different
       (unless (phpinspect--type= existing type)
         (setf (phpi-typedef-name def) type)
-        (phpi-mcol-set-home-type (phpi-typedef-methods def) type)))))
+        (phpi-mcol-set-home-type (phpi-typedef-methods def) type)
+        (phpi-mcol-set-home-type (phpi-typedef-static-methods def) type)))))
 
 (defun phpi-typedef-update-declaration (def declaration imports namespace-name trait-config)
   (phpi--typedef-edit def
@@ -267,7 +302,7 @@ TYPE must be a structure of type `phpinspect--type'."
                  #'phpinspect-typedef-p
                  (mapcar
                   (lambda (class-name)
-                    (funcall (phpi-typedef-retriever def) class-name))
+                    (phpi--typedef-get-foreign-type def class-name))
                   extensions))))
 
       (dolist (fd foreign-defs)
@@ -278,8 +313,6 @@ TYPE must be a structure of type `phpinspect--type'."
                                       (index (head phpinspect--indexed-class)))
   (phpi--typedef-edit def
     (setf (phpi-typedef-declaration def) (alist-get 'declaration index))
-
-
 
     (let ((ma (phpi-typedef-method-adder def))
           (mcol (phpi-typedef-methods def))
@@ -307,7 +340,7 @@ TYPE must be a structure of type `phpinspect--type'."
       (phpi-typedef-update-extensions
        def `(,@(alist-get 'implements index)
              ,@(alist-get 'extends index)
-             ,@(phpi-typedef-set-trait-config def (alist-get 'trait-usage index))))
+             ,@(phpi-typedef-set-trait-config def (alist-get 'trait-config index))))
 
       (phpi-typedef-trigger-subscriber-update def))))
 
@@ -350,6 +383,24 @@ TYPE must be a structure of type `phpinspect--type'."
     (dolist (variable (phpi-typedef-variables def))
       (when (string= variable-name (phpinspect--variable-name variable))
         (throw 'found variable)))))
+
+(defun phpi-typedef-get-dependencies (def)
+  (let ((deps (phpi-typedef-subscribed-to-types def)))
+    (dolist (method (phpi-typedef-get-methods def))
+      (when (phpi-method-return-type method)
+        (push (phpi-method-return-type method) deps)))
+
+
+    (dolist (method (phpi-typedef-get-static-methods def))
+      (when (phpi-method-return-type method)
+        (push (phpi-method-return-type method) deps)))
+
+    (dolist (var (phpi-typedef-variables def))
+      (when (phpinspect--variable-type var)
+        (push (phpinspect--variable-type var) deps)))
+
+    (seq-uniq deps #'phpinspect--type=)))
+
 
 (provide 'phpinspect-typedef)
 ;;; phpinspect-typedef.el ends here

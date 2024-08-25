@@ -180,7 +180,8 @@ belonging to a token that conforms with `phpinspect-attrib-p'"
                        (phpinspect-completion-query-buffer q)
                        (phpinspect-completion-query-point q)
                        #'phpinspect-static-attrib-p)))
-    (phpinspect--log "Returning region for attribute access subject %s" (phpinspect-meta-string subject))
+    (phpinspect--log "[comp-static-attribute] Returning region for attribute access subject %s"
+                     (phpinspect-meta-string subject))
     (list (phpinspect-attrib-start subject) (phpinspect-meta-end subject))))
 
 (cl-defmethod phpinspect-comp-strategy-execute

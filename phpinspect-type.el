@@ -85,6 +85,7 @@ that the collection is expected to contain")
 (defvar phpinspect--self-type (phpinspect--make-type :name "\\self" :fully-qualified t))
 (defvar phpinspect--this-type (phpinspect--make-type :name "\\this" :fully-qualified t))
 (defvar phpinspect--null-type (phpinspect--make-type :name "\\null" :fully-qualified t))
+(defvar phpinspect--unknown-type (phpinspect--make-type :name "unknown-type"))
 
 (defun phpinspect-define-standard-types ()
   (setq phpinspect-native-types
@@ -242,6 +243,12 @@ NAMESPACE may be nil, or a string with a namespace FQN."
         (concat self "<" (phpinspect--format-type-name (phpinspect--type-contains type)) ">")
        self)
      'face 'font-lock-type-face)))
+
+(cl-defmethod phpinspect--display-format-type-name (type)
+  (cl-assert (not type))
+
+  (phpinspect--display-format-type-name "unknown-type"))
+
 
 (cl-defstruct (phpinspect--function (:constructor phpinspect--make-function-generated)
                                     (:copier phpinspect--copy-function))

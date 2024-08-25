@@ -176,7 +176,7 @@ directories."
 
               (phpinspect-pipeline--register-wakeup-function ,inc-queue)
               (while ,continue-running
-                (condition-case-unless-debug err
+                (condition-case err
                     (progn
                       (phpinspect-pipeline-pause)
                       ;; Prevent quitting during step execution, as this could
@@ -208,7 +208,7 @@ directories."
                   (quit (ignore-error phpinspect-pipeline-incoming
                           (phpinspect-pipeline-pause)))
                   (phpinspect-pipeline-incoming)
-                  (t (phpinspect--log "Pipeline thread errored: %s" err)
+                  (t (phpinspect-message "Pipeline thread errored: %s" err)
                      (setq ,end (phpinspect-make-pipeline-end :thread (current-thread) :error err))
                      (setq ,continue-running nil)
                      (phpinspect-pipeline-ctx-register-end ,pctx-sym ,end)

@@ -37,6 +37,8 @@
                 :type phpinspect-name)
   (origin-type nil
                :type phpinspect--type)
+  (-return-type nil
+                :type phpinspect--type)
   (definition  nil
                :type phpinspect--function))
 
@@ -123,27 +125,44 @@ Also updates all members of MCOL with the same origin-type."
     list))
 
 (defun phpi-method-set-return-type (method type)
-  (setf (phpinspect--function-return-type (phpi-method-definition method))
-        type))
+  (setf (phpi-method--return-type method) type))
+
+(defun phpi-method-original-return-type (method)
+  (phpinspect--function-return-type (phpi-method-definition method)))
+
+(defun phpi-method-does-late-static-binding (method)
+  (when-let ((og-type (phpi-method-original-return-type method)))
+    (phpinspect--type-does-late-static-binding og-type)))
+
+(defun phpi-method-resolve-late-static-binding (method home-type)
+  "Destructively modify METHOD to return HOME-TYPE if late static binding."
+  (when-let ((og-type (phpi-method-original-return-type method)))
+    (phpi-method-set-return-type
+     method (phpinspect--resolve-late-static-binding og-type home-type))))
 
 (defun phpi-mc-set (cell home-type origin-type method)
-  (if (phpinspect--type= home-type origin-type)
-      ;; Method belongs to home type
-      (progn
-        (when (and method
-                   (phpi-method-return-type method)
-                   (phpinspect--type-does-late-static-binding (phpi-method-return-type method)))
-          (phpi-method-set-return-type
-           method (phpinspect--resolve-late-static-binding
-                   (phpi-method-return-type method) home-type)))
+  (let ((late-static-binding (and method (phpi-method-does-late-static-binding method))))
+    (if (phpinspect--type= home-type origin-type)
+        ;; Method belongs to home type
+        (progn
+          (when late-static-binding
+            (phpi-method-resolve-late-static-binding method home-type))
 
-        (setf (phpi-mc-own cell) method))
-    ;; Method is from a trait, interface or inherited
-    (pcase (phpinspect--type-category origin-type)
-      ('trait (setf (phpi-mc-trait cell) method))
-      ('interface (setf (phpi-mc-interface cell) method))
-      ;; class or abstract class
-      (_ (setf (phpi-mc-inherited cell) method)))))
+          (setf (phpi-mc-own cell) method))
+
+      ;; resolve late static binding
+      (when late-static-binding
+        ;; Copy on write (we don't want to change the return type for the
+        ;; original typedef as well).
+        (setq method (phpi-copy-method method))
+        (phpi-method-resolve-late-static-binding method home-type))
+
+      ;; Method is from a trait, interface or inherited
+      (pcase (phpinspect--type-category origin-type)
+        ('trait (setf (phpi-mc-trait cell) method))
+        ('interface (setf (phpi-mc-interface cell) method))
+        ;; class or abstract class
+        (_ (setf (phpi-mc-inherited cell) method))))))
 
 (defun phpi-mc-get-for-type-category (cell home-type type)
   (if (phpinspect--type= home-type type)
@@ -198,7 +217,8 @@ https://www.php.net/manual/en/language.oop5.traits.php"
       (phpi-try-method-return-type (phpi-mc-interface cell))))
 
 (defun phpi-method-return-type (method)
-  (phpinspect--function-return-type (phpi-method-definition method)))
+  (or (phpi-method--return-type method)
+      (phpinspect--function-return-type (phpi-method-definition method))))
 
 (defun phpi-mcol-delete-for-type (mcol type &optional name)
   "Delete from MCOL all methods that originate from TYPE.
@@ -261,10 +281,10 @@ return types in extended classes, traits and interfaces."
   (phpinspect--function-arguments fn))
 
 (cl-defmethod phpi-fn-return-type ((fn phpinspect--function))
-  (phpinspect--function-return-type fn))
+  (or (phpinspect--function-return-type fn) phpinspect--unknown-type))
 
 (cl-defmethod phpi-fn-return-type ((method phpinspect-method))
-  (phpi-method-return-type method))
+  (or (phpi-method-return-type method) phpinspect--unknown-type))
 
 (cl-defmethod phpi-fn-argument-type ((fn phpinspect--function) argument-name)
   (phpinspect--function-argument-type fn argument-name))

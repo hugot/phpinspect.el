@@ -160,7 +160,8 @@ function (think \"new\" statements, return types etc.)."
                  (cadadr (seq-find #'phpinspect-return-annotation-p comment-before))))
       (if type
           (phpinspect--apply-annotation-type return-annotation-type type type-resolver)
-        (setq type (funcall type-resolver (phpinspect--make-type :name return-annotation-type)))))
+        (when (stringp return-annotation-type)
+          (setq type (funcall type-resolver (phpinspect--make-type :name return-annotation-type))))))
 
     (when-let ((throw-annotations (seq-filter #'phpinspect-throws-annotation-p comment-before)))
       (dolist (tr throw-annotations)
@@ -410,7 +411,6 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
                                                           add-used-types)
                    methods))
             ((phpinspect-doc-block-p token)
-             (phpinspect--log "setting comment-before %s" token)
              (setq comment-before token))
 
             ;; Prevent comments from sticking around too long
@@ -420,7 +420,6 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
                    (nconc trait-config
                           (phpinspect--index-trait-use token type-resolver add-used-types))))
             (t
-             (phpinspect--log "Unsetting comment-before")
              (setq comment-before nil))))
 
     ;; Dirty hack that assumes the constructor argument names to be the same as the object
@@ -437,7 +436,7 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
                                         constructor-sym))
                                   methods)))
       (when constructor
-        (phpinspect--log "Constructor was found")
+        (phpinspect--log "Constructor was found for %s" class-name)
         (dolist (variable variables)
           (when (not (phpinspect--variable-type variable))
             (phpinspect--log "Looking for variable type in constructor arguments (%s)"
@@ -460,7 +459,7 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
     `(,class-name .
                   (phpinspect--indexed-class
                    (complete . ,(not (phpinspect-incomplete-class-p class)))
-                   (trait-confg . ,trait-config)
+                   (trait-config . ,trait-config)
                    (class-name . ,class-name)
                    (declaration . ,(seq-find #'phpinspect-declaration-p class))
                    (location . ,(funcall location-resolver class))
@@ -765,7 +764,8 @@ Returns a list of type name strings."
                    (push `(alias ,(cadadr (cadr block?)) ,(cadr (nth 3 block?)))
                          (cdr t-config))))
 
-               (setq block? (nthcdr 4 block?))))))
+               (setq block? (nthcdr 4 block?)))
+              (t (pop block?)))))
 
     (when add-used-types
       (funcall add-used-types used-types))

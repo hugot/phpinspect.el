@@ -147,7 +147,7 @@ static variables and static methods."
                          static))
          (statement-type (phpinspect-resolve-type-from-context
                            resolvecontext
-                           type-resolver)))
+                           type-resolver static)))
 
     (phpinspect--log "Statement type: %s" statement-type)
     (when statement-type
