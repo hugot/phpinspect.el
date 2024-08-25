@@ -107,22 +107,25 @@ structure returned by `phpinspect--index-trait-use'."
       (push (cons type overrides) (phpi-ma-overrides ma)))))
 
 (defun phpi-ma-add (ma mcol method &optional overwrite)
-  (if-let ((overrides (phpi-ma-get-overrides ma (phpi-method-origin-type method)))
-           (aliases (phpi-ma-get-aliases ma (phpi-method-origin-type method))))
-      (progn
-        (if-let ((override (alist-get (phpi-method-name method) overrides)))
-            ;; Override basically just means insert and overwrite without checking
-            (phpi-mcol-add mcol method 'overwrite)
-          ;; Can't alias if overriding, can't override if aliasing
-          (when-let ((alias (alist-get (phpi-method-name method) aliases))
-                     (copy (phpi-copy-method method)))
-            ;; Rename method to alias, record original name in aliased-from slot
-            (setf (phpi-method-aliased-from method) (phpi-method-name method)
-                  (phpi-method-name method) alias))))
 
-    ;; Not dealing with aliases or overrides, just add the methods (unless they
-    ;; already exist)
-    (phpi-mcol-add mcol method overwrite)))
+  (let ((overrides (phpi-ma-get-overrides ma (phpi-method-origin-type method)))
+        (aliases (phpi-ma-get-aliases ma (phpi-method-origin-type method)))
+        alias override)
+
+    ;; Can't alias if overriding, can't override if aliasing
+    (cond ((and overrides (setq override (alist-get (phpi-method-name method) overrides)))
+           ;; Override basically just means insert and overwrite without checking
+           (phpi-mcol-add mcol method 'overwrite))
+          ((and aliases (setq alias (alist-get (phpi-method-name method) aliases)))
+           (let ((copy (phpi-copy-method method)))
+             ;; Rename method to alias, record original name in aliased-from slot
+             (setf (phpi-method-aliased-from copy) (phpi-method-name method)
+                   (phpi-method-name copy) alias)
+             (phpi-mcol-add mcol copy overwrite)))
+          (t
+           ;; Not dealing with aliases or overrides, just add the methods,
+           ;; respecting `overwrite'.
+           (phpi-mcol-add mcol method overwrite)))))
 
 (defun phpi-typedef-get-methods (def)
   (phpi-mcol-list-active (phpi-typedef-methods def)))
@@ -185,17 +188,21 @@ structure returned by `phpinspect--index-trait-use'."
   (phpi--typedef-edit def
     (let ((existing-config (phpi-typedef-trait-config def))
           types)
-      (if existing-config
+      ;; A configuration that is exactly the same doesn't need to be applied twice
+      (unless (equal config existing-config)
+        (when existing-config
           ;; This can probably be made more sophisticated by only applying the
           ;; difference, but just deleting all incorporated methods will do for
           ;; an initial implementation.
           (dolist (use existing-config)
-            (phpi-mcol-delete-for-type (phpi-typedef-methods def) (car use)))
+            (when-let ((fd (phpi--typedef-get-foreign-type def (car use))))
+              (phpi-typedef-unsubscribe-from-foreign-typedef def fd))))
         ;; Apply new config
-        (progn
-          (phpi-ma-set-config (phpi-typedef-method-adder def) config)
-          (dolist (cons config)
-            (push (car cons) types))))
+        (phpi-ma-set-config (phpi-typedef-method-adder def) config))
+      (dolist (cons config)
+        (push (car cons) types))
+
+      (setf (phpi-typedef-trait-config def) config)
       ;; return all types that were in config
       types)))
 

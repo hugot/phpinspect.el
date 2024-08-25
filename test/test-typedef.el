@@ -158,9 +158,6 @@
 
       (should-not method))))
 
-
-
-
 (ert-deftest phpinspect-typedef-variables ()
   (let ((def (phpinspect-make-typedef (phpinspect--make-type :name "\\test"))))
 
@@ -209,3 +206,44 @@
       (should static-method)
       (should (eq (phpinspect-intern-name "test")
                   (phpi-method-name static-method))))))
+
+(ert-deftest phpinspect-typedef-set-index-trait-config ()
+  (let* ((code "class A { use \\AAA; function B(): C {} }")
+         (index (phpinspect--index-tokens (phpinspect-parse-string code)))
+         (class (cdar (alist-get 'classes index)))
+         (def1 (phpinspect-make-typedef (alist-get 'class-name class)))
+         (def2 (phpinspect-make-typedef (phpinspect--make-type :name "\\AAA")))
+         (retriever (lambda (type)
+                      (cond ((phpinspect--type= type (phpi-typedef-name def1))
+                             def1)
+                            ((phpinspect--type= type (phpi-typedef-name def2))
+                             def2)))))
+
+    (setf (phpi-typedef-retriever def1) retriever
+          (phpi-typedef-retriever def2) retriever)
+
+    (phpi-typedef-set-index def1 class)
+    (phpi-typedef-set-index
+     def2 (cdar (alist-get 'classes (phpinspect--index-tokens
+                                     (phpinspect-parse-string
+                                      "class AAA { function b(): string {} }")))))
+
+
+    (should (= 2 (length (phpi-typedef-get-methods def1))))
+
+    (let ((method (phpi-typedef-get-method def1 "b")))
+      (should (string= "b" (phpi-fn-name method)))
+      (should (phpinspect--type= (phpinspect--make-type :name "\\string")
+                                 (phpi-fn-return-type method))))
+
+    (phpi-typedef-set-index
+     def1 (cdar (alist-get 'classes (phpinspect--index-tokens
+                                     (phpinspect-parse-string
+                                      "class A { use \\AAA { \\AAA::b as boo } function B(): C {} }")))))
+
+    (should-not (phpi-typedef-get-method def1 "b"))
+
+    (let ((method (phpi-typedef-get-method def1 "boo")))
+      (should (string= "boo" (phpi-fn-name method)))
+      (should (phpinspect--type= (phpinspect--make-type :name "\\string")
+                                 (phpi-fn-return-type method))))))
