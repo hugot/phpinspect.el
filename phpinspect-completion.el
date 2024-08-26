@@ -70,10 +70,9 @@ candidate. Candidates can be indexed functions and variables.")
 
 (cl-defmethod phpinspect--completion-list-add
   ((comp-list phpinspect--completion-list) (completion phpinspect--completion))
-  (setf (phpinspect--completion-list-has-candidates comp-list) t)
-
   ;; Ignore completions in an invalid state (nil values)
   (when (phpinspect--completion-value completion)
+    (setf (phpinspect--completion-list-has-candidates comp-list) t)
     (unless (intern-soft (phpinspect--completion-value completion)
                          (phpinspect--completion-list-completions comp-list))
       (set (intern (phpinspect--completion-value completion)
@@ -218,34 +217,134 @@ belonging to a token that conforms with `phpinspect-attrib-p'"
    :completion-point (phpinspect--determine-completion-point)
    :point (point)))
 
+(defun phpinspect--find-atoms-start (point)
+  "Determine the start of a sequence of atoms before POINT."
+  (save-excursion
+    (goto-char point)
+    (if (looking-back (phpinspect--atom-regexp) nil t)
+        (- point (length (match-string 0)))
+      point)))
+
+(defun phpinspect--completion-query-maybe-should-cache (last-query query)
+  (and last-query
+       (eq (phpinspect-completion-query-buffer last-query)
+           (phpinspect-completion-query-buffer query))
+       (let ((taints (phpinspect-edtrack-taint-pool
+                      (phpinspect-buffer-edit-tracker
+                       (phpinspect-completion-query-buffer query))))
+             (atoms-start
+              (phpinspect-with-current-buffer (phpinspect-completion-query-buffer query)
+                (phpinspect--find-atoms-start (phpinspect-completion-query-point query)))))
+         (or (length= taints 0)
+             (and (length= taints 1)
+                  (<= atoms-start
+                      (phpinspect-completion-query-point last-query))
+                  (>= (phpinspect-taint-end (car taints))
+                      (phpinspect-completion-query-point last-query))
+                  (>= 1 (abs (- (phpinspect-completion-query-point query)
+                                (phpinspect-taint-end (car taints))))))))))
+
+(cl-defstruct (phpinspect--completion-parameters
+               (:constructor phpinspect--make-completion-parameters))
+  "Parameters used for completion. Used to detect caching possibilities."
+  (query nil)
+  (subject nil)
+  (strategy nil))
+
+(defvar phpinspect--last-completion-parameters nil
+  "Used internally to probe for opportunities to re-use the last
+completion result.")
+
 (cl-defmethod phpinspect-completion-query-execute ((query phpinspect-completion-query))
   "Execute QUERY.
 
 Returns list of `phpinspect--completion'."
-  (let* ((buffer (phpinspect-completion-query-buffer query))
-         (point (phpinspect-completion-query-point query))
-         (buffer-map (phpinspect-buffer-parse-map buffer))
-         (rctx (phpinspect-get-resolvecontext
-                (phpinspect-buffer-project buffer) buffer-map point))
-         (completion-list (phpinspect--make-completion-list)))
-    (phpinspect-buffer-update-project-index buffer)
+  (let* ((last-parameters phpinspect--last-completion-parameters)
+         ;; Check if caching is at all possible, before parsing the buffer. This
+         ;; needs to happen now, as tainted regions are removed from the taint
+         ;; pool after a buffer parse. We need the tainted region to determine
+         ;; if the only edit is one performed during completion.
+         (maybe-cache? (and
+                        last-parameters
+                        (phpinspect--completion-query-maybe-should-cache
+                         (phpinspect--completion-parameters-query last-parameters)
+                         query))))
 
-    (dolist (strategy phpinspect-completion-strategies)
-      (when-let (region (phpinspect-comp-strategy-supports strategy query rctx))
-        (setf (phpinspect--completion-list-completion-start completion-list)
-              (car region)
-              (phpinspect--completion-list-completion-end completion-list)
-              (cadr region))
+    (let* ((buffer (phpinspect-completion-query-buffer query))
+           (point (phpinspect-completion-query-point query))
+           (buffer-map (phpinspect-buffer-parse-map buffer))
+           (rctx (phpinspect-get-resolvecontext
+                  (phpinspect-buffer-project buffer) buffer-map point))
+           (completion-list (phpinspect--make-completion-list)))
 
-        (phpinspect--log "Found matching completion strategy. Executing...")
-        (dolist (candidate (phpinspect-comp-strategy-execute strategy query rctx))
-          (phpinspect--completion-list-add
-           completion-list (phpinspect--make-completion candidate)))))
+      (phpinspect-buffer-update-project-index buffer)
 
-    (phpinspect--log "Returning completion list %s" completion-list)
-    (setq phpinspect--last-completion-list completion-list)))
+      (setq phpinspect--last-completion-list
+            (catch 'phpinspect--return
+              (dolist (strategy phpinspect-completion-strategies)
+                (when-let (region (phpinspect-comp-strategy-supports strategy query rctx))
+                  ;; Check if using the cached completion list is possible.
+                  (if-let ((maybe-cache?)
+                           ;; There is a previous list available
+                           (last-list phpinspect--last-completion-list)
+                           ;; The list had candidates in it
+                           ((phpinspect--completion-list-has-candidates last-list))
+                           ;; The subject of the last resolvecontext is the same
+                           ;; (so likely to evaluate to the same results).
+                           ((equal (butlast (phpinspect--resolvecontext-subject rctx))
+                                   (butlast (phpinspect--completion-parameters-subject
+                                             last-parameters))))
+                           ;; The completion strategy is the same as the last
+                           ;; one used.
+                           ((eq strategy
+                                (phpinspect--completion-parameters-strategy
+                                 last-parameters))))
+                      ;; We can safely use the cached list: All parameters used
+                      ;; for the last completion seem to match the current one.
+                      (progn
+                        (message "using cached list")
+                        ;; Update the region, this is necessary for
+                        ;; completion-at-point to determine what is being
+                        ;; completed.
+                        (setf (phpinspect--completion-list-completion-start last-list)
+                              (car region)
+                              (phpinspect--completion-list-completion-end last-list)
+                              (cadr region))
+
+                        (throw 'phpinspect--return last-list))
+
+                    ;; We can't use the cached list, proceed executing the
+                    ;; strategy.
+                    (setf (phpinspect--completion-list-completion-start completion-list)
+                          (car region)
+                          (phpinspect--completion-list-completion-end completion-list)
+                          (cadr region))
+
+                    ;; update last used parameters
+                    (setq phpinspect--last-completion-parameters
+                          (phpinspect--make-completion-parameters
+                           :subject (phpinspect--resolvecontext-subject rctx)
+                           :strategy strategy
+                           :query query))
+
+                    (phpinspect--log "Found matching completion strategy. Executing...")
+                    (dolist (candidate (phpinspect-comp-strategy-execute strategy query rctx))
+                      (phpinspect--completion-list-add
+                       completion-list (phpinspect--make-completion candidate)))
+
+                    (throw 'phpinspect--return completion-list))))
+                ;; return empty list
+                completion-list))))
+
+  (phpinspect--log "Returning completion list %s" phpinspect--last-completion-list)
+  phpinspect--last-completion-list)
 
 
+;; FIXME: completions should be stored in an LRU cache keyed with object
+;; pointers of the things they represent (variables/functions). Re-creating them
+;; for each completion causes hiccups due to the sheer number of completion in
+;; some cases. This probably also causes the GC to kick in, making matters
+;; worse.
 (defun phpinspect-make-fn-completion (completion-candidate)
   (phpinspect--construct-completion
    :value (phpi-fn-name completion-candidate)
