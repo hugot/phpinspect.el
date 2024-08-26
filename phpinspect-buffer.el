@@ -200,30 +200,6 @@ linked with."
      (phpinspect-class-block (phpinspect-meta-token class-token))
      namespace-name)))
 
-(defun phpinspect-buffer-apply-use-trait-config (buffer class-token uses)
-  (pcase-let* ((`(,imports ,namespace-name)
-                (phpinspect-get-token-index-context
-                 (phpinspect-buffer-namespaces buffer)
-                 (phpinspect-buffer-imports buffer)
-                 class-token))
-               (type-resolver (phpinspect--make-type-resolver
-                               imports
-                               (phpinspect-class-block (phpinspect-meta-token class-token))
-                               namespace-name))
-               (config))
-
-    (dolist (use uses)
-      (setq config
-            (nconc config
-                   (phpinspect--index-trait-use
-                    (phpinspect-meta-token use) type-resolver nil))))
-
-    (when-let ((typedef (phpinspect-buffer-get-index-for-token buffer (phpinspect-meta-token class-token))))
-      (let ((new-extensions (seq-uniq (append (phpi-typedef-subscribed-to-types typedef)
-                                              (phpi-typedef-set-trait-config typedef config))
-                                      #'phpinspect--type=)))
-        (phpi-typedef-update-extensions typedef new-extensions)))))
-
 (cl-defmethod phpinspect-buffer-index-used-traits ((buffer phpinspect-buffer) (uses (head phpinspect-splayt)))
   (let ((update t))
     (if (phpinspect-buffer-used-traits buffer)
