@@ -178,7 +178,9 @@ linked with."
                                      (phpinspect-buffer-project buffer)
                                      (car func))))
                     (phpi-typedef-delete-method class (cdr func))))
-                 (t (error "Invalid index location")))))
+                 (t (phpinspect-message "Invalid index location, reindexing buffer")
+                    (phpinspect-buffer-reindex buffer)
+                    (error "invalid index location")))))
         (t (error "Cannot delete index for token %s" token))))
 
 (cl-defmethod phpinspect-buffer-namespace-at-point ((buffer phpinspect-buffer) (point integer))
@@ -582,6 +584,10 @@ continuing execution."
   (phpinspect-buffer-parse buffer)
   (phpinspect-buffer-map buffer))
 
+(define-inline phpinspect--atom-regexp ()
+  "A regular expression that matches (sequences of) atomic tokens."
+  (inline-quote "\\(\\$\\|->\\|::\\)?[^][)(}{[:blank:]\n;'\"]+"))
+
 (cl-defmethod phpinspect-buffer-register-edit
   ((buffer phpinspect-buffer) (start integer) (end integer) (pre-change-length integer))
   "Mark a region of the buffer as edited."
@@ -591,7 +597,7 @@ continuing execution."
   ;; they grow or shrink, so their full regions need to be marked for a reparse).
   (save-excursion
     (goto-char start)
-    (when (looking-back "\\(\\$\\|->\\|::\\)?[^][)(}{[:blank:]\n;'\"]+" nil t)
+    (when (looking-back (phpinspect--atom-regexp) nil t)
       (setq start (- start (length (match-string 0))))
       (setq pre-change-length (+ pre-change-length (length (match-string 0))))))
 
@@ -638,5 +644,13 @@ use."
 (defun phpinspect-after-change-function (start end pre-change-length)
   (when phpinspect-current-buffer
     (phpinspect-buffer-register-edit phpinspect-current-buffer start end pre-change-length)))
+
+(define-inline phpinspect-with-current-buffer (buffer &rest body)
+  (declare (indent 1))
+  (inline-letevals (buffer)
+    (push 'progn body)
+    (inline-quote
+     (with-current-buffer (phpinspect-buffer-buffer ,buffer)
+       ,body))))
 
 (provide 'phpinspect-buffer)
