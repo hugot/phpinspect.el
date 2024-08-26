@@ -85,7 +85,7 @@ that the collection is expected to contain")
 (defvar phpinspect--self-type (phpinspect--make-type :name "\\self" :fully-qualified t))
 (defvar phpinspect--this-type (phpinspect--make-type :name "\\this" :fully-qualified t))
 (defvar phpinspect--null-type (phpinspect--make-type :name "\\null" :fully-qualified t))
-(defvar phpinspect--unknown-type (phpinspect--make-type :name "unknown-type"))
+(defvar phpinspect--unknown-type (phpinspect--make-type :name "unknown-type" :fully-qualified t))
 
 (defun phpinspect-define-standard-types ()
   (setq phpinspect-native-types
@@ -144,8 +144,24 @@ See https://wiki.php.net/rfc/static_return_type ."
      (with-memoization (phpinspect--type--bare-name-sym-slot ,type)
        (phpinspect-intern-name (phpinspect--type-bare-name ,type))))))
 
-(cl-defmethod phpinspect--type= ((type1 phpinspect--type) (type2 phpinspect--type))
+(defun phpinspect--type= (type1 type2)
   (eq (phpinspect--type-name-symbol type1) (phpinspect--type-name-symbol type2)))
+
+(defun phpinspect--types-uniq (types)
+  "Optimized seq-uniq for types."
+  (let* (table
+         (filtered (cons nil nil))
+         (filtered-rear filtered))
+    (dolist (type types)
+      (let ((name (phpinspect--type-name-symbol type)))
+        (unless (memq name table)
+          (setq filtered-rear (setcdr filtered-rear (cons type nil)))
+          (push name table))))
+
+    (cdr filtered)))
+
+
+
 
 (defun phpinspect--resolve-type-name (types namespace type)
   "Get the FQN for TYPE, using TYPES and NAMESPACE as context.

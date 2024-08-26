@@ -254,16 +254,19 @@ indexation, but indexed synchronously before returning."
      project
      (phpinspect-project-index-type-file project (phpi-typedef-name typedef))))
 
-  (dolist (dep (phpi-typedef-get-dependencies typedef))
-    (unless (phpi-typedef-initial-index
-             (phpinspect-project-get-typedef-create project dep))
-      (phpinspect-project-add-index
-       project
-       (phpinspect-project-index-type-file project dep))))
+  (unless (phpi-typedef--dependencies-loaded typedef)
+    (dolist (dep (phpi-typedef-get-dependencies typedef))
+      (unless (phpi-typedef-initial-index
+               (phpinspect-project-get-typedef-create project dep))
+        (phpinspect-project-add-index
+         project
+         (phpinspect-project-index-type-file project dep))))
 
-  (dolist (extended (phpi-typedef-subscribed-to-types typedef))
-    (phpinspect-project-ensure-index-typedef-and-dependencies
-     project (phpinspect-project-get-typedef-create project extended))))
+    (dolist (extended (phpi-typedef-subscribed-to-types typedef))
+      (phpinspect-project-ensure-index-typedef-and-dependencies
+       project (phpinspect-project-get-typedef-create project extended)))
+
+    (setf (phpi-typedef--dependencies-loaded typedef) t)))
 
 (cl-defmethod phpinspect-project-get-typedef
   ((project phpinspect-project) (typedef-fqn phpinspect--type) &optional index)
