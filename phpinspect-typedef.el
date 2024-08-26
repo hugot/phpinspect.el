@@ -131,13 +131,12 @@ structure returned by `phpinspect--index-trait-use'."
       (push (cons type overrides) (phpi-ma-overrides ma)))))
 
 (defun phpi-ma-add (ma mcol method &optional overwrite)
-
   (let ((overrides (phpi-ma-get-overrides ma (phpi-method-origin-type method)))
         (aliases (phpi-ma-get-aliases ma (phpi-method-origin-type method)))
-        alias override)
+        alias)
 
     ;; Can't alias if overriding, can't override if aliasing
-    (cond ((and overrides (setq override (alist-get (phpi-method-name method) overrides)))
+    (cond ((and overrides (alist-get (phpi-method-name method) overrides))
            ;; Override basically just means insert and overwrite without checking
            (phpi-mcol-add mcol method 'overwrite))
           ((and aliases (setq alias (alist-get (phpi-method-name method) aliases)))
@@ -175,7 +174,7 @@ structure returned by `phpinspect--index-trait-use'."
     (phpi-typedef-trigger-subscriber-method-update def m)))
 
 (cl-defmethod phpi-typedef-set-method ((def phpinspect-typedef) (fn phpinspect--function) &optional no-propagate)
-  (phpi-typedef-set-method def (phpinspect-make-method (phpi-typedef-name def) fn)))
+  (phpi-typedef-set-method def (phpinspect-make-method (phpi-typedef-name def) fn) no-propagate))
 
 (cl-defmethod phpi-typedef-set-static-method ((def phpinspect-typedef) (m phpinspect-method) &optional no-propagate)
   (phpi-ma-add (phpi-typedef-method-adder def) (phpi-typedef-static-methods def) m 'overwrite)
@@ -183,15 +182,7 @@ structure returned by `phpinspect--index-trait-use'."
     (phpi-typedef-trigger-subscriber-method-update def m 'static)))
 
 (cl-defmethod phpi-typedef-set-static-method ((def phpinspect-typedef) (fn phpinspect--function) &optional no-propagate)
-  (phpi-typedef-set-static-method def (phpinspect-make-method (phpi-typedef-name def) fn)))
-
-
-(cl-defmethod phpi-typedef-set-static-method ((def phpinspect-typedef) (fn phpinspect--function) &optional no-propagate)
-  (let ((method (phpinspect-make-method (phpi-typedef-name def) fn)))
-    (phpi-ma-add (phpi-typedef-method-adder def)
-                 (phpi-typedef-static-methods def)
-                 method 'overwrite)))
-
+  (phpi-typedef-set-static-method def (phpinspect-make-method (phpi-typedef-name def) fn) no-propagate))
 
 (cl-defmethod phpi-typedef-delete-method ((def phpinspect-typedef) (name (head phpinspect-name)))
   (phpi-mcol-delete-for-type

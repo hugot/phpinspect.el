@@ -790,23 +790,13 @@ Returns the consumed text string without face properties."
   :handlers '(comment word list terminator tag)
   :delimiter-predicate #'phpinspect-end-of-token-p)
 
-;; TODO: Look into using different names for function and class :declaration tokens. They
-;; don't necessarily require the same handlers to parse.
-(define-inline phpinspect-parse-declaration (buffer max-point &optional continue-condition root)
-  (inline-quote
-     (let ((result (phpinspect--parse-declaration ,buffer ,max-point nil ,continue-condition ,root)))
-       (if (phpinspect-terminator-p (car (last result)))
-           (butlast result)
-         result))))
-
 (phpinspect-defhandler function-keyword (start-token max-point)
   "Handler for the function keyword and tokens that follow to give it meaning"
   ((regexp . (concat "function" (phpinspect--word-end-regex))))
   (setq start-token (phpinspect--strip-word-end-space start-token))
   (let* ((continue-condition (lambda () (not (or (char-equal (char-after) ?{)
-                                                 (char-equal (char-after) ?})))))
-         (declaration (phpinspect-parse-declaration (current-buffer) max-point continue-condition 'root)))
-
+                                                           (char-equal (char-after) ?})))))
+         (declaration (phpinspect--parse-declaration (current-buffer) max-point nil continue-condition 'root)))
     (if (phpinspect-end-of-token-p (car (last declaration)))
         ;; Abstract function?
         (list :function declaration)
@@ -904,9 +894,10 @@ the properties of the class"
   ((regexp . (concat "\\(abstract\\|final\\|class\\|interface\\|trait\\|enum\\)"
                      (phpinspect--word-end-regex))))
   (setq start-token (phpinspect--strip-word-end-space start-token))
-  `(:class ,(phpinspect-parse-declaration
+  `(:class ,(phpinspect--parse-declaration
                 (current-buffer)
                 max-point
+                nil
                 (lambda () (not (char-equal (char-after) ?{)))
                 'root)
            ,@(cdr (phpinspect--parse-class-body (current-buffer) max-point nil))))

@@ -156,4 +156,42 @@ class TestClass {
                                           (:block
                                            (:word "C") (:static-attrib (:word "foo"))
                                            (:word "insteadof") (:word "A"))))))
-            tree))))
+             tree))))
+
+(ert-deftest phpinspect-parse-interface-methods ()
+  (let ((result (phpinspect-parse-string "
+interface Test
+{
+    public function __call($method, $parameters);
+
+    public static function __callStatic($method, $parameters);
+}"))
+        (expected '(:root
+                    (:class
+                     (:declaration
+                      (:word "interface")
+                      (:word "Test"))
+                     (:block
+                      (:public
+                       (:function
+                        (:declaration
+                         (:word "function")
+                         (:word "__call")
+                         (:list
+                          (:variable "method")
+                          (:comma ",")
+                          (:variable "parameters"))
+                         (:terminator ";"))))
+                      (:public
+                       (:static
+                        (:function
+                         (:declaration
+                          (:word "function")
+                          (:word "__callStatic")
+                          (:list
+	                       (:variable "method")
+	                       (:comma ",")
+	                       (:variable "parameters"))
+                          (:terminator ";"))))))))))
+
+    (should (equal expected result))))

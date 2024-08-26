@@ -132,14 +132,17 @@
       (should (phpinspect-function-p (phpinspect-meta-token (phpinspect-meta-parent (phpinspect-meta-parent bello)))))
       (should (phpinspect-function-p (phpinspect-meta-token (phpinspect-meta-parent (phpinspect-meta-parent bello1)))))
 
-      (let ((function (phpinspect-meta-token (phpinspect-meta-parent (phpinspect-meta-parent bello1)))))
-        ;; There's 5 nested tokens in the function. It is not a valid function
-        ;; token, a correct function would only contain a declaration and a
-        ;; block. But the incremental parser doesn't complain.
-        (should (= 5 (length function)))
+      (let* ((function-meta (phpinspect-meta-parent (phpinspect-meta-parent bello1)))
+             (function (phpinspect-meta-token function-meta)))
+        ;; The uncomplete function body was absorbed by the declaration up until
+        ;; the first semicolon.
+        (should (= 2 (length function)))
         (should (phpinspect-declaration-p (cadr function)))
         (should (member '(:word "Bello") (cadr function)))
-        (should (member '(:word "echo") (cadr function))))
+        (should (member '(:word "echo") (cadr function)))
+
+        ;; rest of tokens is absorbed by parent.
+        (should (equal `(:word "if")  (phpinspect-meta-token (phpinspect-meta-find-right-sibling function-meta)))))
 
       (phpinspect-document-apply-edit document 24 25 1 "{")
       (should (string= "<?php function Bello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }"
