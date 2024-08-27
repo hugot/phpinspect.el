@@ -47,6 +47,7 @@
             "When the type is a collection, this attribute is set to the type
 that the collection is expected to contain")
   (-bare-name-sym-slot nil)
+  (-display-name-slot nil)
   (category nil
             :documentation
             "A symbol declaring whether this type is a class,
@@ -252,13 +253,21 @@ NAMESPACE may be nil, or a string with a namespace FQN."
 (cl-defmethod phpinspect--display-format-type-name ((name string))
   (propertize (phpinspect--format-type-name name) 'face 'font-lock-type-face))
 
+(define-inline phpinspect--type-format-display-name (type)
+  (inline-letevals (type)
+    (inline-quote
+     (if (phpinspect--type-fully-qualified ,type)
+         ;; Save display name when name is fully qualified, as it won't change
+         ;; again.
+         (with-memoization (phpinspect--type--display-name-slot ,type)
+           (phpinspect--display-format-type-name (phpinspect--type-name ,type)))
+       (phpinspect--display-format-type-name (phpinspect--type-name ,type))))))
+
 (cl-defmethod phpinspect--display-format-type-name ((type phpinspect--type))
-  (let ((self (phpinspect--format-type-name type)))
-    (propertize
-     (if (phpinspect--type-contains type)
-        (concat self "<" (phpinspect--format-type-name (phpinspect--type-contains type)) ">")
-       self)
-     'face 'font-lock-type-face)))
+  (let ((self (phpinspect--type-format-display-name type)))
+    (if (phpinspect--type-contains type)
+        (concat self "<" (phpinspect--format-type-name (phpinspect--type-format-display-name type)) ">")
+      self)))
 
 (cl-defmethod phpinspect--display-format-type-name (type)
   (cl-assert (not type))
