@@ -768,7 +768,7 @@ class Bar {
 	(should (equal expected result))
 
 	(goto-char 17)
-	(delete-backward-char 1)
+	(delete-char -1)
 	(setq result (phpinspect-buffer-parse buffer 'no-interrupt))
 	(should result)
 	(should (equal expected result))
