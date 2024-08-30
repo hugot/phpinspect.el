@@ -4,7 +4,7 @@
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
-;; Version: 1.2.1
+;; Version: 2.0.0
 ;; Package-Requires: ((compat "29"))
 ;; Website: https://github.com/hugot/phpinspect.el
 
@@ -33,6 +33,21 @@
 ;; with `phpinspect-mode'. Also see M-x customize-group RET phpinspect RET.
 
 ;;; News:
+
+;; Version 2.0.0
+
+;; - Implemented support for traits
+;; - Implemented more accurate/nuanced in-memory representation of types and
+;;   inherited properties/methods.  `phpinspect--class' has been removed and
+;;   replaced with `phpinspect-typedef', the the function prefix of which is
+;;   "phpi-typedef-".  This change is backwards-incompatible due to various name
+;;   changes, refactorings and function/type removals.
+;; - Improved completion performance by re-using completion lists when possible.
+;; - Introduced new customizable variable: `phpinspect-imports-remove-unused',
+;;   which enables/disables this behaviour for `phpinspect-fix-imports'.
+;;   The default is disabled (nil).
+;; - Increased test coverage for the parser and fixed various bugs discovered in
+;;   the process.
 
 ;; Version 1.2.0
 
