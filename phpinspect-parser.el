@@ -716,7 +716,6 @@ static keywords with the same meaning as in a class block."
 (phpinspect-defhandler class-block (start-token max-point)
   "Handler for code blocks that cannot contain classes"
   ((regexp . "{"))
-  (forward-char (length start-token))
   (let* ((complete-block nil)
          (continue-condition (lambda ()
                                (not (and (char-equal (char-after) ?})

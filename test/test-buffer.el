@@ -738,3 +738,47 @@ class Bar {
         (phpinspect-buffer-update-project-index buffer)
 
         (should (= 1 (length (phpi-typedef-get-methods class))))))))
+
+
+(ert-deftest phpinspect-buffer-parse-incrementally-class-block-scope ()
+  (with-temp-buffer
+    (let* ((project (phpinspect--make-dummy-composer-project-with-code))
+           (buffer (phpinspect-make-buffer :-project project :buffer (current-buffer))))
+
+      (insert "<?php class A { public function A() {} }")
+
+      (setq-local phpinspect-current-buffer buffer)
+      (add-hook 'after-change-functions #'phpinspect-after-change-function)
+      (let ((expected `(:root
+			(:class
+			 (:declaration
+			  (:word "class")
+			  (:word "A"))
+			 (:block
+			  (:public
+			   (:function
+			    (:declaration
+			     (:word "function")
+			     (:word "A")
+			     (:list))
+			    (:block)))))))
+	    (result (phpinspect-buffer-parse buffer 'no-interrupt)))
+
+	(should result)
+	(pp result)
+	(should (equal expected result))
+
+	(goto-char 17)
+	(delete-backward-char 1)
+	(message (buffer-string))
+	(setq result (phpinspect-buffer-parse buffer 'no-interrupt))
+	(pp result)
+	(should result)
+	(should (equal expected result))
+
+	(backward-char)
+	(insert " ")
+	(message (buffer-string))
+	(setq result (phpinspect-buffer-parse buffer 'no-interrupt))
+	(should result)
+	(should (equal expected result))))))
