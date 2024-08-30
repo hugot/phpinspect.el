@@ -802,14 +802,11 @@ class TestClass
 
       (phpinspect-buffer-parse buffer 'no-interrupt)
       (phpinspect-buffer-update-project-index buffer)
-      (pp (phpinspect-buffer-tree buffer))
 
       (let ((typedef (phpinspect-project-get-typedef project class-type)))
 	(should typedef)
 
 	(should (length= (phpi-typedef-get-methods typedef) 1 ))
-
-	(pp (phpi-typedef-get-methods typedef))
 
 	(let ((method (phpi-typedef-get-method typedef "testMethod")))
 	  (should method))))))
