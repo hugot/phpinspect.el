@@ -302,7 +302,6 @@ Returns list of `phpinspect--completion'."
                       ;; We can safely use the cached list: All parameters used
                       ;; for the last completion seem to match the current one.
                       (progn
-                        (message "using cached list")
                         ;; Update the region, this is necessary for
                         ;; completion-at-point to determine what is being
                         ;; completed.
