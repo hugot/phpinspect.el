@@ -344,6 +344,12 @@ Returns list of `phpinspect--completion'."
 ;; for each completion causes hiccups due to the sheer number of completion in
 ;; some cases. This probably also causes the GC to kick in, making matters
 ;; worse.
+;;;;
+;; [2024-08-30 12:19] => A significant part of the performance problem seems to
+;; be mitigated by the memoization of `phpinspect--type-format-display-name',
+;; which is used to format/propertize return- and parameter types for
+;; completions. If performance is still problematic at a later date, for example
+;; on less powerful machines, consider implementing an LRU.
 (defun phpinspect-make-fn-completion (completion-candidate)
   (phpinspect--construct-completion
    :value (phpi-fn-name completion-candidate)
