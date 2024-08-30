@@ -33,6 +33,16 @@
 (require 'phpinspect-util)
 (require 'phpinspect-type)
 
+(defcustom phpinspect-imports-remove-unused nil
+  "Set to `t' to automatically remove unused imports.
+
+A value of `t' makes `phpinspect-fix-imports' automatically
+remove imports for unused types.  This is an experimental feature
+that may sometimes fail in identifying use of an import,
+resulting in an unjust removal."
+  :type 'boolean
+  :group 'phpinspect)
+
 (defun phpinspect-insert-at-point (point data)
   (save-excursion
     (goto-char point)
@@ -357,8 +367,9 @@ that there are import (\"use\") statements for them."
         (phpinspect-add-use-statements-for-missing-types
          used-types buffer imports project (phpinspect-buffer-root-meta buffer))
 
-        (phpinspect-remove-unneeded-use-statements
-         used-types buffer imports (phpinspect-buffer-root-meta buffer))
+        (when phpinspect-imports-remove-unused
+	  (phpinspect-remove-unneeded-use-statements
+           used-types buffer imports (phpinspect-buffer-root-meta buffer)))
 
         (phpinspect-format-use-statements
          buffer (phpinspect-find-first-use (phpinspect-buffer-root-meta buffer)))
@@ -375,11 +386,12 @@ that there are import (\"use\") statements for them."
             (unless token-meta
               (error "Unable to find token for namespace %s" namespace-name))
 
-            (phpinspect-add-use-statements-for-missing-types
-             used-types buffer (append imports namespace-imports) project token-meta)
+	    (when phpinspect-imports-remove-unused
+              (phpinspect-add-use-statements-for-missing-types
+               used-types buffer (append imports namespace-imports) project token-meta))
 
-            (phpinspect-remove-unneeded-use-statements
-             used-types buffer (append imports namespace-imports) token-meta)
+            ;; (phpinspect-remove-unneeded-use-statements
+            ;;  used-types buffer (append imports namespace-imports) token-meta)
 
             (let ((parent (phpinspect-meta-find-parent-matching-token
                            token-meta #'phpinspect-namespace-or-root-p)))
