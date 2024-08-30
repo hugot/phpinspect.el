@@ -755,7 +755,9 @@ class Bar {
 			  (:word "class")
 			  (:word "A"))
 			 (:block
-			  (:public
+			  (:public ;; This test explicitly tests that the
+				   ;; "public" word doesn't lose its first
+				   ;; character after edits.
 			   (:function
 			    (:declaration
 			     (:word "function")
@@ -778,3 +780,36 @@ class Bar {
 	(setq result (phpinspect-buffer-parse buffer 'no-interrupt))
 	(should result)
 	(should (equal expected result))))))
+
+(ert-deftest phpinspect-buffer-index-update-method-name ()
+    (with-temp-buffer
+      (let* ((project (phpinspect--make-project :autoload (phpinspect-make-autoloader)))
+	     (buffer (phpinspect-make-buffer :buffer (current-buffer) :-project project))
+	     (class-type (phpinspect--make-type :name "\\NS\\TestClass" :fully-qualified t)))
+      (insert "<?php
+namespace NS;
+
+class TestClass
+{
+    function testMe(): RelativeType {}
+}")
+      (setq-local phpinspect-current-buffer buffer)
+      (add-hook 'after-change-functions #'phpinspect-after-change-function)
+      (phpinspect-buffer-update-project-index buffer)
+
+      (goto-char 59)
+      (insert "thod")
+
+      (phpinspect-buffer-parse buffer 'no-interrupt)
+      (phpinspect-buffer-update-project-index buffer)
+      (pp (phpinspect-buffer-tree buffer))
+
+      (let ((typedef (phpinspect-project-get-typedef project class-type)))
+	(should typedef)
+
+	(should (length= (phpi-typedef-get-methods typedef) 1 ))
+
+	(pp (phpi-typedef-get-methods typedef))
+
+	(let ((method (phpi-typedef-get-method typedef "testMethod")))
+	  (should method))))))

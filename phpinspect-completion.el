@@ -378,6 +378,9 @@ Returns list of `phpinspect--completion'."
   "Create a `phpinspect--completion` for COMPLETION-CANDIDATE."
   (phpinspect-make-fn-completion completion-candidate))
 
+(cl-defmethod phpinspect--make-completion ((completion-candidate phpinspect-property))
+  (phpinspect--make-completion (phpi-prop-definition completion-candidate)))
+
 (cl-defmethod phpinspect--make-completion
   ((completion-candidate phpinspect--variable))
   (phpinspect--construct-completion
