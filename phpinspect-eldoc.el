@@ -102,7 +102,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                    (when method
                      (setq result (phpinspect-make-function-doc :fn method)))))
                 ((phpinspect-object-attrib-p attrib)
-                 (setq variable (phpi-typedef-get-variable class attribute-name))
+                 (setq variable (phpi-typedef-get-property class attribute-name))
 
                  (if (and variable
                           (phpi-prop-vanilla-p variable))
@@ -219,7 +219,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
           (when func
             (phpinspect-make-function-doc :fn func :arg-pos arg-pos))))))))
 
-(defun phpinspect-var-eldoc-string (prop-or-var)
+(defun phpinspect-var-eldoc-string (var)
   (concat (truncate-string-to-width
            (propertize (concat (if (phpi-var-vanilla-p var) "$" "")
                                (phpi-var-name var))

@@ -4,6 +4,10 @@
 (require 'phpinspect-cache)
 (require 'phpinspect-parser)
 
+(require 'phpinspect-imports)
+;; Always enable experimental features in the test suite
+(setq phpinspect-imports-remove-unused t)
+
 ;; Make sure that the worker is running. TODO: fully encapsulate the worker the
 ;; data types that are used in tests so that we don't depend on some global
 ;; worker object for tests.

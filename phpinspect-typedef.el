@@ -475,13 +475,14 @@ them, which are then incorporated into DEF's properties."
 
 (cl-defmethod phpi-typedef-delete-property ((def phpinspect-typedef)
                                             (var phpinspect--variable))
-  (phpi-typedef-delete-property def (phpinspect-intern-name (phpi-variable-name))))
+  (phpi-typedef-delete-property
+   def (phpinspect-intern-name (phpinspect--variable-name var))))
 
 (cl-defmethod phpi-typedef-get-properties ((def phpinspect-typedef))
   (seq-filter #'phpi-prop-vanilla-p
 	      (phpi-pcol-list-active (phpi-typedef-properties def))))
 
-(cl-defmethod phpi-typedef-get-static-properties ((class phpinspect-typedef))
+(cl-defmethod phpi-typedef-get-static-properties ((def phpinspect-typedef))
   (seq-filter #'phpi-prop-static-p
 	      (phpi-pcol-list-active (phpi-typedef-properties def))))
 
