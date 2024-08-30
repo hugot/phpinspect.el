@@ -94,12 +94,11 @@
       (progn (phpinspect--log "Failed to find methods for class %s :(" class) nil)))
 
 (defun phpinspect--get-variables-for-class (rctx class-name &optional static)
-  (let ((class (phpinspect-rctx-get-typedef
-                rctx class-name 'no-enqueue)))
+  (let ((class (phpinspect-rctx-get-typedef rctx class-name 'no-enqueue)))
     (when class
       (if static
-          (append (phpi-typedef-get-static-variables class) (phpi-typedef-get-constants class))
-        (phpi-typedef-get-variables class)))))
+          (append (phpi-typedef-get-static-properties class) (phpi-typedef-get-constants class))
+        (phpi-typedef-get-properties class)))))
 
 (defun phpinspect--make-method-lister (resolvecontext &optional static)
   (lambda (fqn)
@@ -113,6 +112,10 @@
 
 (cl-defmethod phpinspect--candidate-scope ((candidate phpinspect--variable))
   (phpinspect--variable-scope candidate))
+
+(cl-defmethod phpinspect--candidate-scope ((candidate phpinspect-property))
+  (phpi-prop-scope candidate))
+
 
 (defun phpinspect-suggest-attributes-at-point
     (resolvecontext &optional static)

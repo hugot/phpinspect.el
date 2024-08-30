@@ -549,7 +549,7 @@ class TestClass
              (phpinspect-buffer-project buffer)
              (phpinspect--make-type :name "\\TestClass")))
 
-    (should (= 2 (length (phpi-typedef-variables
+    (should (= 1 (length (phpi-typedef-get-properties
                           (phpinspect-project-get-typedef
                            (phpinspect-buffer-project buffer)
                            (phpinspect--make-type :name "\\TestClass"))))))
@@ -561,8 +561,8 @@ class TestClass
                            (phpinspect--make-type :name "\\TestClass"))))))
 
     (should (phpinspect--type= (phpinspect--make-type :name "\\array")
-                              (phpinspect--variable-type
-                               (phpi-typedef-get-variable
+                              (phpi-var-type
+                               (phpi-typedef-get-property
                                 (phpinspect-project-get-typedef
                                  (phpinspect-buffer-project buffer)
                                  (phpinspect--make-type :name "\\TestClass"))
@@ -626,12 +626,12 @@ class AccountStatisticsController {
                      :fully-qualified t))))
         (should class)
 
-        (let ((model (phpi-typedef-get-variable class "model"))
-              (priv-model (phpi-typedef-get-variable class "privModel"))
+        (let ((model (phpi-typedef-get-property class "model"))
+              (priv-model (phpi-typedef-get-property class "privModel"))
               ;; Static variables are stored with "$" prefix
-              (relation (phpi-typedef-get-variable class "$relation"))
-              (static-relation (phpi-typedef-get-variable class "$staticRelation"))
-              (relations (phpi-typedef-get-variable class "relations")))
+              (relation (phpi-typedef-get-property class "$relation"))
+              (static-relation (phpi-typedef-get-property class "$staticRelation"))
+              (relations (phpi-typedef-get-property class "relations")))
           (should model)
           (should priv-model)
           (should relation)
@@ -646,19 +646,19 @@ class AccountStatisticsController {
                              :fully-qualified t))
                 (array-type (phpinspect--make-type :name "\\array" :fully-qualified t)))
 
-            (should (phpinspect--variable-type model))
-            (should (phpinspect--type= model-type (phpinspect--variable-type model)))
-            (should (phpinspect--variable-type priv-model))
-            (should (phpinspect--type= model-type (phpinspect--variable-type priv-model)))
-            (should (phpinspect--variable-type relation))
-            (should (phpinspect--type= relation-type (phpinspect--variable-type relation)))
-            (should (phpinspect--variable-type static-relation))
-            (should (phpinspect--type= relation-type (phpinspect--variable-type static-relation)))
+            (should (phpi-var-type model))
+            (should (phpinspect--type= model-type (phpi-var-type model)))
+            (should (phpi-var-type priv-model))
+            (should (phpinspect--type= model-type (phpi-var-type priv-model)))
+            (should (phpi-var-type relation))
+            (should (phpinspect--type= relation-type (phpi-var-type relation)))
+            (should (phpi-var-type static-relation))
+            (should (phpinspect--type= relation-type (phpi-var-type static-relation)))
 
-            (should (phpinspect--type= array-type (phpinspect--variable-type relations)))
+            (should (phpinspect--type= array-type (phpi-var-type relations)))
             (should (phpinspect--type=
                      relation-type
-                     (phpinspect--type-contains (phpinspect--variable-type relations))))))))))
+                     (phpinspect--type-contains (phpi-var-type relations))))))))))
 
 
 (ert-deftest phpinspect-buffer-parse-incrementally-unfinished-variable-scope ()

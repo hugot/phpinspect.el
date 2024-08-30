@@ -91,11 +91,11 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
             variable method result)
         (when attribute-name
           (cond ((phpinspect-static-attrib-p attrib)
-                 (setq variable (phpi-typedef-get-variable class attribute-name))
+                 (setq variable (phpi-typedef-get-property class attribute-name))
 
                  (if (and variable
-                          (or (phpinspect--variable-static-p variable)
-                              (phpinspect--variable-const-p variable)))
+                          (or (phpi-prop-static-p variable)
+                              (phpi-prop-const-p variable)))
                      (setq result variable)
                    (setq method (phpi-typedef-get-static-method
                                  class (phpinspect-intern-name attribute-name)))
@@ -105,7 +105,7 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                  (setq variable (phpi-typedef-get-variable class attribute-name))
 
                  (if (and variable
-                          (phpinspect--variable-vanilla-p variable))
+                          (phpi-prop-vanilla-p variable))
                      (setq result variable)
                    (setq method (phpi-typedef-get-method
                                  class (phpinspect-intern-name attribute-name)))
@@ -219,14 +219,20 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
           (when func
             (phpinspect-make-function-doc :fn func :arg-pos arg-pos))))))))
 
-(cl-defmethod phpinspect-eldoc-string ((var phpinspect--variable))
+(defun phpinspect-var-eldoc-string (prop-or-var)
   (concat (truncate-string-to-width
-           (propertize (concat (if (phpinspect--variable-vanilla-p var) "$" "")
-                               (phpinspect--variable-name var))
+           (propertize (concat (if (phpi-var-vanilla-p var) "$" "")
+                               (phpi-var-name var))
                        'face 'font-lock-variable-name-face)
            phpinspect-eldoc-word-width)
           ": "
-          (phpinspect--display-format-type-name (phpinspect--variable-type var))))
+          (phpinspect--display-format-type-name (phpi-var-type var))))
+
+(cl-defmethod phpinspect-eldoc-string ((var phpinspect--variable))
+  (phpinspect-var-eldoc-string var))
+
+(cl-defmethod phpinspect-eldoc-string ((prop phpinspect-property))
+  (phpinspect-var-eldoc-string prop))
 
 (cl-defstruct (phpinspect-function-doc (:constructor phpinspect-make-function-doc))
   (fn nil

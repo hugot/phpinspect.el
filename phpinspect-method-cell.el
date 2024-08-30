@@ -21,6 +21,9 @@
 
 ;;; Commentary:
 
+;; This file contains struct definitions and logic for the management of
+;; (collections of) methods associated with a specific type.
+
 ;;; Code:
 
 (require 'cl-macs)

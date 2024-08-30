@@ -178,11 +178,11 @@ Destructively removes tokens from the end of ASSIGNMENT-TOKENS."
   (phpinspect--log "Getting cached project class variable type %s::%s"
                    class-fqn variable-name)
   (let ((found-variable
-         (phpi-typedef-get-variable
+         (phpi-typedef-get-property
           (phpinspect-rctx-get-typedef rctx class-fqn)
           variable-name)))
     (when found-variable
-      (phpinspect--variable-type found-variable))))
+      (phpi-var-type found-variable))))
 
 (defsubst phpinspect-get-cached-project-typedef-static-method-type
   (rctx class-fqn method-name)

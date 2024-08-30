@@ -167,7 +167,7 @@ linked with."
            (when-let ((class (phpinspect-project-get-typedef
                               (phpinspect-buffer-project buffer)
                               (car var))))
-             (phpi-typedef-delete-variable class (cdr var)))))
+             (phpi-typedef-delete-property class (cdr var)))))
         ((phpinspect-function-p token)
          (when-let ((func (gethash token (phpinspect-buffer-token-index buffer))))
            (remhash token (phpinspect-buffer-token-index buffer))
@@ -498,7 +498,7 @@ linked with."
                    class-obj (phpinspect-buffer-project buffer)
                    (cadr (phpinspect-meta-token var)) type-resolver class)))
 
-          (phpi-typedef-set-variable class-obj indexed)
+          (phpi-typedef-set-property class-obj indexed)
 
           (phpinspect-buffer-set-index-reference-for-token
            buffer (phpinspect-meta-token var)

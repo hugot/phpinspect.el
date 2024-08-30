@@ -359,11 +359,11 @@ class AccountStatisticsController {
                      :fully-qualified t))))
         (should class)
 
-        (let ((model (phpi-typedef-get-variable class "model"))
-              (priv-model (phpi-typedef-get-variable class "privModel"))
+        (let ((model (phpi-typedef-get-property class "model"))
+              (priv-model (phpi-typedef-get-property class "privModel"))
               ;; Static variables are stored with "$" prefix
-              (relation (phpi-typedef-get-variable class "$relation"))
-              (static-relation (phpi-typedef-get-variable class "$staticRelation")))
+              (relation (phpi-typedef-get-property class "$relation"))
+              (static-relation (phpi-typedef-get-property class "$staticRelation")))
           (should model)
           (should priv-model)
           (should relation)
@@ -376,14 +376,14 @@ class AccountStatisticsController {
                              :name "\\Illuminate\\Database\\Eloquent\\Relations\\Relation"
                              :fully-qualified t)))
 
-            (should (phpinspect--variable-type model))
-            (should (phpinspect--type= model-type (phpinspect--variable-type model)))
-            (should (phpinspect--variable-type priv-model))
-            (should (phpinspect--type= model-type (phpinspect--variable-type priv-model)))
-            (should (phpinspect--variable-type relation))
-            (should (phpinspect--type= relation-type (phpinspect--variable-type relation)))
-            (should (phpinspect--variable-type static-relation))
-            (should (phpinspect--type= relation-type (phpinspect--variable-type static-relation)))))))))
+            (should (phpi-var-type model))
+            (should (phpinspect--type= model-type (phpi-var-type model)))
+            (should (phpi-var-type priv-model))
+            (should (phpinspect--type= model-type (phpi-var-type priv-model)))
+            (should (phpi-var-type relation))
+            (should (phpinspect--type= relation-type (phpi-var-type relation)))
+            (should (phpi-var-type static-relation))
+            (should (phpinspect--type= relation-type (phpi-var-type static-relation)))))))))
 
 
 (ert-deftest phpinspect-index-return-type-annotation-for-method ()

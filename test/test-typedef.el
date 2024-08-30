@@ -161,17 +161,17 @@
 (ert-deftest phpinspect-typedef-variables ()
   (let ((def (phpinspect-make-typedef (phpinspect--make-type :name "\\test"))))
 
-    (phpi-typedef-set-variable def (phpinspect--make-variable :name "test"))
-    (phpi-typedef-set-variable def (phpinspect--make-variable :name "test2"))
+    (phpi-typedef-set-property def (phpinspect--make-variable :name "test"))
+    (phpi-typedef-set-property def (phpinspect--make-variable :name "test2"))
 
-    (let ((test1 (phpi-typedef-get-variable def "test"))
-          (test2 (phpi-typedef-get-variable def "test2")))
+    (let ((test1 (phpi-typedef-get-property def "test"))
+          (test2 (phpi-typedef-get-property def "test2")))
 
       (should test1)
-      (should (string= "test" (phpinspect--variable-name test1)))
+      (should (string= "test" (phpi-var-name test1)))
 
-      (should (phpi-typedef-get-variable def "test2"))
-      (should (string= "test2" (phpinspect--variable-name test2))))))
+      (should (phpi-typedef-get-property def "test2"))
+      (should (string= "test2" (phpi-var-name test2))))))
 
 
 (ert-deftest phpinspect-typedef-set-index-trait ()
@@ -247,3 +247,81 @@
       (should (string= "boo" (phpi-fn-name method)))
       (should (phpinspect--type= (phpinspect--make-type :name "\\string")
                                  (phpi-fn-return-type method))))))
+
+(ert-deftest phpinspect-typedef-inherited-properties ()
+  (let* ((def1 (phpinspect-make-typedef (phpinspect--make-type :name "\\A")))
+         (def2 (phpinspect-make-typedef (phpinspect--make-type :name "\\B")))
+         (def3 (phpinspect-make-typedef (phpinspect--make-type :name "\\C")))
+         (retriever (lambda (type)
+                      (cond ((phpinspect--type= type (phpi-typedef-name def1))
+                             def1)
+                            ((phpinspect--type= type (phpi-typedef-name def2))
+                             def2)
+                            ((phpinspect--type= type (phpi-typedef-name def3))
+                             def3)))))
+
+    (setf (phpi-typedef-retriever def1) retriever
+          (phpi-typedef-retriever def2) retriever
+          (phpi-typedef-retriever def3) retriever)
+
+
+    (phpi-typedef-update-extensions def1 (list (phpi-typedef-name def2)))
+    (phpi-typedef-update-extensions def2 (list (phpi-typedef-name def3)))
+
+    (phpi-typedef-set-property def3 (phpinspect--make-variable :name "testPublic" :scope '(:public)))
+    (phpi-typedef-set-property def3 (phpinspect--make-variable :name "testProtected" :scope '(:protected)))
+    (phpi-typedef-set-property def3 (phpinspect--make-variable :name "testPrivate" :scope '(:private)))
+    (phpi-typedef-trigger-subscriber-update def3)
+
+    (let ((prop (phpi-typedef-get-property def1 "testPublic")))
+      (should prop)
+      (should-not (phpi-prop-type prop)))
+
+    (let ((prop (phpi-typedef-get-property def1 "testProtected")))
+      (should prop)
+      (should-not (phpi-prop-type prop)))
+
+    (let ((prop (phpi-typedef-get-property def1 "testPrivate")))
+      (should-not prop))))
+
+(ert-deftest phpinspect-typedef-inherited-properties-no-manual-trigger ()
+  (let* ((def1 (phpinspect-make-typedef (phpinspect--make-type :name "\\A")))
+         (def2 (phpinspect-make-typedef (phpinspect--make-type :name "\\B")))
+         (def3 (phpinspect-make-typedef (phpinspect--make-type :name "\\C")))
+         (retriever (lambda (type)
+                      (cond ((phpinspect--type= type (phpi-typedef-name def1))
+                             def1)
+                            ((phpinspect--type= type (phpi-typedef-name def2))
+                             def2)
+                            ((phpinspect--type= type (phpi-typedef-name def3))
+                             def3)))))
+
+    (setf (phpi-typedef-retriever def1) retriever
+          (phpi-typedef-retriever def2) retriever
+          (phpi-typedef-retriever def3) retriever)
+
+
+    (phpi-typedef-update-extensions def1 (list (phpi-typedef-name def2)))
+    (phpi-typedef-update-extensions def2 (list (phpi-typedef-name def3)))
+
+    (phpi-typedef-set-property def3 (phpinspect--make-variable :name "testPublic" :scope '(:public)))
+    (phpi-typedef-set-property def3 (phpinspect--make-variable :name "testProtected" :scope '(:protected)))
+    (phpi-typedef-set-property def3 (phpinspect--make-variable :name "testPrivate" :scope '(:private)))
+
+    ;; Don't manually trigger subscriber update
+
+    (let ((prop (phpi-typedef-get-property def1 "testPublic")))
+      (should prop)
+      (should-not (phpi-prop-type prop)))
+
+    (let ((prop (phpi-typedef-get-property def1 "testProtected")))
+      (should prop)
+      (should-not (phpi-prop-type prop)))
+
+    (let ((prop (phpi-typedef-get-property def1 "testPrivate")))
+      (should-not prop))
+
+    (phpi-typedef-delete-property def3 (phpinspect-intern-name "testPublic"))
+
+    (let ((prop (phpi-typedef-get-property def1 "testPublic")))
+      (should-not prop))))

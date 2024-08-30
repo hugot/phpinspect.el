@@ -23,6 +23,8 @@
 
 ;;; Code:
 (require 'phpinspect-method-cell)
+(require 'phpinspect-property-cell)
+(require 'phpinspect-type)
 
 (cl-defstruct (phpinspect-typedef
                (:constructor phpinspect-make-typedef-generated)
@@ -45,8 +47,8 @@ non-nil value.")
            :type phpinspect-method-collection)
   (static-methods nil
                   :type phpinspect-method-collection)
-  (variables nil
-             :type list)
+  (properties nil
+              :type list)
   (initial-index nil
                  :type bool)
   (trait-config nil
@@ -76,6 +78,7 @@ non-nil value.")
   (let ((def (phpinspect-make-typedef-generated
               :name type
               :retriever retriever
+	      :properties (phpinspect-make-property-collection :home-type type)
               :methods (phpinspect-make-method-collection :home-type type)
               :static-methods (phpinspect-make-method-collection :home-type type)
               :method-adder (phpinspect-make-method-adder))))
@@ -114,6 +117,8 @@ Conditionally executes BODY depending on
 (cl-defstruct (phpinspect-method-adder
                (:constructor phpinspect-make-method-adder)
                (:conc-name phpi-ma-))
+  "The method adder adds methods to a method-collection, aliasing
+and/or overriding methods when appropriate."
   (aliases nil
            :type alist)
   (overrides nil
@@ -251,14 +256,19 @@ Note: this function returns all types found in CONFIG."
   "Add methods and properties to DEF from FOREIGN-DEF."
   (phpi--typedef-edit def
     (when foreign-def
-      (dolist (method (phpi-typedef-get-methods foreign-def))
-        (phpi-ma-add (phpi-typedef-method-adder def) (phpi-typedef-methods def) method))
+      (let ((ma (phpi-typedef-method-adder def))
+	    (methods (phpi-typedef-methods def))
+	    (st-methods (phpi-typedef-static-methods def))
+	    (props (phpi-typedef-properties def)))
 
-      (dolist (method (phpi-typedef-get-static-methods foreign-def))
-        (phpi-ma-add (phpi-typedef-method-adder def) (phpi-typedef-static-methods def) method))
+	(dolist (method (phpi-typedef-get-methods foreign-def))
+          (phpi-ma-add ma methods method))
 
-      (dolist (var (phpi-typedef-variables foreign-def))
-        (phpi-typedef-set-variable def var)))))
+	(dolist (method (phpi-typedef-get-static-methods foreign-def))
+          (phpi-ma-add ma st-methods method))
+
+	(dolist (prop (phpi-pcol-list-active (phpi-typedef-properties foreign-def)))
+	  (phpi-pcol-add props prop))))))
 
 (defun phpi-typedef-subscribe-to-foreign-typedef (def foreign-def)
   (phpi--typedef-edit def
@@ -280,11 +290,10 @@ extended classes, used traits or implemented interfaces."
                      :test #'phpinspect--type=))
 
     ;; Remove all members of foreign typedef
-    (phpi-mcol-delete-for-type (phpi-typedef-methods def) (phpi-typedef-name foreign-def))
-    (phpi-mcol-delete-for-type (phpi-typedef-static-methods def) (phpi-typedef-name foreign-def))
-    (dolist (variable (phpi-typedef-variables foreign-def))
-      (phpi-typedef-delete-variable def variable))))
-
+    (let ((ft (phpi-typedef-name foreign-def)))
+      (phpi-mcol-delete-for-type (phpi-typedef-methods def) ft)
+      (phpi-mcol-delete-for-type (phpi-typedef-static-methods def) ft)
+      (phpi-pcol-delete-for-type (phpi-typedef-properties def) ft))))
 
 (defun phpi-typedef-trigger-subscriber-update (def)
   "Incorporate DEF into subscribed typedefs."
@@ -303,6 +312,21 @@ If STATIC is non-nil, updates static method."
       (if static
           (phpi-typedef-set-static-method foreign-def method)
         (phpi-typedef-set-method foreign-def method)))))
+
+(defun phpi-typedef-trigger-subscriber-property-update (def property)
+  "Update downstream subscribers of DEF by setting PROPERTY."
+  (dolist (type (phpi-typedef-subscribed-types def))
+    (when-let ((foreign-def (phpi--typedef-get-foreign-type def type)))
+      (phpi-typedef-set-property foreign-def property))))
+
+(defun phpi-typedef-trigger-subscriber-property-delete (def origin-type property-name)
+  "Update subscribers of DEF by deleting PROPERTY-NAME of origin TYPE."
+  (dolist (subtype (phpi-typedef-subscribed-types def))
+    (when-let ((foreign-def (phpi--typedef-get-foreign-type def subtype)))
+      (phpi--typedef-edit foreign-def
+	(phpi-pcol-delete-for-type
+	 (phpi-typedef-properties foreign-def) origin-type property-name)
+	(phpi-typedef-trigger-subscriber-property-delete foreign-def origin-type property-name)))))
 
 (defun phpi-typedef-trigger-subscriber-method-delete (def type method-name &optional static)
   "Update subscribers of DEF by deleting METHOD-NAME of origin TYPE."
@@ -327,7 +351,8 @@ TYPE must be a structure of type `phpinspect--type'."
       (unless (phpinspect--type= existing type)
         (setf (phpi-typedef-name def) type)
         (phpi-mcol-set-home-type (phpi-typedef-methods def) type)
-        (phpi-mcol-set-home-type (phpi-typedef-static-methods def) type)))))
+        (phpi-mcol-set-home-type (phpi-typedef-static-methods def) type)
+	(phpi-pcol-set-home-type (phpi-typedef-properties def) type)))))
 
 (defun phpi-typedef-update-declaration (def declaration imports namespace-name trait-config)
   "Update declaration of DEF.
@@ -392,18 +417,15 @@ them, which are then incorporated into DEF's properties."
     (let ((ma (phpi-typedef-method-adder def))
           (mcol (phpi-typedef-methods def))
           (stmcol (phpi-typedef-static-methods def))
-          (home-type (phpi-typedef-name def)))
+          (home-type (phpi-typedef-name def))
+	  (pcol (phpi-typedef-properties def)))
 
     ;; Override methods when class seems syntactically correct (has balanced braces)
       (when (alist-get 'complete index)
-        ;; Delete all known own methods
+        ;; Delete all known own methods and properties
         (phpi-mcol-delete-for-type mcol home-type)
         (phpi-mcol-delete-for-type stmcol home-type)
-
-        ;; FIXME: delete variables. This will require some way to keep track of
-        ;; a variables origin as we would otherwise risk deleting variables that
-        ;; originate from extended classes.
-        )
+	(phpi-pcol-delete-for-type pcol home-type))
 
       (dolist (method (alist-get 'methods index))
         (phpi-ma-add ma mcol (phpinspect-make-method home-type method) 'overwrite))
@@ -413,10 +435,9 @@ them, which are then incorporated into DEF's properties."
 
       (setf (phpi-typedef-initial-index def) t)
 
-      (setf (phpi-typedef-variables def)
-            (append (alist-get 'variables index)
-                    (alist-get 'constants index)
-                    (alist-get 'static-variables index)))
+      (let-alist index
+	(dolist (var (append .variables .constants .static-variables))
+	  (phpi-pcol-add pcol (phpinspect-make-property home-type var))))
 
       (phpi-typedef-update-extensions
        def `(,@(alist-get 'implements index)
@@ -433,37 +454,45 @@ them, which are then incorporated into DEF's properties."
   ((def phpinspect-typedef) (method-name (head phpinspect-name)) &optional tryhard)
   (phpi-mcol-get-return-type (phpi-typedef-static-methods def) method-name tryhard))
 
-(cl-defmethod phpi-typedef-set-variable ((def phpinspect-typedef)
+(cl-defmethod phpi-typedef-set-property ((def phpinspect-typedef) (prop phpinspect-property))
+  (phpi--typedef-edit def
+    (phpi-pcol-add (phpi-typedef-properties def) prop)
+    (phpi-typedef-trigger-subscriber-property-update def prop)))
+
+(cl-defmethod phpi-typedef-set-property ((def phpinspect-typedef)
                                          (var phpinspect--variable))
-  (phpi--typedef-edit def
-    (push var (phpi-typedef-variables def))))
+  (phpi-typedef-set-property
+   def (phpinspect-make-property (phpi-typedef-name def) var)))
 
-(cl-defmethod phpi-typedef-delete-variable ((def phpinspect-typedef)
+(cl-defmethod phpi-typedef-delete-property ((def phpinspect-typedef)
+					    (name (head phpinspect-name))
+					    &optional origin-type)
+  (phpi--typedef-edit def
+    (phpi-pcol-delete-for-type
+     (phpi-typedef-properties def) (phpi-typedef-name def) name)
+    (phpi-typedef-trigger-subscriber-property-delete
+     def (or origin-type (phpi-typedef-name def)) name)))
+
+(cl-defmethod phpi-typedef-delete-property ((def phpinspect-typedef)
                                             (var phpinspect--variable))
-  (phpi--typedef-edit def
-    (let ((first-half (seq-take-while (lambda (clvar) (not (eq var clvar)))
-                                      (phpi-typedef-variables def))))
-      ;; Only remove the first occurrence. If a parent class or a trait has the
-      ;; same variable, it will stick around.
-      (setf (phpi-typedef-variables def)
-            (append first-half (nthcdr (+ 1 (length first-half))
-                                       (phpi-typedef-variables def)))))))
+  (phpi-typedef-delete-property def (phpinspect-intern-name (phpi-variable-name))))
 
-(cl-defmethod phpi-typedef-get-variables ((class phpinspect-typedef))
-  (seq-filter #'phpinspect--variable-vanilla-p (phpi-typedef-variables class)))
+(cl-defmethod phpi-typedef-get-properties ((def phpinspect-typedef))
+  (seq-filter #'phpi-prop-vanilla-p
+	      (phpi-pcol-list-active (phpi-typedef-properties def))))
 
-(cl-defmethod phpi-typedef-get-static-variables ((class phpinspect-typedef))
-  (seq-filter #'phpinspect--variable-static-p (phpi-typedef-variables class)))
+(cl-defmethod phpi-typedef-get-static-properties ((class phpinspect-typedef))
+  (seq-filter #'phpi-prop-static-p
+	      (phpi-pcol-list-active (phpi-typedef-properties def))))
 
-(cl-defmethod phpi-typedef-get-constants ((class phpinspect-typedef))
-  (seq-filter #'phpinspect--variable-const-p (phpi-typedef-variables class)))
+(cl-defmethod phpi-typedef-get-constants ((def phpinspect-typedef))
+  (seq-filter #'phpi-prop-const-p
+	      (phpi-pcol-list-active (phpi-typedef-properties def))))
 
-(cl-defmethod phpi-typedef-get-variable
-  ((def phpinspect-typedef) (variable-name string))
-  (catch 'found
-    (dolist (variable (phpi-typedef-variables def))
-      (when (string= variable-name (phpinspect--variable-name variable))
-        (throw 'found variable)))))
+(cl-defmethod phpi-typedef-get-property
+  ((def phpinspect-typedef) (prop-name string))
+  (phpi-pcol-get-active-property
+   (phpi-typedef-properties def) (phpinspect-intern-name prop-name)))
 
 (defun phpi-typedef-get-dependencies (def)
   "Gets types that DEF directly depends on.
@@ -476,14 +505,13 @@ Return value is a list if structures of the type
         (when (phpi-method-return-type method)
           (push (phpi-method-return-type method) deps)))
 
-
       (dolist (method (phpi-typedef-get-static-methods def))
         (when (phpi-method-return-type method)
           (push (phpi-method-return-type method) deps)))
 
-      (dolist (var (phpi-typedef-variables def))
-        (when (phpinspect--variable-type var)
-          (push (phpinspect--variable-type var) deps)))
+      (dolist (prop (phpi-pcol-list-active (phpi-typedef-properties def)))
+        (when (phpi-prop-type prop)
+          (push (phpi-prop-type prop) deps)))
 
       (phpinspect--types-uniq deps))))
 
