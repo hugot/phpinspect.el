@@ -1,4 +1,4 @@
-;;; test-autoload.el --- Unit tests for phpinspect.el  -*- lexical-binding: t; -*-
+;;; test-fs.el --- Unit tests for phpinspect.el  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021-2023 Free Software Foundation, Inc.
 

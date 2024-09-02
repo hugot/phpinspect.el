@@ -57,7 +57,7 @@
                      (puthash (cadr argument)
                               (phpinspect--make-variable :name (cadr argument))
                               variables))))
-                ((phpinspect-block-p potential-variable)
+                ((phpinspect-block-or-list-p potential-variable)
                  (dolist (nested-token (cdr potential-variable))
                    (push nested-token token-list))))))))
 
