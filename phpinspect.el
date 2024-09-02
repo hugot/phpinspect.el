@@ -4,9 +4,9 @@
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
-;; Version: 2.0.0
+;; Version: 2.0.1
 ;; Package-Requires: ((compat "29"))
-;; Website: https://github.com/hugot/phpinspect.el
+;; URL: https://github.com/hugot/phpinspect.el
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -33,6 +33,11 @@
 ;; with `phpinspect-mode'. Also see M-x customize-group RET phpinspect RET.
 
 ;;; News:
+
+;; Version 2.0.1
+
+;; - Fixed bug in `phpinspect-fix-imports' that caused it to not function
+;;   properly for types used in within classes.
 
 ;; Version 2.0.0
 
