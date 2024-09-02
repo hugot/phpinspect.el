@@ -201,9 +201,19 @@ belonging to a token that conforms with `phpinspect-attrib-p'"
     (list (phpinspect-meta-start subject) (phpinspect-meta-end subject))))
 
 (cl-defmethod phpinspect-comp-strategy-execute
-  ((_strat phpinspect-comp-word) (_q phpinspect-completion-query)
+  ((_strat phpinspect-comp-word) (q phpinspect-completion-query)
    (rctx phpinspect--resolvecontext))
-  (phpinspect-suggest-functions rctx))
+  ;; The "new" case can't be handled in the less sophisticated "suggest" lib. It
+  ;; is not determinable from the resolvecontext alone.
+  (if (phpinspect-new-p
+       (phpinspect-meta-token
+	(phpinspect-meta-find-left-sibling
+	 (phpinspect-completion-subject-at-point
+	  (phpinspect-completion-query-buffer q)
+          (phpinspect-completion-query-point q)
+          #'phpinspect-word-p))))
+      (phpinspect-suggest-types-at-point rctx)
+    (phpinspect-suggest-words-at-point rctx)))
 
 (defvar phpinspect-completion-strategies (list (phpinspect-make-comp-attribute)
                                                (phpinspect-make-comp-sigil)
@@ -381,6 +391,13 @@ Returns list of `phpinspect--completion'."
 (cl-defmethod phpinspect--make-completion ((completion-candidate phpinspect-property))
   (phpinspect--make-completion (phpi-prop-definition completion-candidate)))
 
+(cl-defmethod phpinspect--make-completion ((type phpinspect--type))
+  (phpinspect--construct-completion
+   :value (propertize (phpinspect--type-bare-name type) 'face 'font-lock-type-face)
+   :meta (phpinspect--format-type-name type)
+   :target type
+   :kind 'class))
+
 (cl-defmethod phpinspect--make-completion
   ((completion-candidate phpinspect--variable))
   (phpinspect--construct-completion
@@ -394,6 +411,13 @@ Returns list of `phpinspect--completion'."
                         (or (phpinspect--variable-type completion-candidate)
                             phpinspect--null-type)))
    :kind 'variable))
+
+(cl-defmethod phpinspect--make-completion ((keyword phpinspect-suggest-keyword))
+  (phpinspect--construct-completion
+   :value (propertize (phpinspect-suggest-keyword-word keyword) 'face 'font-lock-keyword-face)
+   :target keyword
+   :kind 'keyword
+   :meta "keyword"))
 
 (define-inline phpinspect--prefix-for-completion (completion)
   (inline-letevals (completion)

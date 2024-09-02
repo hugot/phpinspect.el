@@ -214,6 +214,11 @@ NAMESPACE may be nil, or a string with a namespace FQN."
             (last-token
              (phpinspect--find-class-token last-token))))))
 
+(oclosure-define phpinspect-type-resolver
+  "Function that resolves `phpinspect--type' instances to be fully qualified."
+  ;; The types known within the context this resolver was created from.
+  (types :mutable nil :type list))
+
 (defun phpinspect--make-type-resolver (types &optional token-tree namespace)
   "Little wrapper closure to pass around and resolve types with."
   (let* ((inside-class
@@ -221,7 +226,7 @@ NAMESPACE may be nil, or a string with a namespace FQN."
                               (phpinspect--find-class-token token-tree))))
          (inside-class-name
           (and inside-class (phpinspect--get-class-name-from-token inside-class))))
-    (lambda (type)
+    (oclosure-lambda (phpinspect-type-resolver (types types)) (type)
       (phpinspect--type-resolve
        types
        namespace

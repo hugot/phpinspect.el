@@ -75,6 +75,67 @@
 
       variable-list)))
 
+(cl-defstruct (phpinspect-suggest-keyword
+	       (:constructor phpinspect-make-suggest-keyword-generated))
+  (word nil
+	:type string))
+
+(defun phpinspect-make-suggest-keyword (word)
+  (phpinspect-make-suggest-keyword-generated :word word))
+
+(defconst phpinspect-class-body-keywords (list "const" "private" "public" "protected" "static" "function")
+  "Keywords that can be used within a class")
+
+(defconst phpinspect-scope-body-keywords (list "function" "static")
+  "Keywords that can be used within a statement after a scope keyword.")
+
+(defconst phpinspect-static-body-keywords (list "function")
+  "Keywords that can be used within a statement after a static keyword.")
+
+(defun phpinspect-suggest-class-body-keywords ()
+  (mapcar #'phpinspect-make-suggest-keyword phpinspect-class-body-keywords))
+
+(defun phpinspect-suggest-scope-body-keywords ()
+  (mapcar #'phpinspect-make-suggest-keyword phpinspect-scope-body-keywords))
+
+(defun phpinspect-suggest-static-body-keywords ()
+  (mapcar #'phpinspect-make-suggest-keyword phpinspect-static-body-keywords))
+
+(defun phpinspect-suggest-types-at-point (rctx)
+  (let* ((resolver (phpinspect--make-type-resolver-for-resolvecontext rctx))
+	 (types (phpinspect-type-resolver--types resolver)))
+
+    (append (mapcar #'cdr types) phpinspect-native-types)))
+
+(defun phpinspect-suggest-words-at-point (rctx)
+    (let ((parent (car (phpinspect--resolvecontext-enclosing-tokens rctx))))
+    (or (cond ((phpinspect-class-p parent)
+	       (phpinspect-suggest-class-body-keywords))
+	      ((phpinspect-scope-p parent)
+	       (append
+		(phpinspect-suggest-scope-body-keywords)
+		(phpinspect-suggest-types-at-point rctx)))
+	      ((phpinspect-static-p parent)
+	       (phpinspect-suggest-static-body-keywords))
+
+	      ((or
+		;; Inside argument list in function declaration
+		(and (phpinspect-list-p parent)
+			(phpinspect-declaration-p
+			 (cadr (phpinspect--resolvecontext-enclosing-tokens rctx))))
+		;; Class/function declaration
+		(phpinspect-declaration-p parent))
+	       (phpinspect-suggest-types-at-point rctx)))
+
+	;; Don't complete functions inside function/class declaration
+	(unless (or (phpinspect-declaration-p parent)
+		    ;; No use completing function names inside comments
+		    (seq-find #'phpinspect-comment-p
+			      (phpinspect--resolvecontext-enclosing-tokens rctx)))
+	  (append
+	   (phpinspect-suggest-types-at-point rctx)
+	  (phpinspect-suggest-functions rctx))))))
+
 (defun phpinspect-get-cached-project-typedef-methods (rctx class-fqn &optional static)
   (phpinspect--log "Getting cached project class methods for %s" class-fqn)
   (let ((class (phpinspect-rctx-get-typedef rctx class-fqn 'no-enqueue)))
