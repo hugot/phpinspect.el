@@ -63,6 +63,43 @@ class Baz {
 }"
                          (buffer-string)))))))
 
+(ert-deftest phpinspect-fix-imports-no-remove-unused ()
+  (dlet ((phpinspect-imports-remove-unused nil))
+    (let ((project (phpinspect--make-dummy-composer-project)))
+      (with-temp-buffer
+	(let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
+                                               :-project project)))
+
+          (insert "<?php
+
+namespace Not\\App;
+
+use Not\\Needed;
+
+class Baz {
+    private Foo $foo;
+    public Bar $bar;
+}")
+          ;; Ensure buffer is made aware of changes
+          (setq phpinspect-current-buffer buffer)
+          (add-hook 'after-change-functions #'phpinspect-after-change-function)
+
+          (phpinspect-fix-imports)
+          (should (string= "<?php
+
+namespace Not\\App;
+
+use App\\Bar;
+use App\\Foo;
+use Not\\Needed;
+
+class Baz {
+    private Foo $foo;
+    public Bar $bar;
+}"
+                           (buffer-string))))))))
+
+
 (ert-deftest phpinspect-fix-imports-multiple-namespaced-classes ()
   (let ((project (phpinspect--make-dummy-composer-project)))
     (with-temp-buffer

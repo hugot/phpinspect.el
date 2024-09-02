@@ -386,12 +386,12 @@ that there are import (\"use\") statements for them."
             (unless token-meta
               (error "Unable to find token for namespace %s" namespace-name))
 
-	    (when phpinspect-imports-remove-unused
-              (phpinspect-add-use-statements-for-missing-types
-               used-types buffer (append imports namespace-imports) project token-meta))
+            (phpinspect-add-use-statements-for-missing-types
+             used-types buffer (append imports namespace-imports) project token-meta)
 
-            ;; (phpinspect-remove-unneeded-use-statements
-            ;;  used-types buffer (append imports namespace-imports) token-meta)
+	    (when phpinspect-imports-remove-unused
+              (phpinspect-remove-unneeded-use-statements
+               used-types buffer (append imports namespace-imports) token-meta))
 
             (let ((parent (phpinspect-meta-find-parent-matching-token
                            token-meta #'phpinspect-namespace-or-root-p)))
