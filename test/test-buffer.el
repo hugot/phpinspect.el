@@ -810,3 +810,19 @@ class TestClass
 
 	(let ((method (phpi-typedef-get-method typedef "testMethod")))
 	  (should method))))))
+
+(ert-deftest phpinspect-buffer-parse-incrementally-comment ()
+    (with-temp-buffer
+      (let* ((project (phpinspect--make-project :autoload (phpinspect-make-autoloader)))
+	     (buffer (phpinspect-make-buffer :buffer (current-buffer) :-project project)))
+	(insert "<?php\n\n// \n")
+	(setq-local phpinspect-current-buffer buffer)
+	(add-hook 'after-change-functions #'phpinspect-after-change-function)
+
+	(should (equal '(:root (:comment))
+		       (phpinspect-buffer-parse buffer)))
+
+	(goto-char 11)
+	(insert "word")
+	(should (equal '(:root (:comment))
+		       (phpinspect-buffer-parse buffer))))))

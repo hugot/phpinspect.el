@@ -559,9 +559,13 @@ nature like argument lists"
            (forward-char 2)
            doc-block))
         (t
-         (let ((end-position (line-end-position)))
-           (phpinspect--parse-comment (current-buffer) end-position)))))
-
+         (let* ((end-position (line-end-position))
+		(token
+		 (phpinspect--parse-comment (current-buffer) end-position 1)))
+	   ;; Move to start of next line (absorb end of line)
+	   (while (not (bolp))
+	     (forward-char))
+	   token))))
 
 (phpinspect-defhandler class-variable (start-token &rest _ignored)
   "Handler for tokens indicating reference to a variable"
