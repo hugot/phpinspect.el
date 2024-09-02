@@ -117,8 +117,8 @@ serious performance hits. Enable at your own risk (:")
     (dolist (func (alist-get 'functions (cdr index)))
       (phpinspect-project-set-function project func))))
 
-(cl-defmethod phpinspect-project-add-index ((_project phpinspect-project) index)
-  (cl-assert (not index))
+(cl-defmethod phpinspect-project-add-index ((_project phpinspect-project) _index)
+  (cl-assert (not _index))
   (phpinspect--log "phpinspect-project-add-index: ignoring added nil index"))
 
 (cl-defmethod phpinspect-project-set-function

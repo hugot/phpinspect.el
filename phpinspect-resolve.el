@@ -632,11 +632,11 @@ CLASS-TOKEN-META as parse result."
        nil))))
 
 (cl-defmethod phpi-typedef-resolve-property-type
-  ((_typedef phpinspect-typedef) (_project phpinspect-project) property-name &rest _ignored)
+  ((_typedef phpinspect-typedef) (_project phpinspect-project) _property-name &rest _ignored)
   ;; Catch-all for cases where one attempts to resolve a nil property
   ;; name. Saves an if-statement for the caller.
   ;; Can't resolve property type when property name is nil, so we do nothing.
-  (cl-assert (not property-name))
+  (cl-assert (not _property-name))
   nil)
 
 (provide 'phpinspect-resolve)
