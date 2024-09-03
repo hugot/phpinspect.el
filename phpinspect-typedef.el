@@ -514,7 +514,7 @@ Return value is a list if structures of the type
         (when (phpi-prop-type prop)
           (push (phpi-prop-type prop) deps)))
 
-      (phpinspect--types-uniq deps))))
+      (phpinspect--types-uniq deps (phpi-typedef-name def)))))
 
 
 (provide 'phpinspect-typedef)

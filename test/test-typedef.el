@@ -325,3 +325,14 @@
 
     (let ((prop (phpi-typedef-get-property def1 "testPublic")))
       (should-not prop))))
+
+(ert-deftest phpinspect-typedef-get-dependencies-no-include-self ()
+  "A typedef should never include its own type as a dependency."
+  (let* ((type (phpinspect--make-type :name "\\A" :fully-qualified t))
+	 (def (phpinspect-make-typedef type)))
+    (phpi-typedef-set-method def (phpinspect--make-function :name "a" :return-type type))
+    (phpi-typedef-set-method def (phpinspect--make-function :name "b" :return-type phpinspect--object-type))
+
+    (let ((dependencies (phpi-typedef-get-dependencies def)))
+      (should (length= dependencies 1))
+      (should (phpinspect--type= phpinspect--object-type (car dependencies))))))

@@ -148,21 +148,23 @@ See https://wiki.php.net/rfc/static_return_type ."
 (defun phpinspect--type= (type1 type2)
   (eq (phpinspect--type-name-symbol type1) (phpinspect--type-name-symbol type2)))
 
-(defun phpinspect--types-uniq (types)
-  "Optimized seq-uniq for types."
+(defun phpinspect--types-uniq (types &optional exclude)
+  "Optimized seq-uniq for TYPES.
+
+If EXCLUDE is non-nil, it is expected to be a `phpinspect--type'
+structure to exclude."
+  (setq exclude (and exclude (phpinspect--type-name-symbol exclude)))
+
   (let* (table
          (filtered (cons nil nil))
          (filtered-rear filtered))
     (dolist (type types)
       (let ((name (phpinspect--type-name-symbol type)))
-        (unless (memq name table)
+        (unless (or (memq name table) (eq exclude name))
           (setq filtered-rear (setcdr filtered-rear (cons type nil)))
-          (push name table))))
+            (push name table))))
 
     (cdr filtered)))
-
-
-
 
 (defun phpinspect--resolve-type-name (types namespace type)
   "Get the FQN for TYPE, using TYPES and NAMESPACE as context.
