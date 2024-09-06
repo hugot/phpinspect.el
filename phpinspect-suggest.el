@@ -101,14 +101,36 @@
 (defun phpinspect-suggest-static-body-keywords ()
   (mapcar #'phpinspect-make-suggest-keyword phpinspect-static-body-keywords))
 
-(defun phpinspect-suggest-types-at-point (rctx)
+(defun phpinspect-suggest-types-at-point (rctx &optional instantiable)
   (let* ((resolver (phpinspect--make-type-resolver-for-resolvecontext rctx))
-	 (types (phpinspect-type-resolver--types resolver)))
+	 ;; FIXME: this does not include types in the stub cache
+	 (types (mapcar #'cdr (phpinspect-type-resolver--types resolver)))
+	 (namespace (phpinspect-type-resolver--namespace resolver)))
 
-    (append (mapcar #'cdr types) phpinspect-native-types)))
+    ;; Include types found within the same namespace
+    (when namespace
+      (setq types
+	    (append types
+		    (phpinspect-autoloader-get-own-types-in-namespace
+		     (phpinspect-project-autoload
+		      (phpinspect--resolvecontext-project rctx))
+		     namespace))))
+
+    ;; Native types are not instantiable
+    (if instantiable
+	types
+      (append types phpinspect-native-types))))
 
 (defun phpinspect-suggest-words-at-point (rctx)
-    (let ((parent (car (phpinspect--resolvecontext-enclosing-tokens rctx))))
+  (let ((parent (or
+		 ;; When the subject is an empty keyword body, use it as
+		 ;; parent. Context is right after the keyword.
+		 (and-let* ((subject (phpinspect--resolvecontext-subject rctx))
+			       ((phpinspect-keyword-body-p (car subject)))
+			       ((length= (car subject) 1))
+			       ((car subject))))
+		 ;; Otherwise, use first enclosing token as usual.
+		 (car (phpinspect--resolvecontext-enclosing-tokens rctx)))))
     (or (cond ((phpinspect-class-p parent)
 	       (phpinspect-suggest-class-body-keywords))
 	      ((phpinspect-scope-p parent)
@@ -125,7 +147,12 @@
 			 (cadr (phpinspect--resolvecontext-enclosing-tokens rctx))))
 		;; Class/function declaration
 		(phpinspect-declaration-p parent))
-	       (phpinspect-suggest-types-at-point rctx)))
+	       (phpinspect-suggest-types-at-point rctx))
+
+	      ((and-let* ((subject (phpinspect--resolvecontext-subject rctx) )
+			  ((length= subject 1))
+			  ((phpinspect-new-p (car subject)))
+			  ((phpinspect-suggest-types-at-point rctx 'instantiable))))))
 
 	;; Don't complete functions inside function/class declaration
 	(unless (or (phpinspect-declaration-p parent)
@@ -133,7 +160,7 @@
 		    (seq-find #'phpinspect-comment-p
 			      (phpinspect--resolvecontext-enclosing-tokens rctx)))
 	  (append
-	   (phpinspect-suggest-types-at-point rctx)
+	   (phpinspect-suggest-types-at-point rctx 'instantiable)
 	  (phpinspect-suggest-functions rctx))))))
 
 (defun phpinspect-get-cached-project-typedef-methods (rctx class-fqn &optional static)

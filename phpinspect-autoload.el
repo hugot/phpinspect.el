@@ -26,6 +26,7 @@
 (require 'cl-lib)
 (require 'phpinspect-fs)
 (require 'phpinspect-util)
+(require 'phpinspect-type)
 (require 'phpinspect-pipeline)
 (require 'json)
 
@@ -92,6 +93,19 @@
                       "Hash table that contains lists of fully
 qualified names congruent with a bareword type name. Keyed by
 bareword typenames."))
+
+;; FIXME: This is another scenario where an LRU Cache might come in handy (we
+;; don't want to re-compare string prefixes everytime the same namespace is
+;; checked).
+(defun phpinspect-autoloader-get-own-types-in-namespace (al namespace)
+  (cl-assert (stringp namespace))
+  (let ((namespace-fqn (phpinspect--resolve-type-name nil nil namespace))
+	types)
+    (dolist (name (hash-table-keys (phpinspect-autoloader-own-types al)))
+      (when (string-prefix-p namespace-fqn (phpinspect-name-string name))
+	(push (phpinspect--make-type-generated :name-symbol name :fully-qualified t)
+	      types)))
+    types))
 
 (cl-defmethod phpinspect--read-json-file (fs file)
   (with-temp-buffer

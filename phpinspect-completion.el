@@ -89,7 +89,7 @@ candidate. Candidates can be indexed functions and variables.")
 
 (cl-defmethod phpinspect--completion-list-strings
   ((comp-list phpinspect--completion-list))
-  (let ((strings))
+  (let (strings)
     (obarray-map (lambda (sym) (push (symbol-name sym) strings))
                  (phpinspect--completion-list-completions comp-list))
     strings))
@@ -191,28 +191,63 @@ belonging to a token that conforms with `phpinspect-attrib-p'"
 (cl-defstruct (phpinspect-comp-word (:constructor phpinspect-make-comp-word))
   "Comletion strategy for bare words")
 
+(defun phpinspect-keyword-body-but-not-function-p (token)
+  (and (phpinspect-keyword-body-p token)
+       (not (phpinspect-function-p token))))
+
 (cl-defmethod phpinspect-comp-strategy-supports
   ((_strat phpinspect-comp-word) (q phpinspect-completion-query)
-   (_rctx phpinspect--resolvecontext))
-  (when-let ((subject (phpinspect-completion-subject-at-point
-                       (phpinspect-completion-query-buffer q)
-                       (phpinspect-completion-query-point q)
-                       #'phpinspect-word-p)))
-    (list (phpinspect-meta-start subject) (phpinspect-meta-end subject))))
+   (rctx phpinspect--resolvecontext))
+  (or
+   ;; Complete word being typed
+   (when-let ((subject (phpinspect-completion-subject-at-point
+                      (phpinspect-completion-query-buffer q)
+                      (phpinspect-completion-query-point q)
+                      #'phpinspect-word-p)))
+       (list (phpinspect-meta-start subject) (phpinspect-meta-end subject)))
+
+   ;; Point is right after a "new" token. Complete "newable" types.
+   (when-let ((token-before (phpinspect-bmap-last-token-before-point
+                             (phpinspect-buffer-map
+                              (phpinspect-completion-query-buffer q))
+                             (phpinspect-completion-query-point q)))
+              ((phpinspect-new-p (phpinspect-meta-token token-before))))
+     (list (phpinspect-completion-query-point q)
+           (phpinspect-completion-query-point q)))
+
+   ;; Point is after a scope, static, declaration, const or other keyword that
+   ;; can precede a type or another word.
+   (and (or
+         (phpinspect-keyword-body-but-not-function-p
+          (car (phpinspect--resolvecontext-enclosing-tokens rctx)))
+         (phpinspect-keyword-body-but-not-function-p
+          (car (phpinspect--resolvecontext-subject rctx))))
+
+        (list (phpinspect-completion-query-point q)
+              (phpinspect-completion-query-point q)))))
 
 (cl-defmethod phpinspect-comp-strategy-execute
   ((_strat phpinspect-comp-word) (q phpinspect-completion-query)
    (rctx phpinspect--resolvecontext))
-  ;; The "new" case can't be handled in the less sophisticated "suggest" lib. It
-  ;; is not determinable from the resolvecontext alone.
-  (if (phpinspect-new-p
-       (phpinspect-meta-token
-	(phpinspect-meta-find-left-sibling
-	 (phpinspect-completion-subject-at-point
-	  (phpinspect-completion-query-buffer q)
-          (phpinspect-completion-query-point q)
-          #'phpinspect-word-p))))
-      (phpinspect-suggest-types-at-point rctx)
+  (if-let ((subject (phpinspect-bmap-last-token-before-point
+                     (phpinspect-buffer-map
+                      (phpinspect-completion-query-buffer q))
+                     (phpinspect-completion-query-point q)))
+           (parent (car (phpinspect--resolvecontext-enclosing-metadata rctx)))
+           ;; Parent is a declaration token
+           ((phpinspect-declaration-p (phpinspect-meta-token parent)))
+           (grandparent (phpinspect-meta-parent parent))
+           ;; Grandparent is a function, so we're in a function declaration
+           ((phpinspect-function-p (phpinspect-meta-token grandparent)))
+           ;; We're in a function declaration, before the argument list. We're
+           ;; probably exiting a function name, so it is not helpful to complete
+           ;; here.
+           ((seq-find #'phpinspect-list-p
+                      (mapcar #'phpinspect-meta-token
+                              (phpinspect-meta-right-siblings subject)))))
+      ;; Return nil, as completing words to name unnamed functions is not
+      ;; useful.
+      nil
     (phpinspect-suggest-words-at-point rctx)))
 
 (defvar phpinspect-completion-strategies (list (phpinspect-make-comp-attribute)

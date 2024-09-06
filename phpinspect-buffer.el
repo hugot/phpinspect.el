@@ -629,4 +629,26 @@ use."
      (with-current-buffer (phpinspect-buffer-buffer ,buffer)
        ,body))))
 
+(defun phpinspect-buffer-get-resolvecontext (buffer point)
+  (phpinspect-get-resolvecontext
+   (phpinspect-buffer-project buffer) (phpinspect-buffer-parse-map buffer) point))
+
+
+(defun phpinspect-claim-buffer (buffer &optional project)
+  "Setup an instance of `phpinspect-buffer' for BUFFER.
+
+Like `phpinspect-make-buffer', but arguments are not a
+plist. Sets up buffer-local variable `phpinspect-current-buffer'
+and adds `phpinspect-after-change-function' to buffer-local
+`after-change-functions'.
+
+BUFFER must be a normal emacs buffer.
+If provided, PROJECT must be an instance of `phpinspect-project'."
+  (with-current-buffer buffer
+    (setq-local phpinspect-current-buffer
+		(phpinspect-make-buffer :buffer buffer :-project project))
+    (add-hook 'after-change-functions #'phpinspect-after-change-function nil t)
+
+    phpinspect-current-buffer))
+
 (provide 'phpinspect-buffer)
