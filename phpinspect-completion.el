@@ -240,7 +240,7 @@ belonging to a token that conforms with `phpinspect-attrib-p'"
            ;; Grandparent is a function, so we're in a function declaration
            ((phpinspect-function-p (phpinspect-meta-token grandparent)))
            ;; We're in a function declaration, before the argument list. We're
-           ;; probably exiting a function name, so it is not helpful to complete
+           ;; probably editing a function name, so it is not helpful to complete
            ;; here.
            ((seq-find #'phpinspect-list-p
                       (mapcar #'phpinspect-meta-token
