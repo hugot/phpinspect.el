@@ -30,20 +30,24 @@ Type can be any of the token types returned by
 `phpinspect-parse-buffer-until-point`"
   (inline-letevals (object)
     (inline-quote
-     (and (listp ,object) (eq (car ,object) ,type)))))
+     (and (eq (car-safe ,object) ,type)))))
 
-(defsubst phpinspect-object-attrib-p (token)
-  (phpinspect-token-type-p token :object-attrib))
+(define-inline phpinspect-object-attrib-p (token)
+  (inline-quote
+   (phpinspect-token-type-p ,token :object-attrib)))
 
 (defun phpinspect-string-concatenator-p (token)
   (phpinspect-token-type-p token :string-concatenator))
 
-(defsubst phpinspect-static-attrib-p (token)
-  (phpinspect-token-type-p token :static-attrib))
+(define-inline phpinspect-static-attrib-p (token)
+  (inline-quote
+   (phpinspect-token-type-p ,token :static-attrib)))
 
-(defsubst phpinspect-attrib-p (token)
-  (or (phpinspect-object-attrib-p token)
-      (phpinspect-static-attrib-p token)))
+(define-inline phpinspect-attrib-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (or (phpinspect-object-attrib-p ,token)
+	 (phpinspect-static-attrib-p ,token)))))
 
 (defun phpinspect-html-p (token)
   (phpinspect-token-type-p token :html))
@@ -54,16 +58,20 @@ Type can be any of the token types returned by
 (defun phpinspect-not-comma-p (token)
   (not (phpinspect-comma-p token)))
 
-(defsubst phpinspect-terminator-p (token)
-  (phpinspect-token-type-p token :terminator))
+(define-inline phpinspect-terminator-p (token)
+  (inline-quote
+   (phpinspect-token-type-p ,token :terminator)))
 
-(defsubst phpinspect-end-of-token-p (token)
-  (or (phpinspect-terminator-p token)
-      (phpinspect-comma-p token)
-      (phpinspect-html-p token)))
+(define-inline phpinspect-end-of-token-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (or (phpinspect-terminator-p ,token)
+	 (phpinspect-comma-p ,token)
+	 (phpinspect-html-p ,token)))))
 
-(defsubst phpinspect-incomplete-block-p (token)
-  (phpinspect-token-type-p token :incomplete-block))
+(define-inline phpinspect-incomplete-block-p (token)
+  (inline-quote
+   (phpinspect-token-type-p ,token :incomplete-block)))
 
 (defsubst phpinspect-block-p (token)
   (or (phpinspect-token-type-p token :block)
@@ -77,15 +85,19 @@ Type can be any of the token types returned by
   (or (phpinspect-block-p token)
       (phpinspect-terminator-p token)))
 
-(defun phpinspect-static-p (token)
-  (phpinspect-token-type-p token :static))
+(define-inline phpinspect-static-p (token)
+  (inline-quote
+   (phpinspect-token-type-p ,token :static)))
 
-(defsubst phpinspect-incomplete-const-p (token)
-  (phpinspect-token-type-p token :incomplete-const))
+(define-inline phpinspect-incomplete-const-p (token)
+  (inline-quote
+   (phpinspect-token-type-p ,token :incomplete-const)))
 
-(defsubst phpinspect-const-p (token)
-  (or (phpinspect-token-type-p token :const)
-      (phpinspect-incomplete-const-p token)))
+(define-inline phpinspect-const-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (or (phpinspect-token-type-p ,token :const)
+	 (phpinspect-incomplete-const-p ,token)))))
 
 (define-inline phpinspect-public-p (token)
   (inline-quote (phpinspect-token-type-p ,token :public)))
@@ -104,14 +116,18 @@ Type can be any of the token types returned by
   (inline-quote
    (phpinspect-token-type-p ,object :namespace)))
 
-(defun phpinspect-incomplete-class-p (token)
-  (and (phpinspect-class-p token)
-       (phpinspect-incomplete-block-p (car (last token)))))
+(define-inline phpinspect-incomplete-class-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (and (phpinspect-class-p ,token)
+	  (phpinspect-incomplete-block-p (car (last ,token)))))))
 
-(defun phpinspect-incomplete-namespace-p (token)
-  (and (phpinspect-namespace-p token)
-       (or (phpinspect-incomplete-block-p (car (last token)))
-           (phpinspect-incomplete-class-p (car (last token))))))
+(define-inline phpinspect-incomplete-namespace-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (and (phpinspect-namespace-p ,token)
+	  (or (phpinspect-incomplete-block-p (car (last ,token)))
+              (phpinspect-incomplete-class-p (car (last ,token))))))))
 
 (define-inline phpinspect-function-p (token)
   (inline-quote (phpinspect-token-type-p ,token :function)))
@@ -119,26 +135,18 @@ Type can be any of the token types returned by
 (define-inline phpinspect-class-p (token)
   (inline-quote (phpinspect-token-type-p ,token :class)))
 
-(defun phpinspect-incomplete-method-p (token)
-  (or (phpinspect-incomplete-function-p token)
-      (and (phpinspect-scope-p token)
-           (phpinspect-incomplete-function-p (car (last token))))
-      (and (phpinspect-scope-p token)
-           (phpinspect-static-p (car (last token)))
-           (phpinspect-incomplete-function-p (car (last (car (last token))))))
-      (and (phpinspect-scope-p token)
-           (phpinspect-function-p (car (last token))))))
+(defun phpinspect-not-list-p (token)
+  (not (phpinspect-list-p token)))
 
-(defun phpinspect-incomplete-function-p (token)
-  (and (phpinspect-function-p token)
-       (phpinspect-incomplete-block-p (car (last token)))))
+(define-inline phpinspect-incomplete-list-p (token)
+  (inline-quote
+   (phpinspect-token-type-p ,token :incomplete-list)))
 
-(defsubst phpinspect-incomplete-list-p (token)
-  (phpinspect-token-type-p token :incomplete-list))
-
-(defsubst phpinspect-list-p (token)
-  (or (phpinspect-token-type-p token :list)
-      (phpinspect-incomplete-list-p token)))
+(define-inline phpinspect-list-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (or (phpinspect-token-type-p ,token :list)
+	 (phpinspect-incomplete-list-p ,token)))))
 
 (defsubst phpinspect-block-or-list-p (token)
   (or (phpinspect-block-p token)
@@ -185,33 +193,82 @@ Type can be any of the token types returned by
      (or (phpinspect-token-type-p ,token :variable)
          (phpinspect-token-type-p ,token :class-variable)))))
 
-(defsubst phpinspect-word-p (token)
-  (phpinspect-token-type-p token :word))
+(define-inline phpinspect-word-p (token)
+  (inline-quote
+   (phpinspect-token-type-p ,token :word)))
 
-(defsubst phpinspect-incomplete-array-p (token)
-  (phpinspect-token-type-p token :incomplete-array))
+(define-inline phpinspect-incomplete-array-p (token)
+  (inline-quote
+   (phpinspect-token-type-p ,token :incomplete-array)))
 
-(defsubst phpinspect-array-p (token)
-  (or (phpinspect-token-type-p token :array)
-      (phpinspect-incomplete-array-p token)))
+(define-inline phpinspect-array-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (or (phpinspect-token-type-p ,token :array)
+	 (phpinspect-incomplete-array-p ,token)))))
 
-(defsubst phpinspect-root-p (object)
-  (phpinspect-token-type-p object :root))
+(define-inline phpinspect-root-p (object)
+  (inline-quote
+   (phpinspect-token-type-p ,object :root)))
 
+(define-inline  phpinspect-keyword-body-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (or (phpinspect-scope-p ,token)
+	     (phpinspect-static-p ,token)
+         (phpinspect-declaration-p ,token)
+	     (phpinspect-function-p ,token)
+	     (phpinspect-const-p ,token)))))
+
+(define-inline phpinspect--incomplete-generic-keyword-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (or (length< ,token 2)
+	 (phpinspect-incomplete-token-p (car (last ,token)))
+	 (not (phpinspect-end-of-statement-p (car (last ,token))))))))
+
+(define-inline phpinspect-incomplete-keyword-body-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (and (phpinspect-keyword-body-p ,token)
+	  (if (phpinspect-function-p ,token)
+	      (phpinspect-incomplete-function-p ,token)
+	    (phpinspect--incomplete-generic-keyword-p ,token))))))
+
+(define-inline phpinspect-fat-arrow-p (token)
+  (inline-quote
+   (phpinspect-token-type-p ,token :fat-arrow)))
+
+(define-inline phpinspect-atom-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (or (phpinspect-word-p ,token)
+	 (phpinspect-terminator-p ,token)
+	 (phpinspect-variable-p ,token)
+	 (phpinspect-comma-p ,token)
+	 (phpinspect-fat-arrow-p ,token)
+	 (phpinspect-attrib-p ,token)))))
+
+(define-inline phpinspect-incomplete-root-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (and (phpinspect-root-p ,token)
+	  (seq-find #'phpinspect-incomplete-token-p (cdr ,token))))))
+
+;; Note: `phpinspect-incomplete-token-p' is used in the taint iterator during
+;; incremental parses to determine whether a token should be reparsed or not. It
+;; should not perform very complicated logic because it can be called a lot of
+;; times per parse.
 (defun phpinspect-incomplete-token-p (token)
-  (or (phpinspect-incomplete-root-p token)
-      (phpinspect-incomplete-class-p token)
-      (phpinspect-incomplete-block-p token)
-      (phpinspect-incomplete-list-p token)
-      (phpinspect-incomplete-array-p token)
-      (phpinspect-incomplete-const-p token)
-      (phpinspect-incomplete-function-p token)
-      (phpinspect-incomplete-method-p token)
-      (phpinspect-incomplete-namespace-p token)))
-
-(defun phpinspect-incomplete-root-p (token)
-  (and (phpinspect-root-p token)
-       (seq-find #'phpinspect-incomplete-token-p (cdr token))))
+  (unless (phpinspect-atom-p token)
+    (or (phpinspect-incomplete-root-p token)
+	(phpinspect-incomplete-class-p token)
+	(phpinspect-incomplete-block-p token)
+	(phpinspect-incomplete-list-p token)
+	(phpinspect-incomplete-array-p token)
+	(phpinspect-incomplete-const-p token)
+	(phpinspect-incomplete-namespace-p token)
+	(phpinspect-incomplete-keyword-body-p token))))
 
 (defun phpinspect--static-terminator-p (token)
   (or (phpinspect-function-p token)
@@ -287,5 +344,34 @@ Type can be any of the token types returned by
 (define-inline phpinspect-not-comment-p (token)
   (inline-quote
    (not (phpinspect-comment-p ,token))))
+
+(defun phpinspect-incomplete-function-p (token)
+  (when (phpinspect-function-p token)
+    (let (declaration terminator arg-list name block function-keyword)
+      (dolist (component token)
+	(cond ((phpinspect-declaration-p component)
+	       (setq declaration component)
+	       (dolist (subcomp component)
+		 (cond ((and (not arg-list) (phpinspect-list-p subcomp))
+			(setq arg-list subcomp))
+		       ((and (not arg-list) (phpinspect-word-p subcomp))
+			;; First word encountered will be a function
+			;; keyword. After that comes the function name.
+			(if (and (not function-keyword) (string= "function" (cadr subcomp)))
+			    (setq function-keyword subcomp)
+			  (setq name subcomp)))
+		       ((and arg-list (phpinspect-terminator-p subcomp))
+			(setq terminator subcomp)))))
+	      ((phpinspect-block-p component)
+	       (setq block component))))
+
+      (or
+       ;; Incomplete block = incomplete function
+       (phpinspect-incomplete-block-p block)
+       ;; No declaration, arg-list or name = incomplete function
+       (not (and declaration arg-list name))
+       ;; terminator = abstract function, which is complete. No block and no
+       ;; terminator = incomplete.
+       (not (or block terminator))))))
 
 (provide 'phpinspect-token-predicates)

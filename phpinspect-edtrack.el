@@ -24,6 +24,7 @@
 ;;; Code:
 
 (require 'phpinspect-util)
+(require 'phpinspect-token-predicates)
 
 (eval-when-compile
   (require 'phpinspect-meta)
@@ -220,9 +221,12 @@
 (define-inline phpinspect-taint-iterator-token-is-tainted-p (iter meta)
   (inline-letevals (iter meta)
     (inline-quote
-     (and (phpinspect-taint-iterator-follow ,iter (phpinspect-meta-start ,meta))
-          (phpinspect-taint-overlaps-meta
-           (phpinspect-taint-iterator-current ,iter) ,meta)))))
+     (or (and (phpinspect-taint-iterator-follow ,iter (phpinspect-meta-start ,meta))
+              (phpinspect-taint-overlaps-meta
+               (phpinspect-taint-iterator-current ,iter) ,meta))
+	 ;; Incomplete tokens should be regarded as tainted regardless of
+	 ;; region, as their end-position is unlikely to be correct.
+	 (phpinspect-incomplete-token-p (phpinspect-meta-token ,meta))))))
 
 (define-inline phpinspect-taint-iterator-region-is-tainted-p (iter start end)
   (inline-letevals (iter start end)
