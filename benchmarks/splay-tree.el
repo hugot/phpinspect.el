@@ -39,7 +39,8 @@ shuffling is done in place."
              (swap LIST i j)))
   LIST)
 
-(defconst phpi-randomized-access (shuffle (number-sequence 0 10000)))
+(defconst phpi-randomized-access (shuffle (number-sequence 1 10000)))
+(defconst phpi-interval-access (number-sequence 1 10000 50))
 
 (let ((tree (phpinspect-make-splayt))
       result)
@@ -84,7 +85,17 @@ shuffling is done in place."
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
 
+  (message "Splay tree repeated lookups (repeat x10, interval 50):")
+  (garbage-collect)
+  (setq result
+        (benchmark-run 1
+          (dolist (i phpi-interval-access)
+            (dotimes (_i 10)
+              (phpinspect-splayt-find tree i)))))
 
+
+  (message "Elapsed time: %f (%f in %d GC's)"
+           (car result) (caddr result) (cadr result))
 
   (message "Splay tree 10000 items traversal:")
   (garbage-collect)
@@ -182,6 +193,17 @@ shuffling is done in place."
           (dotimes (_i 10000)
             (avl-tree-member avl-tree (cons 5 nil)))))
 
+    (message "Elapsed time: %f (%f in %d GC's)"
+           (car result) (caddr result) (cadr result))
+
+  (message "AVL tree repeated lookups (repeat x10, interval 50):")
+  (garbage-collect)
+  (setq result
+        (benchmark-run 1
+          (dolist (i phpi-interval-access)
+            (dotimes (_i 10)
+              (avl-tree-member avl-tree (cons i nil))))))
+
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
 
@@ -198,30 +220,36 @@ shuffling is done in place."
 ;; Results (ran at [2024-09-08 12:38])
 
 ;; Splay tree 10000 insertions:
-;; Elapsed time: 0.006082 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.006073 (0.000000 in 0 GC’s)
 ;; Splay tree 10000 lookups:
-;; Elapsed time: 0.003710 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.003990 (0.000000 in 0 GC’s)
 ;; Splay tree 10000 randomized lookups:
-;; Elapsed time: 0.021548 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.021418 (0.000000 in 0 GC’s)
 ;; Splay tree 10000 repeated (constant number 5) lookups:
-;; Elapsed time: 0.000574 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.000526 (0.000000 in 0 GC’s)
+;; Splay tree repeated lookups (repeat x10, interval 50):
+;; Elapsed time: 0.000445 (0.000000 in 0 GC’s)
 ;; Splay tree 10000 items traversal:
-;; Elapsed time: 0.170038 (0.108029 in 3 GC’s)
+;; Elapsed time: 0.005147 (0.000000 in 0 GC’s)
 ;; Splay tree 10000 items LR traversal:
-;; Elapsed time: 0.000919 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.000764 (0.000000 in 0 GC’s)
+
 ;; Hashtable 10000 insertions:
-;; Elapsed time: 0.000757 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.000457 (0.000000 in 0 GC’s)
 ;; Hashtable 10000 lookups:
-;; Elapsed time: 0.000253 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.000250 (0.000000 in 0 GC’s)
 ;; Hashtable 10000 iterations:
-;; Elapsed time: 0.000137 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.000135 (0.000000 in 0 GC’s)
+
 ;; AVL tree 10000 insertions:
-;; Elapsed time: 0.010190 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.009241 (0.000000 in 0 GC’s)
 ;; AVL tree 10000 lookups:
-;; Elapsed time: 0.003857 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.003807 (0.000000 in 0 GC’s)
 ;; AVL tree 10000 randomized lookups:
-;; Elapsed time: 0.004604 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.004335 (0.000000 in 0 GC’s)
 ;; AVL tree 10000 repeated (constant number 5) lookups:
-;; Elapsed time: 0.003011 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.003099 (0.000000 in 0 GC’s)
+;; AVL tree repeated lookups (repeat x10, interval 50):
+;; Elapsed time: 0.000650 (0.000000 in 0 GC’s)
 ;; AVL tree 10000 items LR traversal:
-;; Elapsed time: 0.005048 (0.000000 in 0 GC’s)
+;; Elapsed time: 0.004814 (0.000000 in 0 GC’s)
