@@ -156,9 +156,7 @@ namespace App;
 		              (current-buffer)
 		              (phpinspect--make-dummy-composer-project-with-code)))
 	         (rctx (phpinspect-buffer-get-resolvecontext buffer (point)))
-	         (results (phpinspect-suggest-attributes-at-point rctx t))
-	         (types (seq-filter #'phpinspect--type-p results))
-	         (words (seq-filter #'phpinspect-suggest-keyword-p results)))
+	         (results (phpinspect-suggest-attributes-at-point rctx t))_)
 
         (should (length= results 1))
         (should (equal (list "dont")

@@ -398,6 +398,24 @@ that there are import (\"use\") statements for them."
               (phpinspect-format-use-statements buffer (phpinspect-find-first-use parent))
               (phpinspect-buffer-parse buffer 'no-interrupt)))))))
 
+(defun phpinspect-project-read-type-name (prompt &optional project)
+  "Read a non-fully-qualified type-name using `completing-read'.
+
+PROMPT is passed to `completing-read'.
+
+PROJECT, if provided should be an instance of
+`phpinspect-project'.  If PROJECT is nil, the active project is
+determined using `phpinspect-current-project'."
+  (unless project (setq project (phpinspect-current-project)))
+
+  (phpinspect-intern-name
+   (completing-read
+    prompt
+    (phpinspect-names-to-alist
+     (phpinspect-autoloader-get-type-names
+      (phpinspect-project-autoload project)))
+    nil 'require-match nil 'phpinspect--project-type-name-history)))
+
 (defun phpinspect-insert-type (type-name)
   "Insert TYPE-NAME as string into current buffer.
 
