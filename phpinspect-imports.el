@@ -398,4 +398,21 @@ that there are import (\"use\") statements for them."
               (phpinspect-format-use-statements buffer (phpinspect-find-first-use parent))
               (phpinspect-buffer-parse buffer 'no-interrupt)))))))
 
+(defun phpinspect-insert-type (type-name)
+  "Insert TYPE-NAME as string into current buffer.
+
+This function adds a use statement for TYPE-NAME when none is found."
+  (interactive (list (phpinspect-project-read-type-name "Select a Type: ")))
+  (if phpinspect-current-buffer
+      (let* ((rctx (phpinspect-buffer-get-resolvecontext
+                    phpinspect-current-buffer (point)))
+             (type-resolver (phpinspect--make-type-resolver-for-resolvecontext rctx)))
+        (unless (phpinspect-type-resolver-get-import type-resolver type-name)
+          (phpinspect-add-use-interactive
+           type-name phpinspect-current-buffer
+           (phpinspect-buffer-project phpinspect-current-buffer)
+           (phpinspect-buffer-namespace-at-point phpinspect-current-buffer (point))))
+        (insert (phpinspect-name-string type-name)))
+    (phpinspect-message "Not a phpinspect buffer")))
+
 (provide 'phpinspect-imports)

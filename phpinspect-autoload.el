@@ -202,6 +202,9 @@ the vendor directory."
       (push type-fqn bag)
       (puthash type-name bag (phpinspect-autoloader-type-name-fqn-bags al)))))
 
+(defun phpinspect-autoloader-get-type-names (al)
+  (hash-table-keys (phpinspect-autoloader-type-name-fqn-bags al)))
+
 (cl-defmethod phpinspect-autoloader-get-type-bag ((al phpinspect-autoloader) (type-name (head phpinspect-name)))
   (gethash type-name (phpinspect-autoloader-type-name-fqn-bags al)))
 

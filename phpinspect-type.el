@@ -222,6 +222,9 @@ NAMESPACE may be nil, or a string with a namespace FQN."
   (types :mutable nil :type list)
   (namespace :mutable nil :type string))
 
+(defun phpinspect-type-resolver-get-import (resolver name)
+  (assoc-default name (phpinspect-type-resolver--types resolver) #'eq nil))
+
 (defun phpinspect--make-type-resolver (types &optional token-tree namespace)
   "Little wrapper closure to pass around and resolve types with."
   (let* ((inside-class

@@ -358,6 +358,27 @@ before the search is executed."
     (or (phpinspect-project-get-typedef-or-extra project type)
         (phpinspect-project-get-typedef-create project type))))
 
+(defvar phpinspect--project-type-name-history nil
+  "History list to use for `phpinspect-project-read-type-name'")
+
+(defun phpinspect-project-read-type-name (prompt &optional project)
+  "Read a non-fully-qualified type-name using `completing-read'.
+
+PROMPT is passed to `completing-read'.
+
+PROJECT, if provided should be an instance of
+`phpinspect-project'.  If PROJECT is nil, the active project is
+determined using `phpinspect-current-project'."
+  (unless project (setq project (phpinspect-current-project)))
+
+  (phpinspect-intern-name
+   (completing-read
+    prompt
+    (phpinspect-names-to-alist
+     (phpinspect-autoloader-get-type-names
+      (phpinspect-project-autoload project)))
+    nil 'require-match nil 'phpinspect--project-type-name-history)))
+
 ;;; INDEX TASK
 (cl-defstruct (phpinspect-index-task
                (:constructor phpinspect-make-index-task-generated))
