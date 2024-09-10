@@ -578,8 +578,8 @@ type. (`phpinspect--type-p')"
       (let ((subject (phpinspect--resolvecontext-subject resolvecontext)))
         (setq type
               (cond ((and assume-derived
-                          (phpinspect--match-sequence subject :f #'phpinspect-word-p))
-                     (funcall type-resolver (phpinspect--make-type :name (cadar subject))))
+                          (phpinspect--match-sequence (last subject) :f #'phpinspect-word-p))
+                     (funcall type-resolver (phpinspect--make-type :name (cadar (last subject)))))
 
                     ((phpinspect-namespace-p enclosing-token)
                      (phpinspect-interpret-expression-type-in-context

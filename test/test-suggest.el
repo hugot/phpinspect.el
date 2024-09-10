@@ -139,4 +139,27 @@ public ")
 	      words (seq-filter #'phpinspect-suggest-keyword-p results))
 	(should (length= results (+ (length types) (length words))))
 	(should (equal (list "function" "static")
-		       (sort (mapcar #'phpinspect-suggest-keyword-word words) #'string<))))))
+		           (sort (mapcar #'phpinspect-suggest-keyword-word words) #'string<))))))
+
+(ert-deftest phpinspect-suggest-static-method-at-point ()
+  (dolist (prefix (list "Foo::" "$bar = Foo::"))
+
+    (with-temp-buffer
+      (insert "<?php
+
+namespace App;
+
+ ")
+      (insert prefix)
+
+      (let* ((buffer (phpinspect-claim-buffer
+		              (current-buffer)
+		              (phpinspect--make-dummy-composer-project-with-code)))
+	         (rctx (phpinspect-buffer-get-resolvecontext buffer (point)))
+	         (results (phpinspect-suggest-attributes-at-point rctx t))
+	         (types (seq-filter #'phpinspect--type-p results))
+	         (words (seq-filter #'phpinspect-suggest-keyword-p results)))
+
+        (should (length= results 1))
+        (should (equal (list "dont")
+                       (mapcar #'phpi-fn-name results)))))))
