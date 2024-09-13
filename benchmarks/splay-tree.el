@@ -24,48 +24,47 @@
 
 
 (require 'phpinspect-splayt)
+(message "starting bench")
 
-(defun swap (LIST el1 el2)
-  "in LIST swap indices EL1 and EL2 in place"
-  (let ((tmp (elt LIST el1)))
-    (setf (elt LIST el1) (elt LIST el2))
-    (setf (elt LIST el2) tmp)))
+(defun shuffle (list)
+  (let* ((vec (seq-into list 'vector))
+         (length (length vec))
+         (n 0))
+    (while (< n length)
+      (let ((i (+ n (random (- length n))))
+            (tmp (aref vec n)))
+        (setf (aref vec n) (aref vec i)
+              (aref vec i) tmp))
+      (cl-incf n))
+    (seq-into vec 'list)))
 
-(defun shuffle (LIST)
-  "Shuffle the elements in LIST.
-shuffling is done in place."
-  (cl-loop for i in (reverse (number-sequence 1 (1- (length LIST))))
-        do (let ((j (random (+ i 1))))
-             (swap LIST i j)))
-  LIST)
-
-(defconst phpi-randomized-access (shuffle (number-sequence 1 10000)))
-(defconst phpi-interval-access (number-sequence 1 10000 50))
+(defconst phpi-randomized-access (shuffle (number-sequence 1 1000000)))
+(defconst phpi-interval-access (number-sequence 1 1000000 50))
 
 (let ((tree (phpinspect-make-splayt))
       result)
-  (message "Splay tree 10000 insertions:")
+  (message "Splay tree 1000000 insertions:")
   (garbage-collect)
 
   (setq result
         (benchmark-run 1
-          (dotimes (i 10000)
+          (dotimes (i 1000000)
             (phpinspect-splayt-insert tree i 'value))))
 
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
 
-  (message "Splay tree 10000 lookups:")
+  (message "Splay tree 1000000 lookups:")
   (garbage-collect)
   (setq result
         (benchmark-run 1
-          (dotimes (i 10000)
+          (dotimes (i 1000000)
             (phpinspect-splayt-find tree i))))
 
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
 
-  (message "Splay tree 10000 randomized lookups:")
+  (message "Splay tree 1000000 randomized lookups:")
   (garbage-collect)
   (setq result
         (benchmark-run 1
@@ -75,11 +74,11 @@ shuffling is done in place."
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
 
-  (message "Splay tree 10000 repeated (constant number 5) lookups:")
+  (message "Splay tree 1000000 repeated (constant number 5) lookups:")
   (garbage-collect)
   (setq result
         (benchmark-run 1
-          (dotimes (_i 10000)
+          (dotimes (_i 1000000)
             (phpinspect-splayt-find tree 5))))
 
   (message "Elapsed time: %f (%f in %d GC's)"
@@ -97,7 +96,7 @@ shuffling is done in place."
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
 
-  (message "Splay tree 10000 items traversal:")
+  (message "Splay tree 1000000 items traversal:")
   (garbage-collect)
   (setq result
         (benchmark-run 1
@@ -108,7 +107,7 @@ shuffling is done in place."
            (car result) (caddr result) (cadr result))
 
 
-  (message "Splay tree 10000 items LR traversal:")
+  (message "Splay tree 1000000 items LR traversal:")
   (garbage-collect)
   (setq result
         (benchmark-run 1
@@ -120,29 +119,29 @@ shuffling is done in place."
 
 
 (let (map result)
-  (message "Hashtable 10000 insertions:")
+  (message "Hashtable 1000000 insertions:")
   (garbage-collect)
   (setq result
         (benchmark-run 1
           (progn
-            (setq map (make-hash-table :test #'eq :size 10000 :rehash-size 1.5))
-            (dotimes (i 10000)
+            (setq map (make-hash-table :test #'eq :size 1000000 :rehash-size 1.5))
+            (dotimes (i 1000000)
               (puthash i 'value map)))))
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
 
-  (message "Hashtable 10000 lookups:")
+  (message "Hashtable 1000000 lookups:")
   (garbage-collect)
   (setq result
         (benchmark-run 1
-          (dotimes (i 10000)
+          (dotimes (i 1000000)
             (ignore (gethash i map)))))
 
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
 
 
-  (message "Hashtable 10000 iterations:")
+  (message "Hashtable 1000000 iterations:")
   (garbage-collect)
   (setq result
         (benchmark-run 1
@@ -155,28 +154,28 @@ shuffling is done in place."
 (require 'avl-tree)
 (let ((avl-tree (avl-tree-create #'car-less-than-car))
       result)
-  (message "AVL tree 10000 insertions:")
+  (message "AVL tree 1000000 insertions:")
   (garbage-collect)
 
   (setq result
         (benchmark-run 1
-          (dotimes (i 10000)
+          (dotimes (i 1000000)
             (avl-tree-enter avl-tree (cons i 'value)))))
 
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
 
-  (message "AVL tree 10000 lookups:")
+  (message "AVL tree 1000000 lookups:")
   (garbage-collect)
   (setq result
         (benchmark-run 1
-          (dotimes (i 10000)
+          (dotimes (i 1000000)
             (avl-tree-member avl-tree (cons i nil)))))
 
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
 
-  (message "AVL tree 10000 randomized lookups:")
+  (message "AVL tree 1000000 randomized lookups:")
   (garbage-collect)
   (setq result
         (benchmark-run 1
@@ -186,11 +185,11 @@ shuffling is done in place."
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
 
-  (message "AVL tree 10000 repeated (constant number 5) lookups:")
+  (message "AVL tree 1000000 repeated (constant number 5) lookups:")
   (garbage-collect)
   (setq result
         (benchmark-run 1
-          (dotimes (_i 10000)
+          (dotimes (_i 1000000)
             (avl-tree-member avl-tree (cons 5 nil)))))
 
     (message "Elapsed time: %f (%f in %d GC's)"
@@ -207,49 +206,11 @@ shuffling is done in place."
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result))
 
-  (message "AVL tree 10000 items LR traversal:")
+  (message "AVL tree 1000000 items LR traversal:")
   (garbage-collect)
   (setq result
         (benchmark-run 1
-          (iter-do (i (avl-tree-iter avl-tree))
-            (ignore i))))
+          (avl-tree-mapc #'ignore avl-tree)))
 
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result)))
-
-;; Results (ran at [2024-09-08 12:38])
-
-;; Splay tree 10000 insertions:
-;; Elapsed time: 0.006073 (0.000000 in 0 GC’s)
-;; Splay tree 10000 lookups:
-;; Elapsed time: 0.003990 (0.000000 in 0 GC’s)
-;; Splay tree 10000 randomized lookups:
-;; Elapsed time: 0.021418 (0.000000 in 0 GC’s)
-;; Splay tree 10000 repeated (constant number 5) lookups:
-;; Elapsed time: 0.000526 (0.000000 in 0 GC’s)
-;; Splay tree repeated lookups (repeat x10, interval 50):
-;; Elapsed time: 0.000445 (0.000000 in 0 GC’s)
-;; Splay tree 10000 items traversal:
-;; Elapsed time: 0.005147 (0.000000 in 0 GC’s)
-;; Splay tree 10000 items LR traversal:
-;; Elapsed time: 0.000764 (0.000000 in 0 GC’s)
-
-;; Hashtable 10000 insertions:
-;; Elapsed time: 0.000457 (0.000000 in 0 GC’s)
-;; Hashtable 10000 lookups:
-;; Elapsed time: 0.000250 (0.000000 in 0 GC’s)
-;; Hashtable 10000 iterations:
-;; Elapsed time: 0.000135 (0.000000 in 0 GC’s)
-
-;; AVL tree 10000 insertions:
-;; Elapsed time: 0.009241 (0.000000 in 0 GC’s)
-;; AVL tree 10000 lookups:
-;; Elapsed time: 0.003807 (0.000000 in 0 GC’s)
-;; AVL tree 10000 randomized lookups:
-;; Elapsed time: 0.004335 (0.000000 in 0 GC’s)
-;; AVL tree 10000 repeated (constant number 5) lookups:
-;; Elapsed time: 0.003099 (0.000000 in 0 GC’s)
-;; AVL tree repeated lookups (repeat x10, interval 50):
-;; Elapsed time: 0.000650 (0.000000 in 0 GC’s)
-;; AVL tree 10000 items LR traversal:
-;; Elapsed time: 0.004814 (0.000000 in 0 GC’s)
