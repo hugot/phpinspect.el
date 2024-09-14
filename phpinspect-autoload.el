@@ -266,7 +266,7 @@ the vendor directory."
                   (push strategy batch))
                  (_ (phpinspect--log "Unsupported autoload strategy \"%s\" encountered" type)))))
            autoload)))
-      (phpinspect--log "Batch: %s" (length batch))
+      (phpinspect--log "Number of autoload strategies in batch: %s" (length batch))
       (phpinspect-pipeline-emit-all batch))))
 
 
