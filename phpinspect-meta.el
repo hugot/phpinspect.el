@@ -282,6 +282,13 @@
 (cl-defmethod phpinspect-meta-first-child ((meta (head meta)))
   (phpinspect-meta-find-child-after meta (- (phpinspect-meta-start meta) 1)))
 
+(defun phpinspect-meta-token-predicate (token-predicate)
+  "Wrap TOKEN-PREDICATE in a closure that operates on metadata.
+
+The returned closure takes a metadata object as argument and then
+calls TOKEN-PREDICATE on its token
+slot (`phpinspect-meta-token')."
+  (lambda (meta) (funcall token-predicate (phpinspect-meta-token meta))))
 
 (defun phpinspect-meta-string (meta)
   (if meta

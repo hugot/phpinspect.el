@@ -584,7 +584,9 @@ continuing execution."
   (phpinspect-edtrack-register-edit
    (phpinspect-buffer-edit-tracker buffer) start end pre-change-length))
 
-(cl-defmethod phpinspect-buffer-tokens-enclosing-point ((buffer phpinspect-buffer) point)
+(defun phpinspect-buffer-tokens-enclosing-point (buffer point)
+  "Return token metadata objects for tokens enclosing POINT in BUFFER."
+  (cl-assert (phpinspect-buffer-p buffer))
   (phpinspect-bmap-tokens-overlapping (phpinspect-buffer-map buffer) point))
 
 (cl-defmethod phpinspect-buffer-token-meta ((buffer phpinspect-buffer) token)

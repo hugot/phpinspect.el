@@ -198,22 +198,33 @@ belonging to a token that conforms with `phpinspect-attrib-p'"
 (cl-defmethod phpinspect-comp-strategy-supports
   ((_strat phpinspect-comp-word) (q phpinspect-completion-query)
    (rctx phpinspect--resolvecontext))
-  (or
-   ;; Complete word being typed
-   (when-let ((subject (phpinspect-completion-subject-at-point
-                      (phpinspect-completion-query-buffer q)
-                      (phpinspect-completion-query-point q)
-                      #'phpinspect-word-p)))
+  "Determine suitability of comp-word strategy to resolve Q.
+
+Words can be type names, function names and keywords.  This
+strategy is a bit special in the sense that it needs to carefully
+consider whether or not it is useful to complete words at point.
+Completing words in a comment for example, is usually not useful."
+  ;; Don't complete words when editing comments
+  (unless (seq-find (phpinspect-meta-token-predicate #'phpinspect-comment-p)
+                    (phpinspect-buffer-tokens-enclosing-point
+                     (phpinspect-completion-query-buffer q)
+                     (phpinspect-completion-query-point q)))
+    (or
+     ;; Complete word being typed
+     (when-let ((subject (phpinspect-completion-subject-at-point
+                          (phpinspect-completion-query-buffer q)
+                          (phpinspect-completion-query-point q)
+                          #'phpinspect-word-p)))
        (list (phpinspect-meta-start subject) (phpinspect-meta-end subject)))
 
-   ;; Point is right after a "new" token. Complete "newable" types.
-   (when-let ((token-before (phpinspect-bmap-last-token-before-point
-                             (phpinspect-buffer-map
-                              (phpinspect-completion-query-buffer q))
-                             (phpinspect-completion-query-point q)))
-              ((phpinspect-new-p (phpinspect-meta-token token-before))))
-     (list (phpinspect-completion-query-point q)
-           (phpinspect-completion-query-point q)))
+     ;; Point is right after a "new" token. Complete "newable" types.
+     (when-let ((token-before (phpinspect-bmap-last-token-before-point
+                               (phpinspect-buffer-map
+                                (phpinspect-completion-query-buffer q))
+                               (phpinspect-completion-query-point q)))
+                ((phpinspect-new-p (phpinspect-meta-token token-before))))
+       (list (phpinspect-completion-query-point q)
+             (phpinspect-completion-query-point q)))
 
    ;; Point is after a scope, static, declaration, const or other keyword that
    ;; can precede a type or another word.
@@ -224,7 +235,7 @@ belonging to a token that conforms with `phpinspect-attrib-p'"
           (car (phpinspect--resolvecontext-subject rctx))))
 
         (list (phpinspect-completion-query-point q)
-              (phpinspect-completion-query-point q)))))
+              (phpinspect-completion-query-point q))))))
 
 (cl-defmethod phpinspect-comp-strategy-execute
   ((_strat phpinspect-comp-word) (q phpinspect-completion-query)

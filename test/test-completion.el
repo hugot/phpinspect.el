@@ -120,3 +120,28 @@ public function a() {} ")
            (strings (phpinspect--completion-list-strings completions)))
 
       (should-not strings))))
+
+(ert-deftest phpinspect-dont-complete-within-comments ()
+  (let ((cases (list "function a() { new // "
+                     "/* "
+                     "// ")))
+    (dolist (prefix cases)
+      (with-temp-buffer
+        (insert "<?php
+
+namespace App;
+
+use \\DateTime;
+
+class A { ")
+        (insert prefix)
+
+        (phpinspect-claim-buffer
+         (current-buffer) (phpinspect--make-dummy-composer-project-with-code))
+
+        (let* ((query (phpinspect--get-completion-query))
+	           (completions (phpinspect-completion-query-execute query))
+               (strings (phpinspect--completion-list-strings completions)))
+
+          (should-not (phpinspect--completion-list-has-candidates completions))
+          (should-not strings))))))
