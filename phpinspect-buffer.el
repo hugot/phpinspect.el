@@ -299,6 +299,10 @@ linked with."
           (dolist (deleted deleted-classes)
             (if (and (setq class (phpinspect-buffer-get-index-for-token
                                   buffer (phpinspect-meta-token deleted)))
+                     ;; If we can find a declaration in the buffer that is equal
+                     ;; to the deleted declaration, the class has just been
+                     ;; edited in a way were the declaration ended up getting
+                     ;; reparsed. No need to delete it from the index
                      (setq replaced (assoc (phpi-typedef-declaration class) new-declarations #'equal)))
                 (pcase-let ((`(,imports ,namespace-name) (phpinspect-get-token-index-context namespaces buffer-imports (cdr replaced))))
                   (phpinspect-buffer-update-index-reference-for-token
