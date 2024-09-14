@@ -195,3 +195,8 @@ interface Test
                           (:terminator ";"))))))))))
 
     (should (equal expected result))))
+
+(ert-deftest phpinspect-parse-incomplete-comments ()
+  (dolist (code (list "//" "/*" "// " "/* "))
+
+    (should (phpinspect-parse-string code))))

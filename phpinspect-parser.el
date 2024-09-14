@@ -546,26 +546,30 @@ nature like argument lists"
 
   (cond ((string-match "/\\*" start-token)
          (let* ((region-start (point))
+                (found-delimiter nil)
                 ;; Move to the end of the comment region
                 (region-end
                  (progn
-                   (while (not (or (= max-point (point)) (looking-at "\\*/")))
+                   (while (not (or (= max-point (point))
+                                   (and (looking-at "\\*/") (setq found-delimiter t))))
                      (forward-char))
                    (point)))
                 (doc-block (save-restriction
                              (goto-char region-start)
                              (narrow-to-region region-start region-end)
                              (phpinspect--parse-doc-block (current-buffer) (point-max)))))
-           (forward-char 2)
+           ;; If a delimiter (*/) was found, skip over it.
+           (when found-delimiter
+             (forward-char 2))
            doc-block))
         (t
          (let* ((end-position (line-end-position))
-		(token
-		 (phpinspect--parse-comment (current-buffer) end-position 1)))
-	   ;; Move to start of next line (absorb end of line)
-	   (while (not (bolp))
-	     (forward-char))
-	   token))))
+		        (token
+		         (phpinspect--parse-comment (current-buffer) end-position)))
+	       ;; Move to start of next line (absorb end of line)
+	       (while (not (or (bolp) (= max-point (point))))
+	         (forward-char))
+	       token))))
 
 (phpinspect-defhandler class-variable (start-token &rest _ignored)
   "Handler for tokens indicating reference to a variable"
@@ -574,7 +578,6 @@ nature like argument lists"
   (if (looking-at (phpinspect-handler-regexp word))
       (phpinspect-munch-token-without-attribs (match-string 0) :class-variable)
     (list :class-variable nil)))
-
 
 (phpinspect-defhandler whitespace (whitespace &rest _ignored)
   "Handler that discards whitespace"
