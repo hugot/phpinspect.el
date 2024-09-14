@@ -4,7 +4,7 @@
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
-;; Version: 2.0.1
+;; Version: 2.1.0
 ;; Package-Requires: ((compat "29"))
 ;; URL: https://github.com/hugot/phpinspect.el
 
@@ -33,6 +33,25 @@
 ;; with `phpinspect-mode'. Also see M-x customize-group RET phpinspect RET.
 
 ;;; News:
+
+;; Version 2.1.0
+
+;; - Implemented basic support for completion of keywords and type names
+;; - Made completion of function names, type names and keywords context-aware so
+;;   that the provided completions are relevant at point.
+;; - Implemented interactive function to insert type names and automatically
+;;   import them when necessary, called `phpinspect-insert-type'.
+
+;; - Fixed end-of-buffer error bugs in parsing of comments
+;; - Fixed bug in `phpinspect-suggest-variables-at-point' which caused local
+;;   "foreach" variables to not be suggested.
+;; - Fixed infinite recursion bug caused by typedef dependent on itself (only
+;;   occured when the type definition could not be found via the autoloader)
+
+;; - Made incremental parser more reliable by not adopting incomplete tokens
+;;   into new tree.
+;; - Increased overall test coverage of phpinspect-suggest.el and
+;;   phpinspect-completion.el
 
 ;; Version 2.0.1
 
