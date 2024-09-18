@@ -210,7 +210,7 @@ linked with."
     (if (phpinspect-buffer-used-traits buffer)
         (pcase-let ((`(,new ,deleted)
                      (phpinspect-toc-update
-                      (phpinspect-buffer-used-traits buffer) uses (phpinspect-buffer-root-meta buffer))))
+                      (phpinspect-buffer-used-traits buffer) uses)))
           (unless (or new deleted)
             ;; Nothing changed, don't update
             (setq update nil)))
@@ -242,7 +242,7 @@ linked with."
   (let (to-be-indexed)
     (if (phpinspect-buffer-imports buffer)
         (pcase-let* ((`(,new) (phpinspect-toc-update
-                               (phpinspect-buffer-imports buffer) imports (phpinspect-buffer-root-meta buffer))))
+                               (phpinspect-buffer-imports buffer) imports)))
           (setq to-be-indexed new))
       (setq to-be-indexed (phpinspect-splayt-to-list imports))
       (setf (phpinspect-buffer-imports buffer) (phpinspect-make-toc imports)))
@@ -253,12 +253,12 @@ linked with."
 
 (cl-defmethod phpinspect-buffer-index-namespaces ((buffer phpinspect-buffer) (namespaces (head phpinspect-splayt)))
   (if (phpinspect-buffer-namespaces buffer)
-      (phpinspect-toc-update (phpinspect-buffer-namespaces buffer) namespaces (phpinspect-buffer-root-meta buffer))
+      (phpinspect-toc-update (phpinspect-buffer-namespaces buffer) namespaces)
     (setf (phpinspect-buffer-namespaces buffer) (phpinspect-make-toc namespaces))))
 
 (cl-defmethod phpinspect-buffer-index-declarations ((buffer phpinspect-buffer) (declarations (head phpinspect-splayt)))
   (if (phpinspect-buffer-declarations buffer)
-      (phpinspect-toc-update (phpinspect-buffer-declarations buffer) declarations (phpinspect-buffer-root-meta buffer))
+      (phpinspect-toc-update (phpinspect-buffer-declarations buffer) declarations)
     (setf (phpinspect-buffer-declarations buffer) (phpinspect-make-toc declarations))))
 
 (defun phpinspect-get-token-index-context (namespaces all-imports meta)
@@ -293,7 +293,7 @@ linked with."
     (if (phpinspect-buffer-classes buffer)
         (pcase-let* ((`(,new-classes ,deleted-classes) (phpinspect-toc-update
                                                         (phpinspect-buffer-classes buffer)
-                                                        classes (phpinspect-buffer-root-meta buffer)))
+                                                        classes))
                      (new-declarations) (declaration) (replaced) (indexed) (class))
           ;; Collect declarations of new classes
           (dolist (class new-classes)
@@ -358,7 +358,7 @@ linked with."
         to-be-indexed class-environments class indexed)
     (if (phpinspect-buffer-functions buffer)
         (pcase-let ((`(,new-funcs ,deleted-funcs)
-                     (phpinspect-toc-update (phpinspect-buffer-functions buffer) functions (phpinspect-buffer-root-meta buffer))))
+                     (phpinspect-toc-update (phpinspect-buffer-functions buffer) functions)))
           (setq to-be-indexed new-funcs)
 
           (dolist (deleted deleted-funcs)
@@ -433,7 +433,7 @@ linked with."
     (if (phpinspect-buffer-class-variables buffer)
         (pcase-let ((`(,new-vars ,deleted-vars)
                      (phpinspect-toc-update
-                      (phpinspect-buffer-class-variables buffer) class-variables (phpinspect-buffer-root-meta buffer))))
+                      (phpinspect-buffer-class-variables buffer) class-variables)))
           (setq to-be-indexed new-vars)
 
           (dolist (deleted deleted-vars)

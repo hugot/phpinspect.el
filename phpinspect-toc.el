@@ -49,7 +49,7 @@
 (define-inline phpinspect-toc-table (toc)
   (inline-quote (cadr ,toc)))
 
-(defun phpinspect-toc-update (toc new-tree current-root)
+(defun phpinspect-toc-update (toc new-tree)
   (let ((current-tree (phpinspect-toc-tree toc))
         (new-table (make-hash-table :test #'eq :size 20 :rehash-size 2.0))
         new deleted)

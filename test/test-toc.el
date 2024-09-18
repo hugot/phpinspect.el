@@ -45,7 +45,7 @@
 
     (phpinspect-meta-delete root)
 
-    (pcase-let ((`(,result-new ,result-deleted) (phpinspect-toc-update toc new-tokens new-root)))
+    (pcase-let ((`(,result-new ,result-deleted) (phpinspect-toc-update toc new-tokens)))
       (should (= 1 (length result-new)))
       (should (= 1 (length result-deleted)))
 
