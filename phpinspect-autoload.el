@@ -298,19 +298,21 @@ the vendor directory."
     (setf (phpinspect-autoloader-types autoloader)
           (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
 
-    (setf (phpinspect-autoloader-refresh-thread autoloader)
-          (phpinspect-pipeline (phpinspect-find-composer-json-files fs project-root)
-            :async (or async-callback
-                       (lambda (_result error)
-                         (if error
-                             (phpinspect-message "Error during autoloader refresh: %s" error)
-                           (phpinspect-message
-                            (concat "Refreshed project autoloader. Found %d types within project,"
-                                    " %d types total.")
-                            (hash-table-count (phpinspect-autoloader-own-types autoloader))
-                            (hash-table-count (phpinspect-autoloader-types autoloader))))))
-            :into (phpinspect-iterate-composer-jsons :with-context autoloader)
-            :into phpinspect-al-strategy-execute))))
+    (let ((time-start (current-time)))
+      (setf (phpinspect-autoloader-refresh-thread autoloader)
+            (phpinspect-pipeline (phpinspect-find-composer-json-files fs project-root)
+              :async (or async-callback
+                         (lambda (_result error)
+                           (if error
+                               (phpinspect-message "Error during autoloader refresh: %s" error)
+                             (phpinspect-message
+                              (concat "Refreshed project autoloader. Found %d types within project,"
+                                      " %d types total. (finished in %d ms)")
+                              (hash-table-count (phpinspect-autoloader-own-types autoloader))
+                              (hash-table-count (phpinspect-autoloader-types autoloader))
+                              (string-to-number (format-time-string "%s%3N" (time-since time-start)))))))
+              :into (phpinspect-iterate-composer-jsons :with-context autoloader)
+              :into phpinspect-al-strategy-execute)))))
 
 (provide 'phpinspect-autoload)
 ;;; phpinspect-autoload.el ends here
