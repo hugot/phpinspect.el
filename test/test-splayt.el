@@ -184,3 +184,21 @@
     (phpinspect-splayt-insert tree 1 "one")
 
     (should (equal '("three" "four") (phpinspect-splayt-find-all-between tree 1 5)))))
+
+(ert-deftest phpinspect-splayt-delete ()
+  (let ((tree (phpinspect-make-splayt)))
+    (phpinspect-splayt-insert tree 4 "four")
+    (phpinspect-splayt-insert tree 3 "three")
+    (phpinspect-splayt-insert tree 1 "one")
+    (phpinspect-splayt-insert tree 2 "two")
+
+
+    (should (equal '("one" "two" "three" "four") (phpinspect-splayt-to-list tree)))
+
+    (phpinspect-splayt-delete tree 3)
+    (should (equal '("one" "two" "four") (phpinspect-splayt-to-list tree)))
+    (phpinspect-splayt-delete tree 1)
+    (should (equal '("two" "four") (phpinspect-splayt-to-list tree)))
+
+    (phpinspect-splayt-delete tree 4)
+    (should (equal '("two") (phpinspect-splayt-to-list tree)))))

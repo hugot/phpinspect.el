@@ -109,29 +109,34 @@ edits does not count as fresh (because incremental parsing has its flaws)."
 (cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer) &optional no-interrupt)
   "Parse the PHP code in the the emacs buffer that this object is
 linked with."
-  (let ((tree))
-  (if (phpinspect-buffer-needs-parse-p buffer)
-      (with-current-buffer (phpinspect-buffer-buffer buffer)
-        (let* ((map (phpinspect-make-bmap))
-               (buffer-map (phpinspect-buffer-map buffer))
-               (ctx (phpinspect-make-pctx
-                     :interrupt-predicate (unless no-interrupt #'phpinspect--input-pending-p)
-                     :bmap map
-                     :incremental t
-                     :previous-bmap buffer-map
-                     :edtrack (phpinspect-buffer-edit-tracker buffer))))
-          (phpinspect-with-parse-context ctx
-            (phpinspect--log "Parsing buffer")
-            (let ((parsed (phpinspect-parse-current-buffer)))
-              (setf (phpinspect-buffer-map buffer) map)
-              (setf (phpinspect-buffer-tree buffer) parsed)
-              (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
+  (let (tree)
+    (if (phpinspect-buffer-needs-parse-p buffer)
+        (with-current-buffer (phpinspect-buffer-buffer buffer)
+          (let* ((map (phpinspect-make-bmap))
+                 (buffer-map (phpinspect-buffer-map buffer))
+                 (ctx (phpinspect-make-pctx
+                       :interrupt-predicate (unless no-interrupt #'phpinspect--input-pending-p)
+                       :bmap map
+                       :incremental t
+                       :previous-bmap buffer-map
+                       :edtrack (phpinspect-buffer-edit-tracker buffer))))
+            (phpinspect-with-parse-context ctx
+              (phpinspect--log "Parsing buffer")
+              (let ((parsed (phpinspect-parse-current-buffer)))
+                ;; Inhibit quitting to guarantee data integrity
+                (let ((inhibit-quit t))
+                  (setf (phpinspect-buffer-map buffer) map)
+                  (setf (phpinspect-buffer-tree buffer) parsed)
+                  (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
+                  (when-let ((buffer-map)
+                             (root-meta (phpinspect-bmap-root-meta buffer-map)))
+                    (phpinspect-meta-delete root-meta))
 
-              ;; set return value
-              (setq tree parsed)))))
-    ;; Else: Just return last parse result
-    (setq tree (phpinspect-buffer-tree buffer)))
-  tree))
+                  ;; set return value
+                  (setq tree parsed))))))
+      ;; Else: Just return last parse result
+      (setq tree (phpinspect-buffer-tree buffer)))
+    tree))
 
 (cl-defmethod phpinspect-buffer-get-index-for-token ((buffer phpinspect-buffer) token)
   (gethash token (phpinspect-buffer-token-index buffer)))

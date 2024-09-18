@@ -36,12 +36,14 @@
 
     (setq toc (phpinspect-make-toc tokens))
 
-    (phpinspect-meta-set-parent tok2 new-root)
-    (phpinspect-meta-set-parent tok3 new-root)
-    (phpinspect-meta-set-parent tok4 new-root)
+    (dolist (tok (list tok2 tok3 tok4))
+      (phpinspect-meta-detach-parent tok)
+      (phpinspect-meta-set-parent tok new-root))
 
     (setq new-tokens (phpinspect-make-splayt))
     (phpinspect-splayt-insert new-tokens 71 tok4)
+
+    (phpinspect-meta-delete root)
 
     (pcase-let ((`(,result-new ,result-deleted) (phpinspect-toc-update toc new-tokens new-root)))
       (should (= 1 (length result-new)))

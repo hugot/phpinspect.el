@@ -54,10 +54,9 @@
 (require 'phpinspect-splayt)
 
 (define-inline phpinspect-make-meta
-  (parent start end whitespace-before token &optional overlay children parent-offset)
+  (parent start end whitespace-before token &optional overlay children parent-offset deleted)
   (inline-quote (list 'meta ,parent ,start ,end ,whitespace-before ,token ,overlay
-                      ;;,children ,parent-offset)))
-                      (or ,children (phpinspect-make-splayt)) ,parent-offset)))
+                      (or ,children (phpinspect-make-splayt)) ,parent-offset ,deleted)))
 
 (define-inline phpinspect-meta-parent (meta)
   (inline-quote (cadr ,meta)))
@@ -79,6 +78,9 @@
 
 (define-inline phpinspect-meta-whitespace-before (meta)
   (inline-quote (car (cddddr ,meta))))
+
+(define-inline phpinspect-meta-deleted (meta)
+  (inline-quote (car (nthcdr 9 ,meta))))
 
 (define-inline phpinspect-meta-parent-start (meta)
   "Calculate parent start position iteratively based on parent offsets."
@@ -161,6 +163,11 @@
   (inline-letevals (meta)
     (inline-quote
      (when (phpinspect-meta-parent ,meta)
+       ;; Delete self from parent
+       (phpinspect-splayt-delete
+        (phpinspect-meta-children (phpinspect-meta-parent ,meta))
+        (phpinspect-meta-parent-offset ,meta))
+
        ;; Update absolute start and end
        (setf (phpinspect-meta-absolute-end ,meta) (phpinspect-meta-end ,meta))
        ;; Note: start should always be updated after end, as end is derived from
@@ -275,6 +282,13 @@
     (phpinspect-splayt-traverse-lr (child (phpinspect-meta-children meta))
       (when (funcall predicate (phpinspect-meta-token child))
         (throw 'return child)))))
+
+(defun phpinspect-meta-delete (meta)
+  "Mark META and all of its children as deleted."
+  (named-let meta-delete ((meta meta))
+    (setf (phpinspect-meta-deleted meta) t)
+    (phpinspect-splayt-traverse-lr (child (phpinspect-meta-children meta))
+      (meta-delete child))))
 
 (cl-defmethod phpinspect-meta-last-child ((meta (head meta)))
   (phpinspect-meta-find-child-before meta (phpinspect-meta-end meta)))

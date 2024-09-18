@@ -59,11 +59,11 @@
       (push meta new))
 
     (phpinspect-splayt-traverse-lr (meta current-tree)
-      (if (eq (phpinspect-meta-find-root meta) current-root)
-          (progn
-            (phpinspect-splayt-insert new-tree (phpinspect-meta-start meta) meta)
-            (puthash (phpinspect-meta-token meta) meta new-table))
-        (push meta deleted)))
+      (if (phpinspect-meta-deleted meta)
+          (push meta deleted)
+        (progn
+          (phpinspect-splayt-insert new-tree (phpinspect-meta-start meta) meta)
+          (puthash (phpinspect-meta-token meta) meta new-table))))
 
     (setf (phpinspect-toc-tree toc) new-tree)
     (setf (phpinspect-toc-table toc) new-table)

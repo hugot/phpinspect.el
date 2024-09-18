@@ -407,66 +407,49 @@ use CCC;
           (should (= (+ delta 71) (phpinspect-meta-end 2nd-sibling)))))))))))
 
 (ert-deftest phpinspect-buffer-index-classes ()
-  (let* ((buffer (phpinspect-make-buffer :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))
-         (namespaces (phpinspect-make-splayt))
-         (declarations (phpinspect-make-splayt))
-         (classes (phpinspect-make-splayt))
-         (root (phpinspect-make-meta nil 1 200 "" 'root)))
-    (phpinspect-splayt-insert
-     namespaces 1 (phpinspect-meta-set-parent
-                   (phpinspect-make-meta nil 1 100 "" '(:namespace (:word "TestNamespace") (:terminator ";")))
-                   root))
-    (phpinspect-splayt-insert
-     declarations 20
-     (phpinspect-make-meta nil 20 40 "" '(:declaration (:word "class") (:word "TestClass") (:word "extends") (:word "OtherTestClass"))))
+  (with-temp-buffer
+
+    (let* ((buffer (phpinspect-claim-buffer (current-buffer) (phpinspect--make-dummy-project))))
+      (insert "<?php
+namespace TestNamespace;
+
+/* final */ class TestClass extends OtherTestClass {}")
+
+      (phpinspect-buffer-parse buffer)
+      (phpinspect-buffer-update-project-index buffer)
 
 
-    (phpinspect-splayt-insert classes 20 (phpinspect-make-meta nil 20 80 "" '(:class (:comment "bla") '(:declaration (:word "class") (:word "TestClass") (:word "extends") (:word "OtherTestClass")))))
+      (should (phpinspect-project-get-typedef (phpinspect-buffer-project buffer) (phpinspect--make-type :name "\\TestNamespace\\TestClass")))
 
-    (phpinspect-buffer-index-declarations buffer declarations)
-    (phpinspect-buffer-index-namespaces buffer namespaces)
-    (phpinspect-buffer-index-classes buffer classes)
+      (should (= 2 (hash-table-count (phpinspect-project-typedef-index (phpinspect-buffer-project buffer)))))
+      (should (= 1 (length (phpi-typedef-subscribed-to-types
+                            (phpinspect-project-get-typedef
+                             (phpinspect-buffer-project buffer)
+                             (phpinspect--make-type :name "\\TestNamespace\\TestClass"))))))
 
-    (should (phpinspect-project-get-typedef (phpinspect-buffer-project buffer) (phpinspect--make-type :name "\\TestNamespace\\TestClass")))
 
-    (should (= 2 (hash-table-count (phpinspect-project-typedef-index (phpinspect-buffer-project buffer)))))
-    (should (= 1 (length (phpi-typedef-subscribed-to-types
-                          (phpinspect-project-get-typedef
-                           (phpinspect-buffer-project buffer)
-                           (phpinspect--make-type :name "\\TestNamespace\\TestClass"))))))
+      (goto-char (point-min))
+      ;; Delete extends
+      (search-forward "extends")
+      (backward-word)
+      (kill-word 2)
 
-    (let ((new-declarations (phpinspect-make-splayt))
-          (new-classes (phpinspect-make-splayt)))
-      (phpinspect-splayt-insert
-       new-declarations
-       20
-       (phpinspect-meta-set-parent
-        (phpinspect-make-meta nil 20 40 "" '(:declaration (:word "class") (:word "TestClass")))
-        root))
+      (phpinspect-buffer-parse buffer)
+      (phpinspect-buffer-update-project-index buffer)
 
-      (phpinspect-splayt-insert
-       new-classes 20
-       (phpinspect-meta-set-parent
-        (phpinspect-make-meta nil 20 80 "" '(:class (:comment "bla") '(:declaration (:word "class") (:word "TestClass"))))
-        root))
-
-      (setf (phpinspect-buffer-map buffer) (phpinspect-make-bmap :-root-meta root))
-
-      (phpinspect-buffer-index-declarations buffer new-declarations)
-      (phpinspect-buffer-index-classes buffer new-classes)
       (should (phpinspect-project-get-typedef
                (phpinspect-buffer-project buffer)
                (phpinspect--make-type :name "\\TestNamespace\\TestClass")))
 
       (should (= 0 (length (phpi-typedef-subscribed-to-types
-                          (phpinspect-project-get-typedef
-                           (phpinspect-buffer-project buffer)
-                           (phpinspect--make-type :name "\\TestNamespace\\TestClass")))))))
+                            (phpinspect-project-get-typedef
+                             (phpinspect-buffer-project buffer)
+                             (phpinspect--make-type :name "\\TestNamespace\\TestClass"))))))
 
-    (let ((new-classes (phpinspect-make-splayt))
-          (new-root (phpinspect-make-meta nil 1 400 "" 'new-root)))
-      (setf (phpinspect-bmap--root-meta (phpinspect-buffer-map buffer)) new-root)
-      (phpinspect-buffer-index-classes buffer new-classes)
+      ;; Delete class entirely
+      (delete-line)
+      (phpinspect-buffer-parse buffer)
+      (phpinspect-buffer-update-project-index buffer)
 
       (should-not (phpinspect-project-get-typedef
                    (phpinspect-buffer-project buffer)
@@ -476,9 +459,9 @@ use CCC;
 
 (ert-deftest phpinspect-buffer-index-functions ()
   (with-temp-buffer
-    (let ((buffer (phpinspect-make-buffer
-                   :buffer (current-buffer)
-                   :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader)))))
+    (let ((buffer (phpinspect-claim-buffer
+                   (current-buffer)
+                   (phpinspect--make-project :autoload (phpinspect-make-autoloader)))))
       (insert "<?php
 namespace NS;
 
@@ -498,9 +481,12 @@ class TestClass
                              (phpinspect-buffer-project buffer)
                              (phpinspect--make-type :name "\\NS\\TestClass"))))))
 
-      (setf (phpinspect-buffer-map buffer) (phpinspect-make-bmap :-root-meta (phpinspect-make-meta nil 1 400 "" 'root)))
+      (goto-char (point-min))
+      (search-forward "function")
+      (delete-line)
 
-      (phpinspect-buffer-index-functions buffer (phpinspect-make-splayt))
+      (phpinspect-buffer-parse buffer)
+      (phpinspect-buffer-update-project-index buffer)
 
       (should (= 0 (length (phpi-typedef-get-methods
                             (phpinspect-project-get-typedef

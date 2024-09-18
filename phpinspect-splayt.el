@@ -411,6 +411,47 @@ The PLACE is assigned the value of each node.
 
        largest))))
 
+(define-inline phpinspect-splayt-node-find-max (node)
+  (inline-quote
+   (let ((current ,node))
+     (while (phpinspect-splayt-node-right current)
+       (setq current (phpinspect-splayt-node-right current)))
+     current)))
+
+(defun phpinspect-splayt-delete-node (splayt node)
+  (phpinspect-splay nil node)
+
+  ;; split into right and left tree
+  (let* ((left (phpinspect-splayt-node-left node))
+         (right (phpinspect-splayt-node-right node)))
+    (when left
+      (setf (phpinspect-splayt-node-parent left) nil))
+
+    (when right
+      (setf (phpinspect-splayt-node-parent right) nil))
+
+    (if left
+        (progn
+          (setq left (phpinspect-splayt-node-find-max left))
+          ;; Splay max of left tree
+          (phpinspect-splay nil left)
+
+          ;; Make max the new root
+          (when right
+            (setf (phpinspect-splayt-node-parent right) left
+                  (phpinspect-splayt-node-right left) right))
+          (setf (phpinspect-splayt-root-node splayt) left))
+      ;; No left node, right becomes root.
+      (setf (phpinspect-splayt-root-node splayt) right))
+
+    ;; Return deleted node
+    node))
+
+(defun phpinspect-splayt-delete (splayt key)
+  (let ((node (phpinspect-splayt-find-node splayt key)))
+    (when node
+      (phpinspect-splayt-node-value (phpinspect-splayt-delete-node splayt node)))))
+
 (defun phpinspect-splayt-find-all-after (splayt key)
   "Find all values in SPLAYT with a key higher than KEY."
   (let* ((first (phpinspect-splayt-find-smallest-node-after splayt key))
