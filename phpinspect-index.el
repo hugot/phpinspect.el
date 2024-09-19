@@ -351,7 +351,7 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
               (setq used-types additional-used-types))))
 
     (pcase-setq `(,class-name ,extends ,implements ,used-types)
-                (phpinspect--index-class-declaration (cadr class) type-resolver))
+                (phpinspect--index-class-declaration (cadr class) type-resolver class))
 
 
     (dolist (token (caddr class))

@@ -24,13 +24,13 @@
 ;;; Code:
 
 
-(define-inline phpinspect-token-type-p (object type)
+(define-inline phpinspect-token-type-p (object &rest types)
   "Returns t if OBJECT is a token of type TYPE.
 Type can be any of the token types returned by
 `phpinspect-parse-buffer-until-point`"
   (inline-letevals (object)
     (inline-quote
-     (and (eq (car-safe ,object) ,type)))))
+     (memq (car-safe ,object) ,(cons 'list types)))))
 
 (define-inline phpinspect-object-attrib-p (token)
   (inline-quote
@@ -133,7 +133,13 @@ Type can be any of the token types returned by
   (inline-quote (phpinspect-token-type-p ,token :function)))
 
 (define-inline phpinspect-class-p (token)
-  (inline-quote (phpinspect-token-type-p ,token :class)))
+  (inline-quote (phpinspect-token-type-p ,token :class :interface :trait :enum)))
+
+(define-inline phpinspect-implements-p (token)
+  (inline-quote (phpinspect-token-type-p ,token :implements)))
+
+(define-inline phpinspect-extends-p (token)
+  (inline-quote (phpinspect-token-type-p ,token :extends)))
 
 (defun phpinspect-not-list-p (token)
   (not (phpinspect-list-p token)))

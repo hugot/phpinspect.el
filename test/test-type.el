@@ -36,3 +36,20 @@
                 (phpinspect--make-type :name "\\AType"))
 
                (phpinspect--make-type :name (cdr set)))))))
+
+(ert-deftest phpinspect--index-class-declaration ()
+  (let* ((class (cadr (phpinspect-parse-string "class A extends B implements C, D {}")))
+         (declaration (cadr class)))
+
+
+    (should (equal '(:class-declaration (:word "A")
+                                        (:extends) (:word "B")
+                                        (:implements) (:word "C") (:comma ",") (:word "D"))
+                   declaration))
+
+    (pcase-let ((`(,name ,extends ,implements ,used-types)
+                 (phpinspect--index-class-declaration declaration (phpinspect--make-type-resolver nil) class)))
+      (should (phpinspect--type= (phpinspect--make-type :name "\\A") name))
+      (should (length= extends 1))
+      (should (length= implements 2))
+      (should (length= used-types 3)))))

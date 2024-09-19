@@ -58,6 +58,9 @@
   (inline-quote (list 'meta ,parent ,start ,end ,whitespace-before ,token ,overlay
                       (or ,children (phpinspect-make-splayt)) ,parent-offset ,deleted)))
 
+(define-inline phpinspect-meta-p (meta)
+  (inline-quote (eq 'meta (car-safe ,meta))))
+
 (define-inline phpinspect-meta-parent (meta)
   (inline-quote (cadr ,meta)))
 

@@ -284,8 +284,9 @@ root token, in string form without \":\" prefix.")
                       attribute-reference variable
                       assignment-operator whitespace scope-keyword
                       static-keyword const-keyword use-keyword
-                      class-keyword function-keyword word terminator
-                      here-doc string string-concatenator comment block)
+                      class-keyword interface-keyword trait-keyword enum-keyword
+                      function-keyword word terminator here-doc string
+                      string-concatenator comment block)
               :type list
               :read-only t
               :documentation "A list of symbols referring to the
@@ -790,6 +791,21 @@ Returns the consumed text string without face properties."
                                    nil t)
                 (buffer-substring-no-properties start-point (- (point) 1)))))))))
 
+(phpinspect-defhandler extends-keyword (start-token &rest _max-point)
+  "Handler for the extends keyword in a class declaration."
+  ((regexp . (concat "extends" (phpinspect--word-end-regex))))
+  (phpinspect--skip-over-word start-token)
+  '(:extends))
+
+(phpinspect-defhandler implements-keyword (start-token &rest _max-point)
+  "Handler for the implements keyword in a class declaration."
+  ((regexp . (concat "implements" (phpinspect--word-end-regex))))
+  (phpinspect--skip-over-word start-token)
+  '(:implements))
+
+(phpinspect-defparser class-declaration
+  :tree-keyword "class-declaration"
+  :handlers '(comment extends-keyword implements-keyword comma word list terminator tag))
 
 (phpinspect-defparser declaration
   :tree-keyword "declaration"
@@ -889,23 +905,58 @@ Returns the consumed text string without face properties."
       (setcar token :incomplete-array))
     token))
 
+(define-inline phpinspect--parse-type-declaration (max-point)
+  (inline-quote
+   (phpinspect--parse-class-declaration
+    (current-buffer)
+    ,max-point
+    nil
+    (lambda () (not (char-equal (char-after) ?{)))
+    'root)))
+
+(define-inline phpinspect--skip-over-word (word-plus-whitespace)
+  (inline-quote
+   (forward-char (length (phpinspect--strip-word-end-space ,word-plus-whitespace)))))
+
+(phpinspect-defhandler final-keyword (start-token &rest _max-point)
+  "Handler for the final keyword."
+  ((regexp . (concat "final" (phpinspect--word-end-regex))))
+  (phpinspect--skip-over-word start-token)
+  '(:final))
+
+(phpinspect-defhandler abstract-keyword (start-token &rest _max-point)
+  "Handler for the abstract keyword."
+  ((regexp . (concat "abstract" (phpinspect--word-end-regex))))
+  (phpinspect--skip-over-word start-token)
+  '(:abstract))
+
+(phpinspect-defhandler interface-keyword (start-token max-point)
+  "Handler for the interface keyword."
+  ((regexp . (concat "interface" (phpinspect--word-end-regex))))
+  (phpinspect--skip-over-word start-token)
+  `(:interface ,(phpinspect--parse-type-declaration max-point)
+               ,@(cdr (phpinspect--parse-class-body (current-buffer) max-point nil))))
+
+(phpinspect-defhandler trait-keyword (start-token max-point)
+  "Handler for the interface keyword."
+  ((regexp . (concat "trait" (phpinspect--word-end-regex))))
+  (phpinspect--skip-over-word start-token)
+  `(:trait ,(phpinspect--parse-type-declaration max-point)
+           ,@(cdr (phpinspect--parse-class-body (current-buffer) max-point nil))))
+
+(phpinspect-defhandler enum-keyword (start-token max-point)
+  "Handler for the interface keyword."
+  ((regexp . (concat "enum" (phpinspect--word-end-regex))))
+  (phpinspect--skip-over-word start-token)
+  `(:enum ,(phpinspect--parse-type-declaration max-point)
+          ,@(cdr (phpinspect--parse-class-body (current-buffer) max-point nil))))
+
 (phpinspect-defhandler class-keyword (start-token max-point)
   "Handler for the class keyword, and tokens that follow to define
 the properties of the class"
-  ;; FIXME: "case" keyworded enum cases are not recognized/parsed into anything
-  ;; other than "word" tokens. Enums might require a different (specialized)
-  ;; handler to parse into an indexable tree. For now, this works to get basic
-  ;; functionality (enum methods) as enum case support hasn't been implemented
-  ;; yet.
-  ((regexp . (concat "\\(abstract\\|final\\|class\\|interface\\|trait\\|enum\\)"
-                     (phpinspect--word-end-regex))))
-  (setq start-token (phpinspect--strip-word-end-space start-token))
-  `(:class ,(phpinspect--parse-declaration
-                (current-buffer)
-                max-point
-                nil
-                (lambda () (not (char-equal (char-after) ?{)))
-                'root)
+  ((regexp . (concat "class" (phpinspect--word-end-regex))))
+  (phpinspect--skip-over-word start-token)
+  `(:class ,(phpinspect--parse-type-declaration max-point)
            ,@(cdr (phpinspect--parse-class-body (current-buffer) max-point nil))))
 
 (phpinspect-defparser class-body
@@ -921,6 +972,7 @@ the properties of the class"
   :handlers '(namespace array equals list comma attribute-reference variable
                         assignment-operator whitespace scope-keyword
                         static-keyword const-keyword use-keyword class-keyword
+                        interface-keyword trait-keyword enum-keyword
                         function-keyword word terminator here-doc string string-concatenator
                         comment tag block))
 

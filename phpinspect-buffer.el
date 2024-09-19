@@ -278,12 +278,16 @@ linked with."
     (list imports namespace-name)))
 
 (defun phpinspect--buffer-update-type-declaration (buffer typedef declaration class-token imports namespace-name)
+  (cl-assert (phpinspect-meta-p declaration))
+
   (phpi-typedef-update-declaration
-   typedef declaration imports namespace-name
+   typedef (phpinspect-meta-token declaration) imports namespace-name
    (phpinspect-buffer-get-trait-configuration-between-points
     buffer (phpinspect-meta-start class-token) (phpinspect-meta-end class-token)
     (phpinspect--make-type-resolver
-     imports (phpinspect-class-block (phpinspect-meta-token class-token)) namespace-name))))
+     imports (phpinspect-class-block (phpinspect-meta-token class-token)) namespace-name))
+   (thread-last (phpinspect-meta-parent declaration)
+                (phpinspect-meta-token))))
 
 (cl-defmethod phpinspect-buffer-index-classes ((buffer phpinspect-buffer) (classes (head phpinspect-splayt)))
   (let ((declarations (phpinspect-buffer-declarations buffer))
@@ -327,7 +331,9 @@ linked with."
                                             (phpinspect--make-type-resolver
                                              (phpinspect--uses-to-types imports)
                                              (phpinspect-class-block (phpinspect-meta-token (cdr class)))
-                                             namespace-name)))
+                                             namespace-name)
+                                            (thread-last (phpinspect-meta-parent declaration)
+                                                         (phpinspect-meta-token))))
                 (when class-name
                   (setq  class-obj (phpinspect-project-get-typedef-create project class-name 'no-enqueue))
                   (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token (cdr class)) class-obj)
@@ -343,13 +349,15 @@ linked with."
                                       (phpinspect--make-type-resolver
                                        (phpinspect--uses-to-types imports)
                                        (phpinspect-class-block (phpinspect-meta-token class))
-                                       namespace-name)))
+                                       namespace-name)
+                                      (thread-last (phpinspect-meta-parent declaration)
+                                                   (phpinspect-meta-token))))
                      (class-obj))
           (when class-name
             (setq class-obj (phpinspect-project-get-typedef-create project class-name 'no-enqueue))
             (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token class) class-obj)
             (phpinspect--buffer-update-type-declaration
-             buffer class-obj (phpinspect-meta-token declaration) class imports namespace-name)))))))
+             buffer class-obj declaration class imports namespace-name)))))))
 
 (cl-defmethod phpinspect-buffer-index-functions ((buffer phpinspect-buffer) (functions (head phpinspect-splayt)))
   (let ((classes (phpinspect-buffer-classes buffer))

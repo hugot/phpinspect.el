@@ -354,7 +354,7 @@ TYPE must be a structure of type `phpinspect--type'."
         (phpi-mcol-set-home-type (phpi-typedef-static-methods def) type)
 	(phpi-pcol-set-home-type (phpi-typedef-properties def) type)))))
 
-(defun phpi-typedef-update-declaration (def declaration imports namespace-name trait-config)
+(defun phpi-typedef-update-declaration (def declaration imports namespace-name trait-config parent)
   "Update declaration of DEF.
 
 DECLARATION must be a token of type `phpinspect-declaration-p`.
@@ -371,7 +371,8 @@ TRAIT-CONFIG must be a trait configuration as returned by
     (pcase-let ((`(,type ,extends ,implements ,_used-types)
                  (phpinspect--index-class-declaration
                   declaration (phpinspect--make-type-resolver
-                               (phpinspect--uses-to-types imports) nil namespace-name))))
+                               (phpinspect--uses-to-types imports) nil namespace-name)
+                  parent)))
       (phpi-typedef-set-name def type)
       (setf (phpi-typedef-declaration def) declaration)
       (phpi-typedef-update-extensions

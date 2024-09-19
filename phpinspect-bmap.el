@@ -32,6 +32,8 @@
 (require 'phpinspect-token-predicates)
 
 (eval-when-compile
+  (require 'cl-macs)
+
   (defvar phpinspect-parse-context nil
     "dummy for compilation")
 
@@ -40,6 +42,8 @@
   (phpinspect--declare-log-group 'bmap))
 
 (cl-defstruct (phpinspect-bmap (:constructor phpinspect-make-bmap))
+  "A bmap, short for buffer-map, is a structure whose purpose is to
+map parsed tokens to metadata about them and vice versa."
   (starts (make-hash-table :test #'eql
                            :size (floor (/ (point-max) 2))
                            :rehash-size 1.5))
@@ -48,7 +52,8 @@
                            :rehash-size 1.5))
   (meta (make-hash-table :test #'eq
                            :size (floor (/ (point-max) 2))
-                           :rehash-size 1.5))
+                           :rehash-size 1.5)
+        :documentation "A hash-table containing all newly registered tokens.")
   (token-stack nil
                :type list)
   (overlays (phpinspect-make-splayt)

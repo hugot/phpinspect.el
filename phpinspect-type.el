@@ -408,48 +408,36 @@ mutability of the variable")
                             (cadr class-token))))
     (cadr subtoken)))
 
-(defun phpinspect--index-class-declaration (decl type-resolver)
+(defun phpinspect--index-class-declaration (decl type-resolver parent)
   ;; Find out what the class extends or implements
   (let (keyword encountered-extends encountered-implements encountered-class
         class-name extends implements used-types)
     (dolist (word decl)
-      (if (phpinspect-word-p word)
-          (cond ((string= (cadr word) "extends")
-                 (phpinspect--log "Class %s extends other classes" class-name)
-                 (setq encountered-extends t))
-                ((string= (cadr word) "implements")
-                 (setq encountered-extends nil)
-                 (phpinspect--log "Class %s implements in interface" class-name)
-                 (setq encountered-implements t))
-                ((string-match-p
-                  (eval-when-compile
-                    (concat "^" (phpinspect--class-keyword-handler-regexp) "?$"))
-                  (cadr word))
-                 (setq keyword word
-                       encountered-class t))
-                (t
-                 (phpinspect--log "Calling Resolver from index-class on %s" (cadr word))
-                 (cond (encountered-extends
-                        (push (funcall type-resolver (phpinspect--make-type
-                                                      :name (cadr word)))
-                              extends)
-                        (push (cadr word) used-types))
-                       (encountered-implements
-                        (push (funcall type-resolver (phpinspect--make-type
-                                                      :name (cadr word)))
-                              implements)
-                        (push (cadr word) used-types))
-                       (encountered-class
-                        (setq class-name
-                              (funcall type-resolver (phpinspect--make-type
-                                                      :category (pcase (cadr keyword)
-                                                                  ("class" 'class)
-                                                                  ("trait" 'trait)
-                                                                  ("interface" 'interface)
-                                                                  ("enum" 'enum)
-                                                                  (_ 'class))
-                                                      :name (cadr word)))
-                              encountered-class nil)))))))
+      (cond ((phpinspect-word-p word)
+             (cond (encountered-implements
+                    (push (funcall type-resolver (phpinspect--make-type
+                                                  :name (cadr word)))
+                          implements)
+                    (push (cadr word) used-types))
+                   (encountered-extends
+                    (push (funcall type-resolver (phpinspect--make-type
+                                                  :name (cadr word)))
+                          extends)
+                    (push (cadr word) used-types))
+                   (t
+                    (setq class-name
+                          (funcall type-resolver (phpinspect--make-type
+                                                  :category (pcase (car parent)
+                                                              (:class 'class)
+                                                              (:trait 'trait)
+                                                              (:interface 'interface)
+                                                              (:enum 'enum)
+                                                              (_ 'class))
+                                                  :name (cadr word)))))))
+            ((phpinspect-extends-p word)
+             (setq encountered-extends t))
+            ((phpinspect-implements-p word)
+             (setq encountered-implements t))))
 
     (list class-name extends implements used-types)))
 
