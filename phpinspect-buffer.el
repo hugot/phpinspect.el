@@ -27,7 +27,6 @@
 (require 'phpinspect-bmap)
 (require 'phpinspect-edtrack)
 (require 'phpinspect-index)
-(require 'phpinspect-toc)
 (require 'phpinspect-resolvecontext)
 (require 'phpinspect-resolve)
 (require 'phpinspect-util)
