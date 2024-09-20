@@ -150,7 +150,7 @@ class TestClass {
 
     (should tree)
     (should (equal
-             '(:root (:class (:declaration (:word "class") (:word "A"))
+             '(:root (:class (:class-declaration (:word "A"))
                              (:block
                               (:use-trait (:word "B") (:comma ",") (:word "C")
                                           (:block
@@ -167,9 +167,8 @@ interface Test
     public static function __callStatic($method, $parameters);
 }"))
         (expected '(:root
-                    (:class
-                     (:declaration
-                      (:word "interface")
+                    (:interface
+                     (:class-declaration
                       (:word "Test"))
                      (:block
                       (:public

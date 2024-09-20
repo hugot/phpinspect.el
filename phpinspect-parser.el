@@ -631,13 +631,13 @@ nature like argument lists"
   (forward-char (length start-token))
   (phpinspect--parse-use-trait (current-buffer) max-point))
 
-
 (phpinspect-defhandler attribute-reference (start-token &rest _ignored)
   "Handler for references to object attributes, or static class attributes."
   ((regexp . "->\\|::"))
   (forward-char (length start-token))
   (looking-at (phpinspect-handler-regexp word))
   (let ((name (if (looking-at (phpinspect-handler-regexp word))
+                  ;; FIXME: This word is not registered when parsing incrementally.
                   (phpinspect--word-handler (match-string 0))
                 nil)))
     (cond

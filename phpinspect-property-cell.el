@@ -181,8 +181,9 @@ When NAME is provided, only property with NAME is deleted."
 (defun phpi-prop-vanilla-p (prop)
   (phpinspect--variable-vanilla-p (phpi-prop-definition prop)))
 
-(defun phpi-prop-type (prop)
-  (phpinspect--variable-type (phpi-prop-definition prop)))
+(define-inline phpi-prop-type (prop)
+  (inline-quote
+   (phpinspect--variable-type (phpi-prop-definition ,prop))))
 
 (defun phpi-prop-scope (prop)
   (phpinspect--variable-scope (phpi-prop-definition prop)))

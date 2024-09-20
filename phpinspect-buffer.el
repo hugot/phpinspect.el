@@ -65,7 +65,7 @@ emacs buffer."
 
 (defmacro phpinspect-buffer--query-with-cache (buffer label &rest body)
   (declare (indent 2))
-  `(with-memoization (gethash ,label (phpinspect-buffer--query-cache buffer))
+  `(with-memoization (gethash ,label (phpinspect-buffer--query-cache ,buffer))
      ,@body))
 
 (defun phpinspect-buffer--clear-query-cache (buffer)
@@ -246,341 +246,6 @@ linked with."
                     (error "invalid index location")))))
         (t (error "Cannot delete index for token %s" token))))
 
-;; (cl-defmethod phpinspect-buffer-namespace-at-point ((buffer phpinspect-buffer) (point integer))
-;;   (let ((namespace (phpinspect-splayt-find-largest-before
-;;                     (phpinspect-toc-tree (phpinspect-buffer-namespaces buffer))
-;;                     point)))
-;;     (and namespace (phpinspect-meta-overlaps-point namespace point) namespace)))
-
-;; (defun phpinspect-buffer-get-type-resolver-for-class (buffer class-token)
-;;   (pcase-let* ((`(,imports ,namespace-name)
-;;                 (phpinspect-get-token-index-context
-;;                  (phpinspect-buffer-namespaces buffer)
-;;                  (phpinspect-buffer-imports buffer)
-;;                  class-token)))
-;;     (phpinspect--make-type-resolver
-;;      imports
-;;      (phpinspect-class-block (phpinspect-meta-token class-token))
-;;      namespace-name)))
-
-
-
-;; (cl-defmethod phpinspect-buffer-index-used-traits ((buffer phpinspect-buffer) (uses (head phpinspect-splayt)))
-;;   (let ((update t))
-;;     (if (phpinspect-buffer-used-traits buffer)
-;;         (pcase-let ((`(,new ,deleted)
-;;                      (phpinspect-toc-update
-;;                       (phpinspect-buffer-used-traits buffer) uses)))
-;;           (unless (or new deleted)
-;;             ;; Nothing changed, don't update
-;;             (setq update nil)))
-;;       (setf (phpinspect-buffer-used-traits buffer) (phpinspect-make-toc uses)))
-
-;;     (when update
-;;       (let ((class-toc (phpinspect-buffer-classes buffer)))
-;;         (phpinspect-splayt-traverse-lr (class (phpinspect-toc-tree class-toc))
-;;           (let ((config (phpinspect-buffer-get-trait-configuration-between-points
-;;                          buffer (phpinspect-meta-start class) (phpinspect-meta-end class)
-;;                          (phpinspect-buffer-get-type-resolver-for-class buffer class))))
-
-;;             (when-let ((typedef (phpinspect-buffer-get-index-for-token buffer (phpinspect-meta-token class))))
-;;               (let ((new-extensions (seq-uniq (append
-;;                                                (phpi-typedef-set-trait-config typedef config)
-;;                                                (phpi-typedef-subscribed-to-types typedef))
-;;                                               #'phpinspect--type=)))
-;;                 (phpi-typedef-update-extensions typedef new-extensions)))))))))
-
-;; (defun phpinspect-buffer-get-trait-configuration-between-points (buffer start end type-resolver)
-;;   (let ((uses (phpinspect-toc-tokens-in-region (phpinspect-buffer-used-traits buffer) start end))
-;;         config)
-;;     (dolist (use uses)
-;;       (setq config (nconc config (phpinspect--index-trait-use (phpinspect-meta-token use) type-resolver nil))))
-
-;;     config))
-
-;; (cl-defmethod phpinspect-buffer-index-imports ((buffer phpinspect-buffer) (imports (head phpinspect-splayt)))
-;;   (let (to-be-indexed)
-;;     (if (phpinspect-buffer-imports buffer)
-;;         (pcase-let* ((`(,new) (phpinspect-toc-update
-;;                                (phpinspect-buffer-imports buffer) imports)))
-;;           (setq to-be-indexed new))
-;;       (setq to-be-indexed (phpinspect-splayt-to-list imports))
-;;       (setf (phpinspect-buffer-imports buffer) (phpinspect-make-toc imports)))
-
-;;     (phpinspect-project-enqueue-imports
-;;      (phpinspect-buffer-project buffer)
-;;      (phpinspect--uses-to-types (mapcar #'phpinspect-meta-token to-be-indexed)))))
-
-;; (cl-defmethod phpinspect-buffer-index-namespaces ((buffer phpinspect-buffer) (namespaces (head phpinspect-splayt)))
-;;   (if (phpinspect-buffer-namespaces buffer)
-;;       (phpinspect-toc-update (phpinspect-buffer-namespaces buffer) namespaces)
-;;     (setf (phpinspect-buffer-namespaces buffer) (phpinspect-make-toc namespaces))))
-
-;; (cl-defmethod phpinspect-buffer-index-declarations ((buffer phpinspect-buffer) (declarations (head phpinspect-splayt)))
-;;   (if (phpinspect-buffer-declarations buffer)
-;;       (phpinspect-toc-update (phpinspect-buffer-declarations buffer) declarations)
-;;     (setf (phpinspect-buffer-declarations buffer) (phpinspect-make-toc declarations))))
-
-;; (defun phpinspect-get-token-index-context (namespaces all-imports meta)
-;;   (let ((namespace (phpinspect-toc-token-at-point namespaces (phpinspect-meta-start meta)))
-;;         namespace-name imports)
-;;     (if namespace
-;;         (progn
-;;           (setq namespace-name (phpinspect-namespace-name (phpinspect-meta-token namespace))
-;;                 imports (mapcar #'phpinspect-meta-token
-;;                                 (phpinspect-toc-tokens-in-region
-;;                                  all-imports (phpinspect-meta-start namespace) (phpinspect-meta-start meta)))))
-;;       (setq namespace-name nil
-;;             imports (mapcar #'phpinspect-meta-token
-;;                             (phpinspect-toc-tokens-in-region
-;;                              all-imports 0 (phpinspect-meta-start meta)))))
-
-;;     (list imports namespace-name)))
-
-;; (defun phpinspect--buffer-update-type-declaration (buffer typedef declaration class-token imports namespace-name)
-;;   (cl-assert (phpinspect-meta-p declaration))
-
-;;   (phpi-typedef-update-declaration
-;;    typedef (phpinspect-meta-token declaration) imports namespace-name
-;;    (phpinspect-buffer-get-trait-configuration-between-points
-;;     buffer (phpinspect-meta-start class-token) (phpinspect-meta-end class-token)
-;;     (phpinspect--make-type-resolver
-;;      imports (phpinspect-class-block (phpinspect-meta-token class-token)) namespace-name))
-;;    (thread-last (phpinspect-meta-parent declaration)
-;;                 (phpinspect-meta-token))))
-
-;; (cl-defmethod phpinspect-buffer-index-classs ((buffer phpinspect-buffer) (classes (head phpinspect-splayt)))
-;;   (let ((declarations (phpinspect-buffer-declarations buffer))
-;;         (namespaces (phpinspect-buffer-namespaces buffer))
-;;         (buffer-imports (phpinspect-buffer-imports buffer))
-;;         (project (phpinspect-buffer-project buffer)))
-;;     (if (phpinspect-buffer-classes buffer)
-;;         (pcase-let* ((`(,new-classes ,deleted-classes) (phpinspect-toc-update
-;;                                                         (phpinspect-buffer-classes buffer)
-;;                                                         classes))
-;;                      (new-declarations) (declaration) (replaced) (indexed) (class))
-;;           ;; Collect declarations of new classes
-;;           (dolist (class new-classes)
-;;             (when (setq declaration (phpinspect-toc-token-at-or-after-point declarations (phpinspect-meta-start class)))
-;;               (push (cons (phpinspect-meta-token declaration) class) new-declarations)))
-
-;;           ;; Delete no longer existing classes from the index
-;;           (dolist (deleted deleted-classes)
-;;             (if (and (setq class (phpinspect-buffer-get-index-for-token
-;;                                   buffer (phpinspect-meta-token deleted)))
-;;                      ;; If we can find a declaration in the buffer that is equal
-;;                      ;; to the deleted declaration, the class has just been
-;;                      ;; edited in a way were the declaration ended up getting
-;;                      ;; reparsed. No need to delete it from the index
-;;                      (setq replaced (assoc (phpi-typedef-declaration class) new-declarations #'equal)))
-;;                 (pcase-let ((`(,imports ,namespace-name) (phpinspect-get-token-index-context namespaces buffer-imports (cdr replaced))))
-;;                   (phpinspect-buffer-update-index-reference-for-token
-;;                    buffer (phpinspect-meta-token deleted) (phpinspect-meta-token (cdr replaced)))
-;;                   (phpinspect--buffer-update-type-declaration
-;;                    buffer class (car replaced) (cdr replaced) imports namespace-name)
-;;                   (push (cdr replaced) indexed))
-;;               (phpinspect-buffer-delete-index-for-token buffer (phpinspect-meta-token deleted))))
-
-;;           (dolist (class new-declarations)
-;;             (unless (memq (cdr class) indexed)
-;;               (let (imports namespace-name class-name class-obj)
-;;                 (pcase-setq `(,imports ,namespace-name)
-;;                             (phpinspect-get-token-index-context namespaces buffer-imports (cdr class))
-;;                             `(,class-name) (phpinspect--index-class-declaration
-;;                                             (car class)
-;;                                             (phpinspect--make-type-resolver
-;;                                              (phpinspect--uses-to-types imports)
-;;                                              (phpinspect-class-block (phpinspect-meta-token (cdr class)))
-;;                                              namespace-name)
-;;                                             (thread-last (phpinspect-meta-parent declaration)
-;;                                                          (phpinspect-meta-token))))
-;;                 (when class-name
-;;                   (setq  class-obj (phpinspect-project-get-typedef-create project class-name 'no-enqueue))
-;;                   (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token (cdr class)) class-obj)
-;;                   (phpinspect--buffer-update-type-declaration
-;;                    buffer class-obj (car class) (cdr class) imports namespace-name))))))
-;;       ;; Else: Index all classes
-;;       (setf (phpinspect-buffer-classes buffer) (phpinspect-make-toc classes))
-;;       (phpinspect-splayt-traverse (class classes)
-;;         (pcase-let* ((declaration (phpinspect-toc-token-at-or-after-point declarations (phpinspect-meta-start class)))
-;;                      (`(,imports ,namespace-name) (phpinspect-get-token-index-context namespaces buffer-imports class))
-;;                      (`(,class-name) (phpinspect--index-class-declaration
-;;                                       (phpinspect-meta-token declaration)
-;;                                       (phpinspect--make-type-resolver
-;;                                        (phpinspect--uses-to-types imports)
-;;                                        (phpinspect-class-block (phpinspect-meta-token class))
-;;                                        namespace-name)
-;;                                       (thread-last (phpinspect-meta-parent declaration)
-;;                                                    (phpinspect-meta-token))))
-;;                      (class-obj))
-;;           (when class-name
-;;             (setq class-obj (phpinspect-project-get-typedef-create project class-name 'no-enqueue))
-;;             (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token class) class-obj)
-;;             (phpinspect--buffer-update-type-declaration
-;;              buffer class-obj declaration class imports namespace-name)))))))
-
-;; (cl-defmethod phpinspect-buffer-index-functions ((buffer phpinspect-buffer) (functions (head phpinspect-splayt)))
-;;   (let ((classes (phpinspect-buffer-classes buffer))
-;;         (namespaces (phpinspect-buffer-namespaces buffer))
-;;         (imports (phpinspect-buffer-imports buffer))
-;;         to-be-indexed class-environments class indexed)
-;;     (if (phpinspect-buffer-functions buffer)
-;;         (pcase-let ((`(,new-funcs ,deleted-funcs)
-;;                      (phpinspect-toc-update (phpinspect-buffer-functions buffer) functions)))
-;;           (setq to-be-indexed new-funcs)
-
-;;           (dolist (deleted deleted-funcs)
-;;             (phpinspect-buffer-delete-index-for-token buffer (phpinspect-meta-token deleted))))
-;;       (setq to-be-indexed (phpinspect-splayt-to-list functions))
-;;       (setf (phpinspect-buffer-functions buffer) (phpinspect-make-toc functions)))
-
-;;     (dolist (func to-be-indexed)
-;;       (if (setq class (phpinspect-toc-token-at-point classes (phpinspect-meta-start func)))
-;;           (let (scope static indexed index-env comment-before)
-;;             (if (phpinspect-static-p (phpinspect-meta-token (phpinspect-meta-parent func)))
-;;                 (progn
-;;                   (setq static (phpinspect-meta-parent func))
-;;                   (when (phpinspect-scope-p (phpinspect-meta-token (phpinspect-meta-parent static)))
-;;                     (setq scope `(,(car (phpinspect-meta-token (phpinspect-meta-parent static)))
-;;                                   ,(phpinspect-meta-token func))
-;;                           comment-before (phpinspect-meta-find-left-sibling (phpinspect-meta-parent static)))))
-;;               (when (phpinspect-scope-p (phpinspect-meta-token (phpinspect-meta-parent func)))
-;;                 (setq scope (phpinspect-meta-token (phpinspect-meta-parent func))
-;;                       comment-before (phpinspect-meta-find-left-sibling (phpinspect-meta-parent func)))))
-
-;;             (unless scope (setq scope `(:public ,(phpinspect-meta-token func))))
-
-;;             (unless (setq index-env (alist-get class class-environments nil nil #'eq))
-;;               (setq index-env (phpinspect-get-token-index-context namespaces imports class))
-;;               (setcar index-env (phpinspect--uses-to-types (car index-env)))
-;;               (push (phpinspect--make-type-resolver (car index-env) (phpinspect-meta-token class) (cadr index-env))
-;;                     index-env)
-;;               (push (cons class index-env) class-environments))
-
-;;             (unless comment-before
-;;               (setq comment-before (phpinspect-meta-find-left-sibling func)))
-
-;;             (setq comment-before (phpinspect-meta-token comment-before))
-
-;;             (pcase-let ((`(,type-resolver) index-env)
-;;                         (class-obj (phpinspect-buffer-get-index-for-token buffer (phpinspect-meta-token class))))
-;;               (unless class-obj (error "Unable to find class obj for class %s" (phpinspect-meta-token class)))
-
-;;               (setq indexed (phpinspect--index-function-from-scope
-;;                              type-resolver
-;;                              scope
-;;                              (and (phpinspect-comment-p comment-before) comment-before)))
-;;               (unless (phpinspect--function-anonymous-p indexed)
-;;                 (if static
-;;                     (phpi-typedef-set-static-method class-obj indexed)
-;;                   (phpi-typedef-set-method class-obj indexed)))
-
-;;               (phpinspect-buffer-set-index-reference-for-token
-;;                buffer (phpinspect-meta-token func)
-;;                (cons (phpi-typedef-name class-obj) indexed))))
-;;         ;; Else: index function
-;;         (pcase-let ((`(,imports ,namespace-name) (phpinspect-get-token-index-context namespaces imports func))
-;;                     (comment-before (phpinspect-meta-find-left-sibling func)))
-;;           (setq indexed (phpinspect--index-function-from-scope
-;;                          (phpinspect--make-type-resolver
-;;                           (phpinspect--uses-to-types imports) nil namespace-name)
-;;                          `(:public ,(phpinspect-meta-token func))
-;;                          (and (phpinspect-comment-p comment-before) comment-before)
-;;                          nil namespace-name))
-;;           (phpinspect-project-set-function (phpinspect-buffer-project buffer) indexed)
-;;           (phpinspect-buffer-set-index-reference-for-token
-;;            buffer (phpinspect-meta-token func)
-;;            (cons (phpinspect-buffer-project buffer) indexed)))))))
-
-
-;; (cl-defmethod phpinspect-buffer-index-class-variables ((buffer phpinspect-buffer) (class-variables (head phpinspect-splayt)))
-;;   (let ((classes (phpinspect-buffer-classes buffer))
-;;         (namespaces (phpinspect-buffer-namespaces buffer))
-;;         (imports (phpinspect-buffer-imports buffer))
-;;         to-be-indexed class-environments class class-obj)
-;;     (if (phpinspect-buffer-class-variables buffer)
-;;         (pcase-let ((`(,new-vars ,deleted-vars)
-;;                      (phpinspect-toc-update
-;;                       (phpinspect-buffer-class-variables buffer) class-variables)))
-;;           (setq to-be-indexed new-vars)
-
-;;           (dolist (deleted deleted-vars)
-;;             (phpinspect-buffer-delete-index-for-token buffer (phpinspect-meta-token deleted))))
-
-;;       (setq to-be-indexed (phpinspect-splayt-to-list class-variables))
-;;       (setf (phpinspect-buffer-class-variables buffer) (phpinspect-make-toc class-variables)))
-
-;;     (dolist (var to-be-indexed)
-;;       ;; We have left the class we were previously indexing properties
-;;       ;; for.
-;;       (when (and class (> (phpinspect-meta-start var) (phpinspect-meta-end class)))
-;;         (setq class nil))
-
-;;       ;; Retrieve the class that the property belongs to. In a lot of cases only
-;;       ;; one class will be in the current buffer. But PHP allows the definition
-;;       ;; of multiple classes in the same file so this should be supported.
-;;       (unless class
-;;         (setq class (phpinspect-toc-token-at-point classes (phpinspect-meta-start var))))
-
-;;       ;; Fetch the index for the current class
-;;       (setq class-obj (phpinspect-buffer-get-index-for-token buffer (phpinspect-meta-token class)))
-
-;;       (let (scope static indexed index-env comment-before)
-;;         (if (phpinspect-static-p (phpinspect-meta-token (phpinspect-meta-parent var)))
-;;             ;; Variable is defined as [scope?] static [type?] $variable
-;;             (progn
-;;               (setq static (phpinspect-meta-parent var))
-;;               (when (phpinspect-scope-p (phpinspect-meta-token (phpinspect-meta-parent static)))
-;;                 ;; Variable is defined as scope static [type?] $variable
-;;                 (setq scope `(,(car (phpinspect-meta-token (phpinspect-meta-parent static)))
-;;                               ,@(phpinspect-meta-token-with-left-siblings var))
-;;                       comment-before (phpinspect-meta-find-left-sibling (phpinspect-meta-parent static)))))
-;;           (when (phpinspect-scope-p (phpinspect-meta-token (phpinspect-meta-parent var)))
-;;             ;; Variable is defined as scope [type?] $variable
-;;             (setq scope (phpinspect-meta-token (phpinspect-meta-parent var))
-;;                   comment-before (phpinspect-meta-find-left-sibling (phpinspect-meta-parent var)))))
-
-;;         (unless scope
-;;           (setq scope `(:public ,@(mapcar #'phpinspect-meta-token (phpinspect-meta-left-siblings var))
-;;                                 ,(phpinspect-meta-token var))))
-
-;;         (unless (setq index-env (alist-get class class-environments nil nil #'eq))
-;;           (setq index-env (phpinspect-get-token-index-context namespaces imports class))
-;;           (push (cons class index-env) class-environments))
-
-;;         (unless comment-before
-;;           (setq comment-before (phpinspect-meta-find-left-sibling var)))
-
-;;         (setq comment-before (phpinspect-meta-token comment-before))
-
-;;         (pcase-let* ((`(,imports ,namespace-name) index-env)
-;;                      (type-resolver
-;;                       (phpinspect--make-type-resolver
-;;                        (phpinspect--uses-to-types imports)
-;;                        (phpinspect-meta-token class)
-;;                        namespace-name)))
-
-;;           (setq indexed
-;;                 (if (phpinspect-const-p (phpinspect-meta-token var))
-;;                     (phpinspect--index-const-from-scope scope)
-;;                   (phpinspect--index-variable-from-scope
-;;                    type-resolver
-;;                    scope
-;;                    (and (phpinspect-comment-p comment-before) comment-before)
-;;                    static)))
-
-;;           (when (and (phpinspect-variable-p (phpinspect-meta-token var)) (not (phpinspect--variable-type indexed)))
-;;             (setf (phpinspect--variable-type indexed)
-;;                   (phpi-typedef-resolve-property-type
-;;                    class-obj (phpinspect-buffer-project buffer)
-;;                    (cadr (phpinspect-meta-token var)) type-resolver class)))
-
-;;           (phpi-typedef-set-property class-obj indexed)
-
-;;           (phpinspect-buffer-set-index-reference-for-token
-;;            buffer (phpinspect-meta-token var)
-;;            (cons (phpi-typedef-name class-obj) indexed)))))))
-
 (cl-defmethod phpinspect-buffer-reset ((buffer phpinspect-buffer))
   "Clear all metadata stored in BUFFER."
   (phpinspect-buffer--clear-query-cache buffer)
@@ -625,9 +290,7 @@ linked with."
          buffer (phpinspect-meta-parent token) predicate)))))
 
 (defun phpinspect-buffer-get-index-context-for-token (buffer token)
-  (let ((class (phpinspect-buffer-find-token-ancestor-matching
-                buffer token #'phpinspect-class-p))
-        (namespace (phpinspect-buffer-find-token-ancestor-matching
+  (let ((namespace (phpinspect-buffer-find-token-ancestor-matching
                     buffer token #'phpinspect-namespace-p))
         (imports (phpinspect-buffer-find-token-children-matching
                   buffer (phpinspect-buffer-root-meta buffer)
@@ -685,7 +348,7 @@ linked with."
 (defun phpinspect-buffer--index-class-declaration (buffer declaration &optional force)
   "Index DECLARATION in BUFFER.
 
-DECLARATION must be an object of type 'phpinspect-meta'."
+DECLARATION must be an object of type `phpinspect-meta'."
   ;; Only index declaration when it hasn't been indexed before
   (unless (and (phpinspect-buffer-get-index-for-token buffer (phpinspect-meta-token declaration)) (not force))
     (let ((class (phpinspect-buffer-find-token-ancestor-matching
@@ -787,9 +450,48 @@ DECLARATION must be an object of type 'phpinspect-meta'."
        buffer (phpinspect-meta-token func)
        (cons (phpinspect-buffer-project buffer) indexed)))))
 
+(define-inline phpinspect-attrib-name (accessor)
+  (inline-letevals (accessor)
+    (inline-quote
+     (progn
+       (cl-assert (phpinspect-attrib-p ,accessor))
+       (cadadr ,accessor)))))
+
+(defun phpinspect-buffer--index-this (buffer this)
+  "Extract metadata from usage of THIS ($this) in BUFFER."
+  (when-let ((class (phpinspect-buffer-find-token-ancestor-matching
+                     buffer this #'phpinspect-class-p))
+             (accessor (phpinspect-meta-find-right-sibling this))
+             ;; Right sibling is an accessor
+             ((thread-last (phpinspect-meta-token accessor)
+                           (phpinspect-attrib-p)))
+             (accessor-name
+              (thread-last (phpinspect-meta-token accessor)
+                           (phpinspect-attrib-name)))
+             (assignment (phpinspect-meta-find-right-sibling accessor))
+             ;; Accessor is being assigned
+             ((thread-last (phpinspect-meta-token assignment)
+                           (phpinspect-assignment-p))))
+    ;; Find end of assignment statement
+
+    (let ((statement-end assignment))
+      (while (and statement-end
+                  (not (thread-last
+                         (setq statement-end (phpinspect-meta-find-right-sibling statement-end))
+                         (phpinspect-meta-token)
+                         (phpinspect-statement-introduction-p)))))
+      (when statement-end
+        (when-let ((typedef (phpinspect-buffer-get-typedef-for-class-token buffer class))
+                   (type (phpinspect-resolve-type-from-context
+                     (phpinspect-buffer-get-resolvecontext
+                      buffer (phpinspect-meta-start statement-end))))
+                   (prop (phpi-typedef-get-property typedef accessor-name)))
+
+          (setf (phpi-prop-type prop) type))))))
+
 (defun phpinspect-buffer--index-class-variable (buffer var)
   (let ((class (phpinspect-buffer-find-token-ancestor-matching buffer var #'phpinspect-class-p))
-        scope static indexed index-env comment-before typedef)
+        scope static indexed comment-before)
     (if (phpinspect-static-p (phpinspect-meta-token (phpinspect-meta-parent var)))
         ;; Variable is defined as [scope?] static [type?] $variable
         (progn
@@ -809,14 +511,12 @@ DECLARATION must be an object of type 'phpinspect-meta'."
                                 (mapcar #'phpinspect-meta-token (phpinspect-meta-left-siblings var)))
                             ,(phpinspect-meta-token var))))
 
-    (setq index-env (phpinspect-buffer-get-index-context-for-token buffer var))
-
     (unless comment-before
       (setq comment-before (phpinspect-meta-find-left-sibling var)))
 
     (setq comment-before (phpinspect-meta-token comment-before))
 
-    (pcase-let* ((`(,imports ,namespace-name) index-env)
+    (pcase-let* ((`(,imports ,namespace-name) (phpinspect-buffer-get-index-context-for-token buffer var))
                  (type-resolver
                   (phpinspect--make-type-resolver
                    (phpinspect--uses-to-types imports)
@@ -832,12 +532,6 @@ DECLARATION must be an object of type 'phpinspect-meta'."
                scope
                (and (phpinspect-comment-p comment-before) comment-before)
                static)))
-
-      (when (and (phpinspect-variable-p (phpinspect-meta-token var)) (not (phpinspect--variable-type indexed)))
-        (setf (phpinspect--variable-type indexed)
-              (phpi-typedef-resolve-property-type
-               typedef (phpinspect-buffer-project buffer)
-               (cadr (phpinspect-meta-token var)) type-resolver class)))
 
       (phpi-typedef-set-property typedef indexed)
 
@@ -885,6 +579,8 @@ continuing execution."
                (phpinspect-buffer--index-function buffer addition))
               ((pred phpinspect-use-trait-p)
                (phpinspect-buffer--index-trait-use buffer addition))
+              ((pred phpinspect-this-p)
+               (phpinspect-buffer--index-this buffer addition))
               ((or (pred phpinspect-class-variable-p)
                    (pred phpinspect-const-p))
                (phpinspect-buffer--index-class-variable buffer addition))))

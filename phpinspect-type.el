@@ -410,8 +410,8 @@ mutability of the variable")
 
 (defun phpinspect--index-class-declaration (decl type-resolver parent)
   ;; Find out what the class extends or implements
-  (let (keyword encountered-extends encountered-implements encountered-class
-        class-name extends implements used-types)
+  (let (encountered-extends encountered-implements class-name
+                            extends implements used-types)
     (dolist (word decl)
       (cond ((phpinspect-word-p word)
              (cond (encountered-implements

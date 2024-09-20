@@ -24,6 +24,7 @@
 ;;; Code:
 
 (require 'phpinspect-type)
+(require 'phpinspect-parser)
 
 (ert-deftest phpinspect--resolve-late-static-binding ()
   (let* ((sets '(("\\bool" . "\\bool")

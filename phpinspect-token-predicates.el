@@ -336,6 +336,12 @@ Type can be any of the token types returned by
     (inline-quote
      (and (= (length ,namespace) 3) (phpinspect-block-p (caddr ,namespace))))))
 
+(define-inline phpinspect-this-p (token)
+  (inline-letevals (token)
+    (inline-quote
+     (and (phpinspect-variable-p ,token)
+          (string= "this" (cadr ,token))))))
+
 (defsubst phpinspect-namespace-block (namespace)
   (when (phpinspect-namespace-is-blocked-p namespace)
     (caddr namespace)))
