@@ -58,27 +58,6 @@ map parsed tokens to metadata about them and vice versa."
                :type list)
   (overlays (phpinspect-make-splayt)
             :type phpinspect-splayt)
-  ;; (declarations (phpinspect-make-splayt)
-  ;;               :type phpinspect-splayt
-  ;;               :documentation "The declaration tokens encountered.")
-  ;; (imports (phpinspect-make-splayt)
-  ;;          :type phpinspect-splayt
-  ;;          :documentation "The import statements encountered.")
-  ;; (used-traits (phpinspect-make-splayt)
-  ;;              :type phpinspect-splayt
-  ;;              :documentation "The trait use statements encountered.")
-  ;; (functions (phpinspect-make-splayt)
-  ;;            :type phpinspect-splayt
-  ;;            :documentation "The function definitions encountered.")
-  ;; (classes (phpinspect-make-splayt)
-  ;;          :type phpinspect-splayt
-  ;;          :documentation "The classes encountered.")
-  ;; (class-variables (phpinspect-make-splayt)
-  ;;                  :type phpinspect-splayt
-  ;;                  :documentation "The class attribute variables encountered")
-  ;; (namespaces (phpinspect-make-splayt)
-  ;;             :type phpinspect-splayt
-  ;;             :documentation "The namespaces encountered")
   (-root-meta nil
               :type phpinspect-meta)
   (last-token-start nil
@@ -152,31 +131,6 @@ map parsed tokens to metadata about them and vice versa."
       (setq whitespace-before ""))
 
     (puthash start token-meta starts)
-
-    ;; (cond
-    ;;  ((phpinspect-use-import-p (phpinspect-meta-token token-meta))
-    ;;   (phpinspect-splayt-insert
-    ;;    (phpinspect-bmap-imports bmap) (phpinspect-meta-start token-meta) token-meta))
-    ;;  ((phpinspect-use-trait-p (phpinspect-meta-token token-meta))
-    ;;   (phpinspect-splayt-insert
-    ;;    (phpinspect-bmap-used-traits bmap) (phpinspect-meta-start token-meta) token-meta))
-    ;;  ((phpinspect-class-p (phpinspect-meta-token token-meta))
-    ;;   (phpinspect-splayt-insert
-    ;;    (phpinspect-bmap-classes bmap) (phpinspect-meta-start token-meta) token-meta))
-    ;;  ((phpinspect-declaration-p (phpinspect-meta-token token-meta))
-    ;;   (phpinspect-splayt-insert
-    ;;    (phpinspect-bmap-declarations bmap) (phpinspect-meta-start token-meta) token-meta))
-    ;;  ((phpinspect-function-p (phpinspect-meta-token token-meta))
-    ;;   (phpinspect-splayt-insert
-    ;;    (phpinspect-bmap-functions bmap) (phpinspect-meta-start token-meta) token-meta))
-    ;;  ((phpinspect-namespace-p (phpinspect-meta-token token-meta))
-    ;;   (phpinspect-splayt-insert
-    ;;    (phpinspect-bmap-namespaces bmap) (phpinspect-meta-start token-meta) token-meta))
-    ;;  ((or (phpinspect-const-p (phpinspect-meta-token token-meta))
-    ;;       (phpinspect-class-variable-p (phpinspect-meta-token token-meta)))
-    ;;   (phpinspect-splayt-insert
-    ;;    (phpinspect-bmap-class-variables bmap) (phpinspect-meta-start token-meta) token-meta)))
-
      (if existing-end
         (push token existing-end)
       (puthash end (list token-meta) ends))
