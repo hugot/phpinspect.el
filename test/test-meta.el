@@ -40,3 +40,15 @@
     (should (= 30 (phpinspect-meta-start meta)))
 
     (should (phpinspect-meta-overlaps-point meta 30))))
+
+
+(ert-deftest phpinspect-meta-detach ()
+  (let ((meta (phpinspect-make-meta nil 10 20 "" 'token))
+        (parent (phpinspect-make-meta nil 9 22 "" 'token)))
+    (phpinspect-meta-set-parent meta parent)
+
+    (should (length= (phpinspect-meta-flatten parent) 2))
+
+    (phpinspect-meta-detach-parent meta)
+
+    (should (length= (phpinspect-meta-flatten parent) 1))))

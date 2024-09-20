@@ -41,7 +41,7 @@
 
       (let* ((class (seq-find #'phpinspect-class-p
                               (seq-find #'phpinspect-namespace-p parsed)))
-             (classname (car (cddadr class))))
+             (classname (car (cdadr class))))
 
         (let ((tokens (phpinspect-buffer-tokens-enclosing-point
                        phpinspect-current-buffer 617)))
@@ -434,7 +434,7 @@ namespace TestNamespace;
       (backward-word)
       (kill-word 2)
 
-      (phpinspect-buffer-parse buffer)
+      (phpinspect-buffer-parse buffer 'no-interrupt)
       (phpinspect-buffer-update-project-index buffer)
 
       (should (phpinspect-project-get-typedef
@@ -494,90 +494,37 @@ class TestClass
                              (phpinspect--make-type :name "\\NS\\TestClass")))))))))
 
 (ert-deftest phpinspect-buffer-index-class-variables ()
-  (let ((buffer (phpinspect-make-buffer :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader))))
-        (namespaces (phpinspect-make-splayt))
-        (declarations  (phpinspect-make-splayt))
-        (classes (phpinspect-make-splayt))
-        (functions (phpinspect-make-splayt))
-        (variables (phpinspect-make-splayt)))
-
-    (phpinspect-splayt-insert
-     functions 60
-     (phpinspect-make-meta
-      nil 60 65 ""
-      (cadr (phpinspect-parse-string
-       "<?php function __construct(array $thing) { $this->banana = $thing; }"))))
-
-
-    (phpinspect-splayt-insert
-     declarations 20
-     (phpinspect-make-meta nil 20 30 "" '(:declaration (:word "class") (:word "TestClass"))))
-    (phpinspect-splayt-insert
-     classes 20
-     (phpinspect-make-meta nil 20 70 "" '(:class (:declaration (:word "class") (:word "TestClass")))))
-
-    (phpinspect-splayt-insert
-     variables 33
-     (phpinspect-make-meta nil 33 50 "" '(:class-variable "banana")))
-
-    (phpinspect-splayt-insert
-     variables 54
-     (phpinspect-make-meta nil 54 60 "" '(:const (:word "CONSTANT"))))
-
-    (phpinspect-buffer-index-declarations buffer declarations)
-    (phpinspect-buffer-index-namespaces buffer namespaces)
-    (phpinspect-buffer-index-classes buffer classes)
-    (phpinspect-buffer-index-functions buffer functions)
-
-    (phpinspect-buffer-index-class-variables buffer variables)
-
-    (should (phpinspect-project-get-typedef
-             (phpinspect-buffer-project buffer)
-             (phpinspect--make-type :name "\\TestClass")))
-
-    (should (= 1 (length (phpi-typedef-get-properties
-                          (phpinspect-project-get-typedef
-                           (phpinspect-buffer-project buffer)
-                           (phpinspect--make-type :name "\\TestClass"))))))
-
-
-    (should (= 1 (length (phpi-typedef-get-constants
-                          (phpinspect-project-get-typedef
-                           (phpinspect-buffer-project buffer)
-                           (phpinspect--make-type :name "\\TestClass"))))))
-
-    (should (phpinspect--type= (phpinspect--make-type :name "\\array")
-                              (phpi-var-type
-                               (phpi-typedef-get-property
-                                (phpinspect-project-get-typedef
-                                 (phpinspect-buffer-project buffer)
-                                 (phpinspect--make-type :name "\\TestClass"))
-                                "banana"))))))
-
-(ert-deftest phpinspect-buffer-map-imports ()
   (with-temp-buffer
-    (let ((buffer (phpinspect-make-buffer :buffer (current-buffer))))
-      (insert "<?php
-declare(strict_types=1);
-
-namespace App\\Controller\\Api\\V1;
-
-use Illuminate\\Database\\Eloquent\\Model;
-use Illuminate\\Database\\Eloquent\\Relations\\Relation;
-use Illuminate\\Support\\Facades\\Auth;
-
-class AccountStatisticsController {
-
-    function __construct(){}
+    (let ((buffer (phpinspect-claim-buffer (current-buffer) (phpinspect--make-dummy-project))))
+      (insert "<?php class TestClass {
+function __construct(array $thing) { $this->banana = $thing; }
+public $banana; const CONSTANT = 0;
 }")
-      (let ((bmap (phpinspect-buffer-parse-map buffer)))
-        (should (equal
-                 `((:use (:word "Illuminate\\Database\\Eloquent\\Model") (:terminator ";"))
-                   (:use (:word "Illuminate\\Database\\Eloquent\\Relations\\Relation") (:terminator ";"))
-                   (:use (:word "Illuminate\\Support\\Facades\\Auth") (:terminator ";")))
-                 (mapcar #'phpinspect-meta-token
-                         (phpinspect-splayt-to-list (phpinspect-bmap-imports bmap)))))))))
 
+      (phpinspect-buffer-update-project-index buffer)
+
+      (should (phpinspect-project-get-typedef
+               (phpinspect-buffer-project buffer)
+               (phpinspect--make-type :name "\\TestClass")))
+
+      (should (= 1 (length (phpi-typedef-get-properties
+                            (phpinspect-project-get-typedef
+                             (phpinspect-buffer-project buffer)
+                             (phpinspect--make-type :name "\\TestClass"))))))
+
+
+      (should (= 1 (length (phpi-typedef-get-constants
+                            (phpinspect-project-get-typedef
+                             (phpinspect-buffer-project buffer)
+                             (phpinspect--make-type :name "\\TestClass"))))))
+
+      (should (phpinspect--type= (phpinspect--make-type :name "\\array")
+                                 (phpi-var-type
+                                  (phpi-typedef-get-property
+                                   (phpinspect-project-get-typedef
+                                    (phpinspect-buffer-project buffer)
+                                    (phpinspect--make-type :name "\\TestClass"))
+                                   "banana")))))))
 
 (ert-deftest phpinspect-buffer-index-typehinted-class-variables ()
   (with-temp-buffer
@@ -713,6 +660,7 @@ class Bar {
         (goto-char 36)
         (insert "use \\App\\Foo { \\App\\Foo::do as dooo }")
 
+
         (phpinspect-buffer-parse buffer 'no-interrupt)
         (phpinspect-buffer-update-project-index buffer)
 
@@ -720,6 +668,7 @@ class Bar {
 
         (goto-char 36)
         (kill-line)
+
         (phpinspect-buffer-parse buffer 'no-interrupt)
         (phpinspect-buffer-update-project-index buffer)
 
@@ -737,9 +686,7 @@ class Bar {
       (add-hook 'after-change-functions #'phpinspect-after-change-function)
       (let ((expected `(:root
 			(:class
-			 (:declaration
-			  (:word "class")
-			  (:word "A"))
+			 (:class-declaration (:word "A"))
 			 (:block
 			  (:public ;; This test explicitly tests that the
 				   ;; "public" word doesn't lose its first
@@ -750,22 +697,22 @@ class Bar {
 			     (:word "A")
 			     (:list))
 			    (:block)))))))
-	    (result (phpinspect-buffer-parse buffer 'no-interrupt)))
+	        (result (phpinspect-buffer-parse buffer 'no-interrupt)))
 
-	(should result)
-	(should (equal expected result))
+	    (should result)
+	    (should (equal expected result))
 
-	(goto-char 17)
-	(delete-char -1)
-	(setq result (phpinspect-buffer-parse buffer 'no-interrupt))
-	(should result)
-	(should (equal expected result))
+	    (goto-char 17)
+	    (delete-char -1)
+	    (setq result (phpinspect-buffer-parse buffer 'no-interrupt))
+	    (should result)
+	    (should (equal expected result))
 
-	(backward-char)
-	(insert " ")
-	(setq result (phpinspect-buffer-parse buffer 'no-interrupt))
-	(should result)
-	(should (equal expected result))))))
+	    (backward-char)
+	    (insert " ")
+	    (setq result (phpinspect-buffer-parse buffer 'no-interrupt))
+	    (should result)
+	    (should (equal expected result))))))
 
 (ert-deftest phpinspect-buffer-index-update-method-name ()
     (with-temp-buffer
@@ -790,12 +737,12 @@ class TestClass
       (phpinspect-buffer-update-project-index buffer)
 
       (let ((typedef (phpinspect-project-get-typedef project class-type)))
-	(should typedef)
+	    (should typedef)
 
-	(should (length= (phpi-typedef-get-methods typedef) 1 ))
+	    (should (length= (phpi-typedef-get-methods typedef) 1))
 
-	(let ((method (phpi-typedef-get-method typedef "testMethod")))
-	  (should method))))))
+	    (let ((method (phpi-typedef-get-method typedef "testMethod")))
+	      (should method))))))
 
 (ert-deftest phpinspect-buffer-parse-incrementally-comment ()
     (with-temp-buffer
@@ -806,9 +753,38 @@ class TestClass
 	(add-hook 'after-change-functions #'phpinspect-after-change-function)
 
 	(should (equal '(:root (:comment))
-		       (phpinspect-buffer-parse buffer)))
+		           (phpinspect-buffer-parse buffer)))
 
 	(goto-char 11)
 	(insert "word")
 	(should (equal '(:root (:comment))
-		       (phpinspect-buffer-parse buffer))))))
+		           (phpinspect-buffer-parse buffer))))))
+
+(ert-deftest phpinspect-buffer-deletion-registration ()
+  "Check if buffer accuratly registers token deletions/alterations."
+
+  (with-temp-buffer
+    (let ((buffer (phpinspect-claim-buffer (current-buffer) (phpinspect--make-dummy-project))))
+
+      (insert "<?php aaa bbb ccc")
+
+      (should (equal '(:root (:word "aaa") (:word "bbb") (:word "ccc")) (phpinspect-buffer-parse buffer)))
+      (should-not (phpinspect-buffer--deletions buffer))
+      (should (length= (phpinspect-buffer--additions buffer) 4))
+
+      (goto-char (- (point-max) 5))
+      (insert "a")
+      (should (equal '(:root (:word "aaa") (:word "bbab") (:word "ccc")) (phpinspect-buffer-parse buffer)))
+
+      (should (length= (phpinspect-buffer--deletions buffer) 2))
+      (should (length= (phpinspect-buffer--additions buffer) 6))
+
+      (goto-char 6)
+      (insert "{")
+      (should (equal '(:root (:incomplete-block (:word "aaa") (:word "bbab") (:word "ccc")))
+                     (phpinspect-buffer-parse buffer)))
+      (should (length= (phpinspect-buffer--deletions buffer) 3))
+      (should (length= (phpinspect-buffer--additions buffer) 8))
+
+      (should (seq-every-p #'phpinspect-meta-p (phpinspect-buffer--additions buffer)))
+      (should (seq-every-p #'phpinspect-meta-p (phpinspect-buffer--deletions buffer))))))

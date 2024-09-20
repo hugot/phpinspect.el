@@ -257,18 +257,18 @@ Note: this function returns all types found in CONFIG."
   (phpi--typedef-edit def
     (when foreign-def
       (let ((ma (phpi-typedef-method-adder def))
-	    (methods (phpi-typedef-methods def))
-	    (st-methods (phpi-typedef-static-methods def))
-	    (props (phpi-typedef-properties def)))
+	        (methods (phpi-typedef-methods def))
+	        (st-methods (phpi-typedef-static-methods def))
+	        (props (phpi-typedef-properties def)))
 
-	(dolist (method (phpi-typedef-get-methods foreign-def))
+	    (dolist (method (phpi-typedef-get-methods foreign-def))
           (phpi-ma-add ma methods method))
 
-	(dolist (method (phpi-typedef-get-static-methods foreign-def))
+	    (dolist (method (phpi-typedef-get-static-methods foreign-def))
           (phpi-ma-add ma st-methods method))
 
-	(dolist (prop (phpi-pcol-list-active (phpi-typedef-properties foreign-def)))
-	  (phpi-pcol-add props prop))))))
+	    (dolist (prop (phpi-pcol-list-active (phpi-typedef-properties foreign-def)))
+	      (phpi-pcol-add props prop))))))
 
 (defun phpi-typedef-subscribe-to-foreign-typedef (def foreign-def)
   (phpi--typedef-edit def

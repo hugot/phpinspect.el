@@ -160,7 +160,11 @@ Type can be any of the token types returned by
 
 (define-inline phpinspect-declaration-p (token)
   (inline-quote
-   (phpinspect-token-type-p ,token :declaration)))
+   (phpinspect-token-type-p ,token :declaration :class-declaration)))
+
+(define-inline phpinspect-class-declaration-p (token)
+  (inline-quote
+   (phpinspect-token-type-p ,token :class-declaration)))
 
 (defsubst phpinspect-assignment-p (token)
   (phpinspect-token-type-p token :assignment))

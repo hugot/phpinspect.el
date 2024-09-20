@@ -274,7 +274,9 @@
          (phpinspect-meta-children meta) (phpinspect-meta--point-offset meta point))
         #'phpinspect-meta-sort-start))
 
-(cl-defmethod phpinspect-meta-find-first-child-matching ((meta (head meta)) predicate)
+(defun phpinspect-meta-find-first-child-matching (meta predicate)
+  (cl-assert (phpinspect-meta-p meta))
+
   (catch 'return
     (phpinspect-splayt-traverse-lr (child (phpinspect-meta-children meta))
       (when (funcall predicate child)
@@ -285,6 +287,27 @@
     (phpinspect-splayt-traverse-lr (child (phpinspect-meta-children meta))
       (when (funcall predicate (phpinspect-meta-token child))
         (throw 'return child)))))
+
+(defun phpinspect-meta-find-children-matching-token (meta predicate)
+  (let (result)
+    (phpinspect-splayt-traverse-lr (child (phpinspect-meta-children meta))
+      (when (funcall predicate (phpinspect-meta-token child))
+        (push child result)))
+    result))
+
+
+(defun phpinspect-meta-flatten (meta)
+  "Flatten META and all its children into an unordered list."
+  (when meta
+    (let ((stack (list meta))
+          (result (list meta)))
+
+      (while-let ((current (pop stack)))
+        (phpinspect-splayt-traverse-lr (child (phpinspect-meta-children current))
+          (push child result)
+          (push child stack)))
+
+      result)))
 
 (defun phpinspect-meta-delete (meta)
   "Mark META and all of its children as deleted."

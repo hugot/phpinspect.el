@@ -617,7 +617,6 @@ nature like argument lists"
   :handlers '(comment word tag block-without-scopes comma terminator)
   :delimiter-predicate #'phpinspect-end-of-use-p)
 
-
 (phpinspect-defhandler use-keyword (start-token max-point)
   "Handler for the use keyword and tokens that might follow to give it meaning"
   ((regexp . (concat "use" (phpinspect--word-end-regex))))
