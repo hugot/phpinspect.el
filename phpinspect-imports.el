@@ -32,6 +32,7 @@
 (require 'phpinspect-cache)
 (require 'phpinspect-util)
 (require 'phpinspect-type)
+(require 'phpinspect-name)
 
 (defcustom phpinspect-imports-remove-unused nil
   "Set to `t' to automatically remove unused imports.
@@ -115,9 +116,6 @@ buffer position to insert the use statement at."
                                buffer namespace-token))
           (t (phpinspect-message "No import found for type %s" (phpinspect-name-string typename))))))
 
-(defun phpinspect-namespace-part-of-typename (typename)
-  (string-trim-right typename "\\\\?[^\\]+"))
-
 (defalias 'phpinspect-fix-uses-interactive #'phpinspect-fix-imports
   "Alias for backwards compatibility")
 
@@ -138,7 +136,7 @@ NAMESPACE-META itself is returned without alterations."
    (lambda (token)
      (and (phpinspect-use-p token)
           (eq (car (phpinspect--use-to-type-cons token))
-              (phpinspect--type-bare-name-sym import-type))))))
+              (phpinspect--type-base-name-sym import-type))))))
 
 (define-inline phpinspect-codify-token-delimiters (token)
   (inline-letevals (token)
@@ -398,8 +396,8 @@ that there are import (\"use\") statements for them."
               (phpinspect-format-use-statements buffer (phpinspect-find-first-use parent))
               (phpinspect-buffer-parse buffer 'no-interrupt)))))))
 
-(defun phpinspect-project-read-type-name (prompt &optional project)
-  "Read a non-fully-qualified type-name using `completing-read'.
+(defun phpinspect-project-read-type-name-string (prompt &optional project)
+  "Read a non-fully-qualified type-name string using `completing-read'.
 
 PROMPT is passed to `completing-read'.
 
@@ -414,23 +412,23 @@ determined using `phpinspect-current-project'."
     (phpinspect-names-to-alist
      (phpinspect-autoloader-get-type-names
       (phpinspect-project-autoload project)))
-    nil 'require-match nil 'phpinspect--project-type-name-history)))
+    nil 'require-match nil 'phpinspect--project-type-name-string-history)))
 
-(defun phpinspect-insert-type (type-name)
+(defun phpinspect-insert-type (type-name-string)
   "Insert TYPE-NAME as string into current buffer.
 
 This function adds a use statement for TYPE-NAME when none is found."
-  (interactive (list (phpinspect-project-read-type-name "Select a Type: ")))
+  (interactive (list (phpinspect-project-read-type-name-string "Select a Type: ")))
   (if phpinspect-current-buffer
       (let* ((rctx (phpinspect-buffer-get-resolvecontext
                     phpinspect-current-buffer (point)))
              (type-resolver (phpinspect--make-type-resolver-for-resolvecontext rctx)))
-        (unless (phpinspect-type-resolver-get-import type-resolver type-name)
+        (unless (phpinspect-type-resolver-get-import type-resolver type-name-string)
           (phpinspect-add-use-interactive
-           type-name phpinspect-current-buffer
+           type-name-string phpinspect-current-buffer
            (phpinspect-buffer-project phpinspect-current-buffer)
            (phpinspect-buffer-namespace-at-point phpinspect-current-buffer (point))))
-        (insert (phpinspect-name-string type-name)))
+        (insert (phpinspect-name-string type-name-string)))
     (phpinspect-message "Not a phpinspect buffer")))
 
 (provide 'phpinspect-imports)

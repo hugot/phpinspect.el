@@ -29,6 +29,7 @@
 (require 'cl-macs)
 (require 'phpinspect-util)
 (require 'phpinspect-type)
+(require 'phpinspect-name)
 
 (cl-defstruct (phpinspect-method
                (:constructor phpinspect-make-method-generated)
@@ -51,7 +52,7 @@
 ORIGIN-TYPE must be a structure of type `phpinspect--type'.
 DEFINITION must be a structure of type `phpinspect--function'."
   (phpinspect-make-method-generated
-   :name (phpinspect--function-name-symbol definition)
+   :name (phpinspect--function-name definition)
    :origin-type origin-type
    :definition definition))
 
@@ -266,13 +267,13 @@ return types in extended classes, traits and interfaces."
 
 ;; Helpers for generic property access
 (cl-defmethod phpi-fn-name ((fn phpinspect--function))
-  (phpinspect--function-name fn))
+  (phpinspect--function-name-string fn))
 
 (cl-defmethod phpi-fn-name ((method phpinspect-method))
   (phpi-method-name-string method))
 
 (cl-defmethod phpi-fn-name-symbol ((fn phpinspect--function))
-  (phpinspect--function-name-symbol fn))
+  (phpinspect--function-name fn))
 
 (cl-defmethod phpi-fn-name-symbol ((fn phpinspect-method))
   (phpi-method-name-string fn))

@@ -185,3 +185,33 @@
                      (phpinspect-autoloader-resolve
                       autoloader
                       (phpinspect-intern-name "\\WoW\\Dwarves\\TestClass"))))))
+
+
+(ert-deftest phpinspect-autoload-delete-type ()
+  (let ((autoloader (phpinspect-project-autoload (phpinspect--make-dummy-composer-project-with-code))))
+    (should (phpinspect-autoloader-resolve autoloader (phpinspect-intern-name "\\App\\Barry")))
+    (should (phpinspect-autoloader-get-type-bag autoloader (phpinspect-intern-name "Barry")))
+
+    (phpinspect-autoloader-delete-type autoloader (phpinspect-intern-name "\\App\\Barry"))
+
+    (should-not (phpinspect-autoloader-resolve autoloader (phpinspect-intern-name "\\App\\Barry")))
+    (should-not (phpinspect-autoloader-get-type-bag autoloader (phpinspect-intern-name "Barry")))))
+
+(ert-deftest phpinspect-autoload-ensure-file-indexed ()
+  (let ((autoloader (phpinspect-project-autoload (phpinspect--make-dummy-composer-project-with-code))))
+    (phpinspect-virtual-fs-set-file (phpinspect-autoloader-fs autoloader)
+      "/project/root/src/Peanuts.php"
+      "<?php namespace App; class Peanuts {}")
+
+    (should-not (phpinspect-autoloader-resolve autoloader (phpinspect-intern-name "\\App\\Peanuts")))
+    (should (phpinspect-autoloader-resolve autoloader (phpinspect-intern-name "\\App\\Barry")))
+    (should (phpinspect-autoloader-get-type-bag autoloader (phpinspect-intern-name "Barry")))
+
+    (should (phpinspect-autoloader-ensure-file-indexed autoloader "/project/root/src/Peanuts.php"))
+
+    (should (phpinspect-autoloader-resolve autoloader (phpinspect-intern-name "\\App\\Peanuts")))
+    (should (phpinspect-autoloader-resolve autoloader (phpinspect-intern-name "\\App\\Barry")))
+    (should (phpinspect-autoloader-get-type-bag autoloader (phpinspect-intern-name "Barry")))
+
+    ;; If file was already known to autoloader, do nothing
+    (should-not (phpinspect-autoloader-ensure-file-indexed autoloader "/project/root/src/Peanuts.php"))))

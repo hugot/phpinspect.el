@@ -155,11 +155,12 @@ only be the result of a logic error."
     files))
 
 (cl-defmethod phpinspect-fs-directory-files-recursively ((_fs phpinspect-fs) directory &optional match)
-  (directory-files-recursively directory
-                               match
-                               t ;; Ignore directories that cannot be read
-                               t ;; follow symlinks
-                               ))
+  (when (file-directory-p directory)
+    (directory-files-recursively directory
+                                 match
+                                 t ;; Ignore directories that cannot be read
+                                 t ;; follow symlinks
+                                 )))
 
 (cl-defmethod phpinspect-fs-directory-files-recursively ((fs phpinspect-virtual-fs) directory &optional match)
   (setq directory  (replace-regexp-in-string "[/]+" "/" (concat directory "/")))

@@ -234,7 +234,7 @@ linked with."
          (when-let ((func (gethash token (phpinspect-buffer-token-index buffer))))
            (remhash token (phpinspect-buffer-token-index buffer))
            (cond ((phpinspect-project-p (car func))
-                  (phpinspect-project-delete-function (phpinspect-buffer-project buffer) (phpinspect--function-name-symbol (cdr func))))
+                  (phpinspect-project-delete-function (phpinspect-buffer-project buffer) (phpinspect--function-name (cdr func))))
                  ((phpinspect--type-p (car func))
                   (when-let ((class (phpinspect-project-get-typedef
                                      (phpinspect-buffer-project buffer)

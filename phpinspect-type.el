@@ -25,6 +25,7 @@
 
 (require 'phpinspect-util)
 (require 'phpinspect-token-predicates)
+(require 'phpinspect-name)
 
 (eval-when-compile
   (require 'phpinspect-parser))
@@ -33,10 +34,10 @@
                (:constructor phpinspect--make-type-generated)
                (:copier phpinspect--copy-type))
   "Represents an instance of a PHP type in the phpinspect syntax tree."
-  (name-symbol nil
-               :type symbol
-               :documentation
-               "Symbol representation of the type name.")
+  (name nil
+        :type phpinspect-name
+        :documentation
+        "Instance of `phpinspect-name' for types fully qualified name.")
   (collection nil
               :type bool
               :documentation
@@ -46,7 +47,6 @@
             :documentation
             "When the type is a collection, this attribute is set to the type
 that the collection is expected to contain")
-  (-bare-name-sym-slot nil)
   (-display-name-slot nil)
   (category nil
             :documentation
@@ -61,9 +61,9 @@ that the collection is expected to contain")
   `(phpinspect--make-type-generated
     ,@(phpinspect--wrap-plist-name-in-symbol property-list)))
 
-(defun phpinspect--make-types (type-names)
+(defun phpinspect--make-types (type-name-strings)
   (mapcar (lambda (name) (phpinspect--make-type :name name))
-          type-names))
+          type-name-strings))
 
 (defconst phpinspect-native-typenames
   ;; self, parent and resource are not valid type name.
@@ -101,7 +101,7 @@ that the collection is expected to contain")
         phpinspect--null-type (phpinspect--make-type :name "\\null" :fully-qualified t)))
 
 (cl-defmethod phpinspect--type-set-name ((type phpinspect--type) (name string))
-  (setf (phpinspect--type-name-symbol type) (phpinspect-intern-name name)))
+  (setf (phpinspect--type-name type) (phpinspect-intern-name name)))
 
 (cl-defmethod phpinspect--type-does-late-static-binding ((type phpinspect--type))
   "Whether or not TYPE is used for late static binding.
@@ -127,39 +127,36 @@ See https://wiki.php.net/rfc/static_return_type ."
       (when (phpinspect--type= type collection)
         (throw 'found t)))))
 
+(cl-defmethod phpinspect--type-name-string ((type phpinspect--type))
+  (phpinspect-name-string (phpinspect--type-name type)))
 
-(cl-defmethod phpinspect--type-name ((type phpinspect--type))
-  (phpinspect-name-string (phpinspect--type-name-symbol type)))
-
-(defun phpinspect--get-bare-class-name-from-fqn (fqn)
-  (car (last (split-string fqn "\\\\"))))
-
-(cl-defmethod phpinspect--type-bare-name ((type phpinspect--type))
+(cl-defmethod phpinspect--type-base-name ((type phpinspect--type))
   "Return just the name, without namespace part, of TYPE."
-  (phpinspect--get-bare-class-name-from-fqn (phpinspect--type-name type)))
+  (thread-last (phpinspect--type-name type)
+               (phpinspect-name-base)
+               (phpinspect-name-string)))
 
-(define-inline phpinspect--type-bare-name-sym (type)
+(define-inline phpinspect--type-base-name-sym (type)
   "Return a `phpinspect-name' of the name, without namespace part, of TYPE."
   (inline-letevals (type)
     (inline-quote
-     (with-memoization (phpinspect--type--bare-name-sym-slot ,type)
-       (phpinspect-intern-name (phpinspect--type-bare-name ,type))))))
+     (phpinspect-name-base (phpinspect--type-name ,type)))))
 
 (defun phpinspect--type= (type1 type2)
-  (eq (phpinspect--type-name-symbol type1) (phpinspect--type-name-symbol type2)))
+  (eq (phpinspect--type-name type1) (phpinspect--type-name type2)))
 
 (defun phpinspect--types-uniq (types &optional exclude)
   "Optimized seq-uniq for TYPES.
 
 If EXCLUDE is non-nil, it is expected to be a `phpinspect--type'
 structure to exclude."
-  (setq exclude (and exclude (phpinspect--type-name-symbol exclude)))
+  (setq exclude (and exclude (phpinspect--type-name exclude)))
 
   (let* (table
          (filtered (cons nil nil))
          (filtered-rear filtered))
     (dolist (type types)
-      (let ((name (phpinspect--type-name-symbol type)))
+      (let ((name (phpinspect--type-name type)))
         (unless (or (memq name table) (eq exclude name))
           (setq filtered-rear (setcdr filtered-rear (cons type nil)))
             (push name table))))
@@ -187,7 +184,7 @@ NAMESPACE may be nil, or a string with a namespace FQN."
         ;; Clas|interface|trait name
         (t (let ((from-types (assoc-default (phpinspect-intern-name type) types #'eq)))
              (cond (from-types
-                    (phpinspect--type-name from-types))
+                    (phpinspect--type-name-string from-types))
                    (namespace
                     (concat "\\" namespace "\\" type))
                    (t (concat "\\" type)))))))
@@ -196,7 +193,7 @@ NAMESPACE may be nil, or a string with a namespace FQN."
   (unless (phpinspect--type-fully-qualified type)
     (phpinspect--type-set-name
      type
-     (phpinspect--resolve-type-name types namespace (phpinspect--type-name type)))
+     (phpinspect--resolve-type-name types namespace (phpinspect--type-name-string type)))
     (setf (phpinspect--type-fully-qualified type) t))
   (when (phpinspect--type-is-collection type)
     (setf (phpinspect--type-collection type) t))
@@ -241,8 +238,8 @@ NAMESPACE may be nil, or a string with a namespace FQN."
                     ;; Type has not yet been resolved, so we can compare bare
                     ;; names to detect a "self" type.
                     (and (not (phpinspect--type-fully-qualified type))
-                         (eq (phpinspect--type-bare-name-sym type)
-                             (phpinspect--type-bare-name-sym phpinspect--self-type)))))
+                         (eq (phpinspect--type-base-name-sym type)
+                             (phpinspect--type-base-name-sym phpinspect--self-type)))))
            (progn
              (phpinspect--log "Returning inside class name for %s : %s"
                               type inside-class-name)
@@ -259,7 +256,7 @@ NAMESPACE may be nil, or a string with a namespace FQN."
   (string-remove-prefix "\\" name))
 
 (cl-defmethod phpinspect--format-type-name ((type phpinspect--type))
-  (phpinspect--format-type-name (phpinspect--type-name type)))
+  (phpinspect--format-type-name (phpinspect--type-name-string type)))
 
 (cl-defmethod phpinspect--display-format-type-name ((name string))
   (propertize (phpinspect--format-type-name name) 'face 'font-lock-type-face))
@@ -271,8 +268,8 @@ NAMESPACE may be nil, or a string with a namespace FQN."
          ;; Save display name when name is fully qualified, as it won't change
          ;; again.
          (with-memoization (phpinspect--type--display-name-slot ,type)
-           (phpinspect--display-format-type-name (phpinspect--type-name ,type)))
-       (phpinspect--display-format-type-name (phpinspect--type-name ,type))))))
+           (phpinspect--display-format-type-name (phpinspect--type-name-string ,type)))
+       (phpinspect--display-format-type-name (phpinspect--type-name-string ,type))))))
 
 (cl-defmethod phpinspect--display-format-type-name ((type phpinspect--type))
   (let ((self (phpinspect--type-format-display-name type)))
@@ -289,10 +286,10 @@ NAMESPACE may be nil, or a string with a namespace FQN."
 (cl-defstruct (phpinspect--function (:constructor phpinspect--make-function-generated)
                                     (:copier phpinspect--copy-function))
   "A PHP function."
-  (name-symbol nil
-               :type symbol
-               :documentation
-               "A symbol associated with the name of the function")
+  (name nil
+        :type phpinspect-name
+        :documentation
+        "A `phpinspect-name' for the name of the function.")
   (throws nil
           :type list
           :documentation "List of exception types that function throws (according to doc
@@ -327,17 +324,17 @@ return type of the function."))
   (alist-get argument-name (phpinspect--function-arguments fn) nil nil #'string=))
 
 (defun phpinspect--function-anonymous-p (fn)
-  (eq (phpinspect-intern-name "anonymous") (phpinspect--function-name-symbol fn)))
+  (eq (phpinspect-intern-name "anonymous") (phpinspect--function-name fn)))
 
 (defmacro phpinspect--make-function (&rest property-list)
   `(phpinspect--make-function-generated
     ,@(phpinspect--wrap-plist-name-in-symbol property-list)))
 
 (cl-defmethod phpinspect--function-set-name ((func phpinspect--function) (name string))
-  (setf (phpinspect--function-name-symbol func) (intern name phpinspect-names)))
+  (setf (phpinspect--function-name func) (intern name phpinspect-names)))
 
-(define-inline phpinspect--function-name (func)
-  (inline-quote (phpinspect-name-string (phpinspect--function-name-symbol ,func))))
+(define-inline phpinspect--function-name-string (func)
+  (inline-quote (phpinspect-name-string (phpinspect--function-name ,func))))
 
 (cl-defstruct (phpinspect--variable (:constructor phpinspect--make-variable))
   "A PHP Variable."
@@ -389,12 +386,12 @@ mutability of the variable")
 (defun phpinspect--use-to-type-cons (use)
   (let* ((fqn (phpinspect-use-name-string use))
          (type (phpinspect-use-name-to-type fqn))
-         (type-name (if (and (phpinspect-word-p (caddr use))
-                             (string= "as" (cadr (caddr use))))
-                        (cadr (cadddr use))
-                      (progn (string-match "[^\\]+$" fqn)
-                             (match-string 0 fqn)))))
-    (cons (phpinspect-intern-name type-name) type)))
+         (type-name-string (if (and (phpinspect-word-p (caddr use))
+                                    (string= "as" (cadr (caddr use))))
+                               (cadr (cadddr use))
+                             (progn (string-match "[^\\]+$" fqn)
+                                    (match-string 0 fqn)))))
+    (cons (phpinspect-intern-name type-name-string) type)))
 
 (defun phpinspect--uses-to-types (uses)
   (mapcar #'phpinspect--use-to-type-cons uses))

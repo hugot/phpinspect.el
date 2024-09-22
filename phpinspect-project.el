@@ -124,7 +124,7 @@ serious performance hits. Enable at your own risk (:")
 (cl-defmethod phpinspect-project-set-function
   ((project phpinspect-project) (func phpinspect--function))
   (phpinspect-project-edit project
-    (puthash (phpinspect--function-name-symbol func) func
+    (puthash (phpinspect--function-name func) func
              (phpinspect-project-function-index project))))
 
 (cl-defmethod phpinspect-project-get-function
@@ -181,7 +181,7 @@ serious performance hits. Enable at your own risk (:")
 
 (cl-defmethod phpinspect-project-delete-typedef ((project phpinspect-project) (typedef-name phpinspect--type))
   (phpinspect-project-edit project
-    (remhash (phpinspect--type-name-symbol typedef-name) (phpinspect-project-typedef-index project))))
+    (remhash (phpinspect--type-name typedef-name) (phpinspect-project-typedef-index project))))
 
 (cl-defmethod phpinspect-project-add-typedef
   ((project phpinspect-project) (indexed-typedef (head phpinspect--indexed-class)) &optional index-dependencies)
@@ -189,13 +189,13 @@ serious performance hits. Enable at your own risk (:")
     (if (not (alist-get 'class-name (cdr indexed-typedef)))
         (phpinspect--log "Error: Typedef with declaration %s does not have a name" (alist-get 'declaration indexed-typedef))
       ;; Else
-      (let* ((typedef-type-name (alist-get 'class-name (cdr indexed-typedef)))
-             (typedef-name (phpinspect--type-name-symbol typedef-type-name))
+      (let* ((typedef-type-name-string (alist-get 'class-name (cdr indexed-typedef)))
+             (typedef-name (phpinspect--type-name typedef-type-name-string))
              (typedef (gethash typedef-name
                                (phpinspect-project-typedef-index project))))
         (unless typedef
           (setq typedef (phpinspect-make-typedef
-                         typedef-type-name (phpinspect-project-make-typedef-retriever project))))
+                         typedef-type-name-string (phpinspect-project-make-typedef-retriever project))))
 
         (phpi-typedef-set-index typedef indexed-typedef)
 
@@ -207,7 +207,7 @@ serious performance hits. Enable at your own risk (:")
 (cl-defmethod phpinspect-project-set-typedef
   ((project phpinspect-project) (typedef-fqn phpinspect--type) (typedef phpinspect-typedef))
   (phpinspect-project-edit project
-    (puthash (phpinspect--type-name-symbol typedef-fqn)
+    (puthash (phpinspect--type-name typedef-fqn)
              typedef
              (phpinspect-project-typedef-index project))))
 
@@ -271,7 +271,7 @@ indexation, but indexed synchronously before returning."
 (cl-defmethod phpinspect-project-get-typedef
   ((project phpinspect-project) (typedef-fqn phpinspect--type) &optional index)
   "Get indexed typedef by name of TYPEDEF-FQN stored in PROJECT."
-  (let ((typedef (gethash (phpinspect--type-name-symbol typedef-fqn)
+  (let ((typedef (gethash (phpinspect--type-name typedef-fqn)
                           (phpinspect-project-typedef-index project))))
     (when typedef
       (when (and (phpinspect-project-read-only-p project)
@@ -301,14 +301,14 @@ before the search is executed."
       (phpinspect-project-edit project
         (phpinspect-autoloader-refresh autoloader)))
     (let* ((result (phpinspect-autoloader-resolve
-                    autoloader (phpinspect--type-name-symbol type))))
+                    autoloader (phpinspect--type-name type))))
       (if (not result)
           ;; Index new files and try again if not done already.
           (if (eq index-new 'index-new)
               nil
             (when phpinspect-auto-reindex
               (phpinspect--log "Failed finding filepath for type %s. Retrying with reindex."
-                               (phpinspect--type-name type))
+                               (phpinspect--type-name-string type))
               (phpinspect-project-get-type-filepath project type 'index-new)))
         result))))
 
@@ -323,7 +323,7 @@ before the search is executed."
           (if visited-buffer
               (with-current-buffer visited-buffer (phpinspect-index-current-buffer))
             (with-temp-buffer (phpinspect-project-index-file project file)))
-          (phpinspect--log "Failed to determine filepath for type %s" (phpinspect--type-name type))))
+          (phpinspect--log "Failed to determine filepath for type %s" (phpinspect--type-name-string type))))
     (file-missing
      (phpinspect--log "Failed to find file for type %s:  %s" type error)
      nil)))
@@ -359,7 +359,7 @@ before the search is executed."
         (phpinspect-project-get-typedef-create project type))))
 
 (defvar phpinspect--project-type-name-history nil
-  "History list to use for `phpinspect-project-read-type-name'")
+  "History list to use for `phpinspect-project-read-type-name-string'")
 
 ;;; INDEX TASK
 (cl-defstruct (phpinspect-index-task

@@ -432,7 +432,7 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
     ;; in buffers.
     (let* ((constructor-sym (phpinspect-intern-name "__construct"))
            (constructor (seq-find (lambda (method)
-                                    (eq (phpinspect--function-name-symbol method)
+                                    (eq (phpinspect--function-name method)
                                         constructor-sym))
                                   methods)))
       (when constructor

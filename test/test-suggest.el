@@ -62,14 +62,14 @@ new ")
       (add-hook 'after-change-functions #'phpinspect-after-change-function)
       (should (length= types 2))
       (should (equal (list "\\App\\Baz" "\\App\\Foo")
-		     (sort (mapcar #'phpinspect--type-name types) #'string<)))
+		     (sort (mapcar #'phpinspect--type-name-string types) #'string<)))
 
       (insert "Fo")
       (setq rctx (phpinspect-buffer-get-resolvecontext buffer (point))
 	    types (phpinspect-suggest-words-at-point rctx))
       (should (length= types 2))
       (should (equal (list "\\App\\Baz" "\\App\\Foo")
-		     (sort (mapcar #'phpinspect--type-name types) #'string<))))))
+		     (sort (mapcar #'phpinspect--type-name-string types) #'string<))))))
 
 (ert-deftest phpinspect-suggest-types-at-point-include-current-namespace ()
   (with-temp-buffer
@@ -88,7 +88,7 @@ new ")
 	     (types (phpinspect-suggest-words-at-point rctx)))
 	(should (length= types 6))
 	(should (equal (list "\\App\\Bar" "\\App\\Barry" "\\App\\Baz" "\\App\\Foo" "\\App\\Harry" "\\DateTime")
-		       (sort (mapcar #'phpinspect--type-name types) #'string<))))))
+		       (sort (mapcar #'phpinspect--type-name-string types) #'string<))))))
 
 (ert-deftest phpinspect-suggest-keywords-at-point-class-body ()
   (with-temp-buffer

@@ -23,19 +23,6 @@
 
 ;;; Code:
 
-(defvar phpinspect-names (make-hash-table :test #'equal :size 5000 :rehash-size 1.2)
-  "An hash-table containing cons cells representing encountered names in
-PHP code. Used to optimize string comparison. See also `phpinspect-intern-name'")
-
-(defun phpinspect-make-name-hash ()
-  (make-hash-table :test #'equal :size 5000 :rehash-size 1.2))
-
-(define-inline phpinspect-name-string (name)
-  (inline-quote (cdr ,name)))
-
-(define-inline phpinspect-name-p (name)
-  (inline-quote (eq 'phpinspect-name (car ,name))))
-
 (defvar phpinspect-project-root-file-list
   '("composer.json" "composer.lock" ".git" ".svn" ".hg")
   "List of files that could indicate a project root directory.")
@@ -124,28 +111,6 @@ level of START-FILE in stead of `default-directory`."
                            (string= parent-without-vendor "")))
               (phpinspect--find-project-root parent-without-vendor))))))))
 
-(defun phpinspect-intern-name (name)
-  (or (gethash name phpinspect-names)
-      (puthash name (cons 'phpinspect-name name) phpinspect-names)))
-
-(defun phpinspect-names-to-alist (names)
-  (let ((alist))
-    (dolist (name names)
-      (push (cons (phpinspect-name-string name) name) alist))
-    alist))
-
-(defsubst phpinspect--wrap-plist-name-in-symbol (property-list)
-  (let ((new-plist)
-        (wrap-value))
-    (dolist (item property-list)
-      (when wrap-value
-        (setq item `(phpinspect-intern-name ,item))
-        (setq wrap-value nil))
-      (when (eq item :name)
-        (setq item :name-symbol)
-        (setq wrap-value t))
-      (push item new-plist))
-    (nreverse new-plist)))
 
 (cl-defstruct (phpinspect--pattern
                (:constructor phpinspect--make-pattern-generated))

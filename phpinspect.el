@@ -102,6 +102,7 @@
 (require 'phpinspect-eldoc)
 (require 'phpinspect-suggest)
 (require 'phpinspect-completion)
+(require 'phpinspect-name)
 
 (defvar phpinspect-insert-file-contents-function #'insert-file-contents-literally
   "Function that phpinspect uses to insert file contents into a buffer.")
@@ -162,7 +163,13 @@
 
 Reparses the entire buffer without token reuse."
   (when (and (boundp 'phpinspect-mode) phpinspect-mode)
-    (phpinspect-buffer-reindex phpinspect-current-buffer)))
+    (phpinspect-buffer-reindex phpinspect-current-buffer)
+
+    ;; Make sure that the project's autoloader is aware of the file
+    (when-let ((file-name (buffer-file-name))
+               (project (phpinspect-buffer-project phpinspect-current-buffer))
+               (autoloader (phpinspect-project-autoload project)))
+      (phpinspect-autoloader-ensure-file-indexed autoloader file-name))))
 
 (defun phpinspect--disable-mode ()
   "Clean up the buffer environment for the mode to be disabled."

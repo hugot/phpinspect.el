@@ -418,7 +418,7 @@ Returns list of `phpinspect--completion'."
                  ") "
                  (phpinspect--display-format-type-name (phpi-fn-return-type completion-candidate)))
    :annotation (concat " "
-                       (phpinspect--type-bare-name
+                       (phpinspect--type-base-name
                         (phpi-fn-return-type completion-candidate)))
    :target completion-candidate
    :kind 'function))
@@ -439,7 +439,7 @@ Returns list of `phpinspect--completion'."
 
 (cl-defmethod phpinspect--make-completion ((type phpinspect--type))
   (phpinspect--construct-completion
-   :value (propertize (phpinspect--type-bare-name type) 'face 'font-lock-type-face)
+   :value (propertize (phpinspect--type-base-name type) 'face 'font-lock-type-face)
    :meta (phpinspect--format-type-name type)
    :target type
    :kind 'class))
@@ -453,7 +453,7 @@ Returns list of `phpinspect--completion'."
               phpinspect--null-type))
    :target completion-candidate
    :annotation (concat " "
-                       (phpinspect--type-bare-name
+                       (phpinspect--type-base-name
                         (or (phpinspect--variable-type completion-candidate)
                             phpinspect--null-type)))
    :kind 'variable))

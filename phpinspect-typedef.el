@@ -225,7 +225,7 @@ structure returned by `phpinspect--index-trait-use'."
   (phpi-typedef-delete-method def (phpinspect-intern-name name)))
 
 (cl-defmethod phpi-typedef-delete-method ((def phpinspect-typedef) (fn phpinspect--function))
-  (phpi-typedef-delete-method def (phpinspect--function-name-symbol fn)))
+  (phpi-typedef-delete-method def (phpinspect--function-name fn)))
 
 (defun phpi-typedef-set-trait-config (def config)
   "Configures CONFIG for typedef DEF.
