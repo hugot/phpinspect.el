@@ -23,6 +23,7 @@
 ;;; Code:
 
 
+;;(require 'profiler)
 (require 'phpinspect-splayt)
 (message "starting bench")
 
@@ -116,7 +117,39 @@
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result)))
 
+(let ((arr (make-bool-vector 1000000 nil))
+      result)
+  (message "bool vector 1000000 insertions:")
+  (garbage-collect)
 
+  (setq result
+        (benchmark-run 1
+          (dotimes (i 1000000)
+            (aset arr i t))))
+
+  (message "Elapsed time: %f (%f in %d GC's)"
+           (car result) (caddr result) (cadr result))
+
+  (message "bool vector 1000000 lookups:")
+  (garbage-collect)
+  (setq result
+        (benchmark-run 1
+          (dotimes (i 1000000)
+            (aref arr i))))
+
+  (message "Elapsed time: %f (%f in %d GC's)"
+           (car result) (caddr result) (cadr result))
+
+  ;; (profiler-start 'cpu)
+  (message "bool vector 1000000 randomized lookups:")
+  (garbage-collect)
+  (setq result
+        (benchmark-run 1
+          (dolist (i phpi-randomized-access)
+            (aref arr i))))
+
+  (message "Elapsed time: %f (%f in %d GC's)"
+           (car result) (caddr result) (cadr result)))
 
 (let (map result)
   (message "Hashtable 1000000 insertions:")

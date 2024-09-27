@@ -23,7 +23,9 @@
 ;;; Code:
 
 
+;;(require 'profiler)
 (require 'phpinspect-parser)
+(require 'phpinspect-buffer)
 
 (defun phpinspect-parse-current-buffer ()
   (phpinspect-parse-buffer-until-point
@@ -35,6 +37,7 @@
 (let* ((here (file-name-directory (macroexp-file-name)))
        (benchmark-file (or (getenv "PHPINSPECT_BENCHMARK_FILE")
                            (expand-file-name "Response.php" here)))
+       buffer
        result)
 
 
@@ -77,21 +80,25 @@
 
       (garbage-collect)
 
-      (let ((edtrack (phpinspect-make-edtrack))
+      (setq buffer (phpinspect-claim-buffer (current-buffer)))
+      (let ((edtrack (phpinspect-buffer-edit-tracker buffer))
             (bmap (phpinspect-make-bmap))
             (bmap-after (phpinspect-make-bmap)))
         ;; Fresh
         (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :bmap bmap)
           (phpinspect-parse-current-buffer))
 
+        ;; (setq token-hits nil
+        ;;       token-misses nil)
         (message "Incremental parse after buffer edit:")
         ;; Removes closing curly brace of __construct
         (goto-char 9062)
         (delete-char -1)
 
         (garbage-collect)
+        ;;        (profiler-start 'cpu)
 
-        (phpinspect-edtrack-register-edit edtrack 9061 9061 1)
+        ;;(phpinspect-edtrack-register-edit edtrack 9061 9061 1)
         (phpinspect-with-parse-context (phpinspect-make-pctx :bmap bmap-after :incremental t :previous-bmap bmap :edtrack edtrack)
           (setq result (benchmark-run 1 (phpinspect-parse-current-buffer))))
 
@@ -99,13 +106,18 @@
         (phpinspect-edtrack-clear edtrack)
         (insert "{")
 
-        (phpinspect-edtrack-register-edit edtrack 9061 9062 0)
+        ;;(message "Hits: %s, Misses: %s" token-hits token-misses)
+
+        ;;(phpinspect-edtrack-register-edit edtrack 9061 9062 0)
         ;; Mark region as edit without length deta
-        (phpinspect-edtrack-register-edit edtrack 19552 19562 10)
+        ;;(phpinspect-edtrack-register-edit edtrack 19552 19562 10)
 
         (garbage-collect)
 
-        ;;(profiler-start 'cpu)
+        ;; (setq token-hits nil
+        ;;       token-misses nil)
+
+
         (message "Incremental parse after 2 more edits:")
         (phpinspect-with-parse-context (phpinspect-make-pctx :bmap (phpinspect-make-bmap)
                                                              :incremental t
@@ -114,11 +126,13 @@
           (setq result (benchmark-run 1 (phpinspect-parse-current-buffer))))
 
         (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
+        ;;(message "Hits: %s, Misses: %s" token-hits token-misses)
 
         ;; (save-current-buffer
         ;;   (profiler-stop)
         ;;   (profiler-report)
         ;;   (profiler-report-write-profile (expand-file-name "profile.txt" here)))
+
         )))
 
   (with-temp-buffer
