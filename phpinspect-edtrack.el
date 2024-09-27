@@ -42,35 +42,65 @@
                    :type integer
                    :documentation "Last registered edit start position"))
 
-(defsubst phpinspect-edit-original-end (edit)
-  (or (caar edit) 0))
+(define-inline phpinspect-edit-local-delta (edit)
+  "The change in the end position of EDIT's region.
+
+This is equal to [after-change-length] - [pre-change-length]."
+  (inline-quote (or (cdar ,edit) 0)))
+
+(define-inline phpinspect-edit-original-end (edit)
+  "The original end position of EDIT."
+  (inline-quote (or (caar ,edit) 0)))
+
+(define-inline phpinspect-edit-preceding (edit)
+  (inline-quote (cdr ,edit)))
 
 (defsubst phpinspect-edit-delta (edit)
-  (let ((delta (or (cdar edit) 0))
+  (let ((delta (phpinspect-edit-local-delta edit))
         (previous-edit edit))
     (while (setq previous-edit (cdr previous-edit))
-      (setq delta (+ delta (cdar previous-edit))))
+      (setq delta (+ delta (phpinspect-edit-local-delta previous-edit))))
     delta))
 
-(defsubst phpinspect-edit-end (edit)
-  (let ((end (or (caar edit) 0))
-        (previous-edit (cdr edit)))
-    (+ end (phpinspect-edit-delta previous-edit))))
+(define-inline phpinspect-edit-end (edit)
+  "The current end position of EDIT.
+
+This is equal to the original end position of EDIT + the delta's
+of all known edits before EDIT's start."
+  (inline-letevals (edit)
+    (inline-quote
+     (+ (phpinspect-edit-original-end ,edit)
+        (phpinspect-edit-delta (phpinspect-edit-preceding ,edit))))))
 
 (defsubst phpinspect-edtrack-original-position-at-point (track point)
+  "Calculate position of POINT if no edits had been made."
   (let ((edit (phpinspect-edtrack-edits track))
-        (encroached)
-        (pos))
-    (while (and edit (<= point (phpinspect-edit-end edit)))
-      (setq edit (cdr edit)))
+        ;; `end' will be the end position  of the last edit before POINT
+        end)
 
-    (setq pos (- point (phpinspect-edit-delta edit)))
+    (let (last-end)
+      ;; Find last edit before point
+      (while (and edit (<= point (setq last-end (phpinspect-edit-end edit))))
+        (setq end last-end
+              edit (cdr edit)))
 
-    ;; When point is within the edit delta's range, correct the delta by the
-    ;; amount of encroachment.
-    (if (< 0 (setq encroached (- (+ (phpinspect-edit-end edit) (or (cdar edit) 0)) point)))
-        (+ pos encroached)
-      pos)))
+      ;; If edit is non-nil, last-end will be the end of edit. If edit is nil,
+      ;; there were no edits before POINT.
+      (setq end (if edit last-end 0)))
+
+    (if edit
+        ;; Subtract cumulative edit delta
+        (let ((pos (- point (phpinspect-edit-delta edit))))
+
+          ;; When point is within the edit delta's range, correct the delta by the
+          ;; amount of encroachment.
+          (let ((encroached (- (+ end (phpinspect-edit-local-delta edit)) point)))
+            (if (< 0 encroached)
+                (+ pos encroached)
+              pos)))
+
+      ;; else: no edits have taken place, return POINT
+      point)))
 
 (defsubst phpinspect-edtrack-current-position-at-point (track point)
   (let ((edit (phpinspect-edtrack-edits track))
@@ -176,10 +206,10 @@
           new-edit)
       (setq new-edit (cons
                         ;; The end location of the edited region, before being
-                        ;; edited, with the delta edits that happened at preceding
-                        ;; points in the buffer subtratted. This corresponds with
-                        ;; the original position of the region end before the
-                        ;; buffer was ever edited.
+                        ;; edited, with the delta of edits that happened at
+                        ;; preceding points in the buffer subtracted. This
+                        ;; corresponds with the original position of the region
+                        ;; end before the buffer was ever edited.
                         (phpinspect-edtrack-original-position-at-point
                          track (+ start pre-change-length))
                         delta))
