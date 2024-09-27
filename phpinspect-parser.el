@@ -113,21 +113,28 @@ You can purge the parser cache with \\[phpinspect-purge-parser-cache]."
     (error "In definition of phpinspect handler %s: NAME bust be a symbol" name))
 
   (when (not (alist-get 'regexp attribute-alist))
-    (error "In definition of phpinspect handler %s ATTRIBUTE-PLIST must contain key `regexp`"
+    (error "In definition of phpinspect handler %s ATTRIBUTE-ALIST must contain key `regexp`"
            name))
 
   (let ((regexp-inline-name (phpinspect-handler-regexp-func-name name))
         (inline-name (phpinspect-handler-func-name name)))
+
     `(progn
        (define-inline ,regexp-inline-name ()
          (inline-letevals ((regexp ,(alist-get 'regexp attribute-alist)))
            (inline-quote ,(quote ,regexp))))
 
-       (defsubst ,inline-name (,@arguments)
-         ,docstring
-         ,@body)
+       ,(if (alist-get 'inline attribute-alist)
+            `(define-inline ,inline-name (,@arguments)
+               ,docstring
+               ,@body)
+          `(defsubst ,inline-name (,@arguments)
+             ,docstring
+             ,@body))
 
-       (put (quote ,inline-name) 'phpinspect--handler t))))
+       (put (quote ,inline-name) 'phpinspect--handler t)
+       (put (quote ,inline-name) 'definition-name (quote ,name))
+       (put (quote ,regexp-inline-name) 'definition-name (quote ,name)))))
 
 (eval-when-compile
   (defun phpinspect-make-parser-function (name tree-type handlers &optional delimiter-predicate delimiter-condition)
@@ -281,7 +288,7 @@ is able to reuse an already parsed tree."
                   :documentation "Name of the keyword that is used as car of the
 root token, in string form without \":\" prefix.")
     (handlers '(array tag equals list comma
-                      attribute-reference variable
+                      attribute-reference static-attribute-reference variable
                       assignment-operator whitespace scope-keyword
                       static-keyword const-keyword use-keyword
                       class-keyword interface-keyword trait-keyword enum-keyword
@@ -420,16 +427,15 @@ parsing incrementally."
 
 (phpinspect-defhandler comma (comma &rest _ignored)
   "Handler for comma tokens"
-  ((regexp . ","))
-  (phpinspect-munch-token-without-attribs comma :comma))
+  ((regexp . ",")
+   (inline . t))
+  (inline-quote (phpinspect-munch-token-without-attribs ,comma :comma)))
 
-(phpinspect-defhandler word (word &rest --length)
+(phpinspect-defhandler word (word &rest _ignored)
   "Handler for bareword tokens"
-  ((regexp . "[A-Za-z_\\][\\A-Za-z_0-9]*"))
-  (setq --length (length word))
-  (forward-char --length)
-  (set-text-properties 0 --length nil word)
-  (list :word word))
+  ((regexp . "[A-Za-z_\\][\\A-Za-z_0-9]*")
+   (inline . t))
+  (inline-quote (phpinspect-munch-token-without-attribs ,word :word)))
 
 (defmacro phpinspect-handler-regexp (handler-name)
   (unless (symbolp handler-name)
@@ -440,16 +446,19 @@ parsing incrementally."
 
 (phpinspect-defhandler variable (start-token &rest _ignored)
   "Handler for tokens indicating reference to a variable"
-  ((regexp . "\\$"))
-  (forward-char (length start-token))
-  (if (looking-at (phpinspect-handler-regexp word))
-      (phpinspect-munch-token-without-attribs (match-string 0) :variable)
-    (list :variable nil)))
+  ((regexp . "\\$")
+   (inline . t))
+  (inline-quote
+   (progn
+     (forward-char (length ,start-token))
+     (if (looking-at (phpinspect--word-handler-regexp))
+         (phpinspect-munch-token-without-attribs (match-string 0) :variable)
+       (list :variable nil)))))
 
 (phpinspect-defparser list
   :tree-keyword "list"
   :handlers '(array tag equals list comma
-                    attribute-reference variable assignment-operator
+                    attribute-reference static-attribute-reference variable assignment-operator
                     whitespace function-keyword word terminator here-doc
                     string string-concatenator comment block-without-scopes))
 
@@ -457,20 +466,22 @@ parsing incrementally."
   "Handler for php syntactic lists (Note: this does not include
 datatypes like arrays, merely lists that are of a syntactic
 nature like argument lists"
-  ((regexp . "("))
-  (let* ((complete-list nil)
-         (php-list (phpinspect--parse-list
-                    (current-buffer)
-                    max-point
-                    (length start-token)
-                    (lambda () (not (and (char-equal (char-after) ?\)) (setq complete-list (point))))))))
+  ((regexp . "(")
+   (inline . t))
+  (inline-quote
+   (let* ((complete-list nil)
+          (php-list (phpinspect--parse-list
+                     (current-buffer)
+                     ,max-point
+                     (length ,start-token)
+                     (lambda () (not (and (char-equal (char-after) ?\)) (setq complete-list (point))))))))
 
-    (if complete-list
-        ;; Prevent parent-lists (if any) from exiting by skipping over the
-        ;; ")" character
-        (goto-char (+ complete-list 1))
-      (setcar php-list :incomplete-list))
-    php-list))
+     (if complete-list
+         ;; Prevent parent-lists (if any) from exiting by skipping over the
+         ;; ")" character
+         (goto-char (+ complete-list 1))
+       (setcar php-list :incomplete-list))
+     php-list)))
 
 (defsubst phpinspect--parse-annotation-parameters (parameter-amount)
   (let* ((words)
@@ -493,43 +504,49 @@ nature like argument lists"
 
 (phpinspect-defhandler annotation (start-token &rest _ignored)
   "Handler for in-comment @annotations"
-  ((regexp . "@"))
-  (forward-char (length start-token))
-  (if (looking-at (phpinspect-handler-regexp word))
-      (let ((annotation-name (match-string 0)))
-        (forward-char (length annotation-name))
-        (cond ((string= annotation-name "var")
-               ;; The @var annotation accepts 2 parameters:
-               ;; the type and the $variable name
-               (cons :var-annotation
-                     (phpinspect--parse-annotation-parameters 2)))
-              ((string= annotation-name "return")
-               ;; The @return annotation only accepts 1 word as parameter:
-               ;; The return type
-               (cons :return-annotation
-                     (phpinspect--parse-annotation-parameters 1)))
-              ((string= annotation-name "param")
-                 ;; The @param annotation accepts 2 parameters:
-                 ;; The type of the param, and the param's $name
-                 (cons :param-annotation
-                       (phpinspect--parse-annotation-parameters 2)))
-              ((string= annotation-name "method")
-               (cons :method-annotation
-                     (phpinspect--parse-annotation-parameters 4)))
-              ((string= annotation-name "throws")
-               (cons :throws-annotation
-                     (phpinspect--parse-annotation-parameters 1)))
-              (t
-               (list :annotation annotation-name))))
-    (list :annotation nil)))
+  ((regexp . "@")
+   (inline . t))
+  (inline-quote
+   (progn
+     (forward-char (length ,start-token))
+     (if (looking-at (phpinspect-handler-regexp word))
+         (let ((annotation-name (match-string 0)))
+           (forward-char (length annotation-name))
+           (cond ((string= annotation-name "var")
+                  ;; The @var annotation accepts 2 parameters:
+                  ;; the type and the $variable name
+                  (cons :var-annotation
+                        (phpinspect--parse-annotation-parameters 2)))
+                 ((string= annotation-name "return")
+                  ;; The @return annotation only accepts 1 word as parameter:
+                  ;; The return type
+                  (cons :return-annotation
+                        (phpinspect--parse-annotation-parameters 1)))
+                 ((string= annotation-name "param")
+                  ;; The @param annotation accepts 2 parameters:
+                  ;; The type of the param, and the param's $name
+                  (cons :param-annotation
+                        (phpinspect--parse-annotation-parameters 2)))
+                 ((string= annotation-name "method")
+                  (cons :method-annotation
+                        (phpinspect--parse-annotation-parameters 4)))
+                 ((string= annotation-name "throws")
+                  (cons :throws-annotation
+                        (phpinspect--parse-annotation-parameters 1)))
+                 (t
+                  (list :annotation annotation-name))))
+       (list :annotation nil)))))
 
 (phpinspect-defhandler tag (start-token max-point)
   "Handler that discards any inline HTML it encounters"
-  ((regexp . "\\?>"))
-  (forward-char (length start-token))
-  (or (re-search-forward "<\\?php\\|<\\?" nil t)
-      (goto-char max-point))
-  (list :html))
+  ((regexp . "\\?>")
+   (inline . t))
+  (inline-quote
+   (progn
+     (forward-char (length ,start-token))
+     (or (re-search-forward "<\\?php\\|<\\?" nil t)
+         (goto-char ,max-point))
+     (list :html))))
 
 (phpinspect-defparser doc-block
   :tree-keyword "doc-block"
@@ -574,38 +591,52 @@ nature like argument lists"
 
 (phpinspect-defhandler class-variable (start-token &rest _ignored)
   "Handler for tokens indicating reference to a variable"
-  ((regexp . "\\$"))
-  (forward-char (length start-token))
-  (if (looking-at (phpinspect-handler-regexp word))
-      (phpinspect-munch-token-without-attribs (match-string 0) :class-variable)
-    (list :class-variable nil)))
+  ((regexp . "\\$")
+   (inline . t))
+  (inline-quote
+   (progn
+     (forward-char (length ,start-token))
+     (if (looking-at (phpinspect--word-handler-regexp))
+         (phpinspect-munch-token-without-attribs (match-string 0) :class-variable)
+       (list :class-variable nil)))))
 
 (phpinspect-defhandler whitespace (whitespace &rest _ignored)
   "Handler that discards whitespace"
-  ((regexp . "[[:blank:]\n]+"))
-  (when phpinspect-parse-context
-    (phpinspect-pctx-register-whitespace phpinspect-parse-context whitespace))
-  (forward-char (length whitespace)))
+  ((regexp . "[[:blank:]\n]+")
+   (inline . t))
+  (inline-quote
+   (progn
+     (when phpinspect-parse-context
+       (phpinspect-pctx-register-whitespace phpinspect-parse-context ,whitespace))
+     (forward-char (length ,whitespace)))))
 
 (phpinspect-defhandler equals (equals &rest _ignored)
   "Handler for strict and unstrict equality comparison tokens."
-  ((regexp . "===?"))
-  (phpinspect-munch-token-without-attribs equals :equals))
+  ((regexp . "===?")
+   (inline . t))
+  (inline-quote
+   (phpinspect-munch-token-without-attribs ,equals :equals)))
 
 (phpinspect-defhandler assignment-operator (operator &rest _ignored)
   "Handler for tokens indicating that an assignment is taking place"
-  ((regexp . "[+-]?="))
-  (phpinspect-munch-token-without-attribs operator :assignment))
+  ((regexp . "[+-]?=")
+   (inline . t))
+  (inline-quote
+   (phpinspect-munch-token-without-attribs ,operator :assignment)))
 
 (phpinspect-defhandler string-concatenator (token &rest _ignored)
   "Handler for string concatenator tokens. (the . operator)."
-  ((regexp . "\\."))
-  (phpinspect-munch-token-without-attribs token :string-concatenator))
+  ((regexp . "\\.")
+   (inline . t))
+  (inline-quote
+   (phpinspect-munch-token-without-attribs ,token :string-concatenator)))
 
 (phpinspect-defhandler terminator (terminator &rest _ignored)
   "Handler for statement terminators."
-  ((regexp . ";"))
-  (phpinspect-munch-token-without-attribs terminator :terminator))
+  ((regexp . ";")
+   (inline . t))
+  (inline-quote
+   (phpinspect-munch-token-without-attribs ,terminator :terminator)))
 
 (phpinspect-defparser use
   :tree-keyword "use"
@@ -618,33 +649,54 @@ nature like argument lists"
   :delimiter-predicate #'phpinspect-end-of-use-p)
 
 (phpinspect-defhandler use-keyword (start-token max-point)
-  "Handler for the use keyword and tokens that might follow to give it meaning"
-  ((regexp . (concat "use" (phpinspect--word-end-regex))))
-  (setq start-token (phpinspect--strip-word-end-space start-token))
-  (forward-char (length start-token))
-  (phpinspect--parse-use (current-buffer) max-point))
+  "Handler for the use keyword and tokens that might follow to give it meaning.
+
+This handler is meant for use statements outside of class
+bodies (so usually import statements).
+
+To parse trait use statements in class bodies, see
+`phpinspect--use-trait-keyword-handler'."
+  ((regexp . (concat "use" (phpinspect--word-end-regex)))
+   (inline . t))
+  (inline-quote
+   (progn
+     (forward-char (length (phpinspect--strip-word-end-space ,start-token)))
+     (phpinspect--parse-use (current-buffer) ,max-point))))
 
 (phpinspect-defhandler use-trait-keyword (start-token max-point)
   "Handler for the use keyword within the body of a class."
-  ((regexp . (concat "use" (phpinspect--word-end-regex))))
-  (setq start-token (phpinspect--strip-word-end-space start-token))
-  (forward-char (length start-token))
-  (phpinspect--parse-use-trait (current-buffer) max-point))
+  ((regexp . (concat "use" (phpinspect--word-end-regex)))
+   (inline . t))
+  (inline-quote
+   (progn
+     (forward-char (length (phpinspect--strip-word-end-space ,start-token)))
+     (phpinspect--parse-use-trait (current-buffer) ,max-point))))
+
+(phpinspect-defhandler static-attribute-reference (start-token &rest _ignored)
+  "Handler for references to object attributes, or static class attributes."
+  ((regexp . "::")
+   (inline . t))
+  (inline-quote
+   (progn
+     (forward-char (length ,start-token))
+     (list :static-attrib (if (looking-at (phpinspect--word-handler-regexp))
+                              ;; FIXME: This word is not registered when parsing
+                              ;; incrementally.
+                              (phpinspect--word-handler (match-string 0))
+                            nil)))))
 
 (phpinspect-defhandler attribute-reference (start-token &rest _ignored)
   "Handler for references to object attributes, or static class attributes."
-  ((regexp . "->\\|::"))
-  (forward-char (length start-token))
-  (looking-at (phpinspect-handler-regexp word))
-  (let ((name (if (looking-at (phpinspect-handler-regexp word))
-                  ;; FIXME: This word is not registered when parsing incrementally.
-                  (phpinspect--word-handler (match-string 0))
-                nil)))
-    (cond
-     ((string= start-token "::")
-      (list :static-attrib name))
-     ((string= start-token "->")
-      (list :object-attrib name)))))
+  ((regexp . "->")
+   (inline . t))
+  (inline-quote
+   (progn
+     (forward-char (length ,start-token))
+     (list :object-attrib (if (looking-at (phpinspect--word-handler-regexp))
+                              ;; FIXME: This word is not registered when parsing
+                              ;; incrementally.
+                              (phpinspect--word-handler (match-string 0))
+                            nil)))))
 
 (define-inline phpinspect--namespace-should-end-at-block-p (tokens)
   (inline-quote
@@ -669,7 +721,7 @@ nature like argument lists"
    (current-buffer)
    max-point
    nil
-   (lambda () (not (looking-at (phpinspect-handler-regexp namespace))))))
+   (lambda () (not (looking-at (phpinspect--namespace-handler-regexp))))))
 
 (phpinspect-defparser const
   :tree-keyword "const"
@@ -689,12 +741,14 @@ nature like argument lists"
 
 (phpinspect-defhandler string (start-token &rest _ignored)
   "Handler for strings"
-  ((regexp . "\\(\"\\|'\\)"))
-  (list :string (phpinspect--munch-string start-token)))
+  ((regexp . "\\(\"\\|'\\)")
+   (inline . t))
+  (inline-quote (list :string (phpinspect--munch-string ,start-token))))
 
 (phpinspect-defparser block-without-scopes
   :tree-keyword "block"
-  :handlers '(array tag equals string-concatenator list comma attribute-reference variable
+  :handlers '(array tag equals string-concatenator list comma attribute-reference
+                    static-attribute-reference variable
                     assignment-operator whitespace function-keyword word
                     terminator here-doc string comment block-without-scopes))
 
@@ -716,6 +770,7 @@ static keywords with the same meaning as in a class block."
 (phpinspect-defparser class-block
   :tree-keyword "block"
   :handlers '(array tag equals list comma string-concatenator attribute-reference
+                    static-attribute-reference
                     class-variable assignment-operator whitespace scope-keyword
                     static-keyword const-keyword use-trait-keyword function-keyword
                     word terminator here-doc string comment block))
@@ -763,7 +818,6 @@ static keywords with the same meaning as in a class block."
   (if (looking-at "[A-Za-z0-9'\"\\_]+")
       (re-search-forward (concat "^" (regexp-quote (match-string 0))) nil t))
   (list :here-doc))
-
 
 (define-inline phpinspect--munch-string (start-token)
   "Consume text at point until a non-escaped `START-TOKEN` is found.
@@ -875,13 +929,15 @@ Returns the consumed text string without face properties."
 
 (phpinspect-defhandler fat-arrow (arrow &rest _ignored)
   "Handler for the \"fat arrow\" in arrays and foreach expressions"
-  ((regexp . "=>"))
-  (phpinspect-munch-token-without-attribs arrow :fat-arrow))
+  ((regexp . "=>")
+   (inline . t))
+  (inline-quote
+   (phpinspect-munch-token-without-attribs ,arrow :fat-arrow)))
 
 (phpinspect-defparser array
   :tree-keyword "array"
   :handlers '(comment comma list here-doc string array variable
-                      attribute-reference word fat-arrow))
+                      attribute-reference static-attribute-reference word fat-arrow))
 
 (phpinspect-defhandler array (start-token max-point)
   "Handler for arrays, in the bracketet as well as the list notation"
@@ -919,44 +975,62 @@ Returns the consumed text string without face properties."
 
 (phpinspect-defhandler final-keyword (start-token &rest _max-point)
   "Handler for the final keyword."
-  ((regexp . (concat "final" (phpinspect--word-end-regex))))
-  (phpinspect--skip-over-word start-token)
-  '(:final))
+  ((regexp . (concat "final" (phpinspect--word-end-regex)))
+   (inline . t))
+  (inline-quote
+   (progn
+     (phpinspect--skip-over-word ,start-token)
+     '(:final))))
 
 (phpinspect-defhandler abstract-keyword (start-token &rest _max-point)
   "Handler for the abstract keyword."
-  ((regexp . (concat "abstract" (phpinspect--word-end-regex))))
-  (phpinspect--skip-over-word start-token)
-  '(:abstract))
+  ((regexp . (concat "abstract" (phpinspect--word-end-regex)))
+   (inline . t))
+  (inline-quote
+   (progn
+     (phpinspect--skip-over-word ,start-token)
+     '(:abstract))))
 
 (phpinspect-defhandler interface-keyword (start-token max-point)
   "Handler for the interface keyword."
-  ((regexp . (concat "interface" (phpinspect--word-end-regex))))
-  (phpinspect--skip-over-word start-token)
-  `(:interface ,(phpinspect--parse-type-declaration max-point)
-               ,@(cdr (phpinspect--parse-class-body (current-buffer) max-point nil))))
+  ((regexp . (concat "interface" (phpinspect--word-end-regex)))
+   (inline . t))
+  (inline-quote
+   (progn
+     (phpinspect--skip-over-word ,start-token)
+     (nconc (list :interface (phpinspect--parse-type-declaration ,max-point))
+            (cdr (phpinspect--parse-class-body (current-buffer) ,max-point nil))))))
 
 (phpinspect-defhandler trait-keyword (start-token max-point)
   "Handler for the interface keyword."
-  ((regexp . (concat "trait" (phpinspect--word-end-regex))))
-  (phpinspect--skip-over-word start-token)
-  `(:trait ,(phpinspect--parse-type-declaration max-point)
-           ,@(cdr (phpinspect--parse-class-body (current-buffer) max-point nil))))
+  ((regexp . (concat "trait" (phpinspect--word-end-regex)))
+   (inline . t))
+  (inline-quote
+   (progn
+     (phpinspect--skip-over-word ,start-token)
+     (nconc (list :trait (phpinspect--parse-type-declaration ,max-point))
+            (cdr (phpinspect--parse-class-body (current-buffer) ,max-point nil))))))
 
 (phpinspect-defhandler enum-keyword (start-token max-point)
   "Handler for the interface keyword."
-  ((regexp . (concat "enum" (phpinspect--word-end-regex))))
-  (phpinspect--skip-over-word start-token)
-  `(:enum ,(phpinspect--parse-type-declaration max-point)
-          ,@(cdr (phpinspect--parse-class-body (current-buffer) max-point nil))))
+  ((regexp . (concat "enum" (phpinspect--word-end-regex)))
+   (inline . t))
+  (inline-quote
+   (progn
+     (phpinspect--skip-over-word ,start-token)
+     (nconc (list :enum (phpinspect--parse-type-declaration ,max-point))
+            (cdr (phpinspect--parse-class-body (current-buffer) ,max-point nil))))))
 
 (phpinspect-defhandler class-keyword (start-token max-point)
   "Handler for the class keyword, and tokens that follow to define
 the properties of the class"
-  ((regexp . (concat "class" (phpinspect--word-end-regex))))
-  (phpinspect--skip-over-word start-token)
-  `(:class ,(phpinspect--parse-type-declaration max-point)
-           ,@(cdr (phpinspect--parse-class-body (current-buffer) max-point nil))))
+  ((regexp . (concat "class" (phpinspect--word-end-regex)))
+   (inline . t))
+  (inline-quote
+   (progn
+     (phpinspect--skip-over-word ,start-token)
+     (nconc (list :class (phpinspect--parse-type-declaration ,max-point))
+            (cdr (phpinspect--parse-class-body (current-buffer) ,max-point nil))))))
 
 (phpinspect-defparser class-body
   :handlers '(whitespace comment class-block)
@@ -968,7 +1042,8 @@ the properties of the class"
 
 (phpinspect-defparser root
   :tree-keyword "root"
-  :handlers '(namespace array equals list comma attribute-reference variable
+  :handlers '(namespace array equals list comma attribute-reference
+                        static-attribute-reference variable
                         assignment-operator whitespace scope-keyword
                         static-keyword const-keyword use-keyword class-keyword
                         interface-keyword trait-keyword enum-keyword
@@ -991,8 +1066,7 @@ the properties of the class"
     (phpinspect-parse-current-buffer)))
 
 ;; Define all registered parser functions
-(eval-and-compile
-  (phpinspect-define-parser-functions))
+(phpinspect-define-parser-functions)
 
 (defun phpinspect-parse-buffer-until-point (buffer point)
   (with-current-buffer buffer
