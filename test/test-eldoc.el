@@ -42,8 +42,8 @@ class Thing
 
       ;; Strategy should not trigger inside constructor/function arguments
       (let ((query (phpinspect-make-eldoc-query :point inside-nested-list-pos :buffer buffer))
-              (strat (phpinspect-make-eld-function-args))
-              (rctx (phpinspect-get-resolvecontext project (phpinspect-buffer-parse-map buffer) inside-nested-list-pos)))
+            (strat (phpinspect-make-eld-function-args))
+            (rctx (phpinspect-get-resolvecontext project (phpinspect-buffer-parse-map buffer) inside-nested-list-pos)))
         (should-not (phpinspect-eld-strategy-execute strat query rctx)))
 
       (dolist (expected (list (cons second-arg-pos 1) (cons first-arg-pos 0)))

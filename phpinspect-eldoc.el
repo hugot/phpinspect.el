@@ -163,7 +163,6 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
                                  rctx)))
          (statement (phpinspect--determine-function-call-statement rctx q enclosing-token))
          match-result static arg-list arg-pos)
-
     (when enclosing-token
       (cond
        ;; Method call
@@ -190,13 +189,11 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
         (when-let* ((type-of-previous-statement
                      (phpinspect-resolve-type-from-context rctx nil t))
                     (method-name (cadadr (phpinspect-meta-token (car match-result))))
-
                     (class (phpinspect-rctx-get-typedef
                             rctx type-of-previous-statement 'no-enqueue))
                     (method (if static
                                 (phpi-typedef-get-static-method class method-name)
                               (phpi-typedef-get-method class method-name))))
-
           (when method
             (phpinspect-make-function-doc :fn method :arg-pos arg-pos))))
        ((setq match-result (phpinspect--match-sequence (last statement 2)

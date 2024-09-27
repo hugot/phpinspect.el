@@ -21,6 +21,12 @@
 
 ;;; Commentary:
 
+;; This file contains code for the mapping of tokens to metadata objects and
+;; vice versa. See also phpinspect-meta.el.
+;;
+;; The code in this file is heavily used in phpinspect-parser.el for incremental
+;; parsing.
+
 ;;; Code:
 
 (require 'phpinspect-splayt)
@@ -30,6 +36,22 @@
 (require 'phpinspect-util)
 (require 'compat)
 (require 'phpinspect-token-predicates)
+
+(defvar phpinspect-bmap-map-token-metadata nil
+  "Set to non-nil value to make bmap save metadata in
+ `phpinspect-token-references'.
+
+When this variable is non-nil, `phpinspect-bmap-register' will
+store references from tokens to their metadata objects in
+`phpinspect-token-references'.
+
+These references can be fetched via `phpinspect-bmap-token-meta'.
+
+Useful for testing or debugging.")
+
+(defvar phpinspect-token-references
+  (make-hash-table :test #'eq :size 1000 :rehash-size 2 :weakness 'value)
+  "A hash-table which allows lookups of token metadata objects by their tokens.")
 
 (eval-when-compile
   (require 'cl-macs)
@@ -44,98 +66,52 @@
 (cl-defstruct (phpinspect-bmap (:constructor phpinspect-make-bmap))
   "A bmap, short for buffer-map, is a structure whose purpose is to
 map parsed tokens to metadata about them and vice versa."
-  (starts (make-hash-table :test #'eql
-                           :size (floor (/ (point-max) 2))
-                           :rehash-size 1.5))
-  (ends (make-hash-table :test #'eql
-                           :size (floor (/ (point-max) 2))
-                           :rehash-size 1.5))
   (meta (make-hash-table :test #'eq
                            :size (floor (/ (point-max) 2))
                            :rehash-size 1.5)
         :documentation "A hash-table containing all newly registered tokens.")
   (token-stack nil
                :type list)
-  (overlays (phpinspect-make-splayt)
-            :type phpinspect-splayt)
   (-root-meta nil
               :type phpinspect-meta)
+  (last-meta nil :type phpinspect-meta)
   (last-token-start nil
-                    :type integer))
+                    :type integer)
+  (mask 0 :type integer)
+  (recycled-p nil
+              :type boolean
+              :documentation "Whether bmap contains recycled tokens")
+  (pos-filter nil
+              :type bool-vector))
 
 (define-inline phpinspect-bmap-root-meta (bmap)
   (inline-letevals (bmap)
     (inline-quote
      (with-memoization (phpinspect-bmap--root-meta ,bmap)
-       (phpinspect-bmap-token-starting-at
-        ,bmap (phpinspect-bmap-last-token-start ,bmap))))))
+       (when-let ((last-meta (phpinspect-bmap-last-meta ,bmap)))
+         (if (phpinspect-root-p (phpinspect-meta-token last-meta))
+             last-meta
+           (phpinspect-meta-find-parent-matching-token last-meta #'phpinspect-root-p)))))))
 
-(defsubst phpinspect-make-region (start end)
-  (list start end))
 
-(defalias 'phpinspect-region-start #'car)
-(defalias 'phpinspect-region-end #'cadr)
+(defsubst phpinspect-bmap-register (bmap start end token &optional whitespace-before recycle)
+  "Register TOKEN with START and END region as queryable metadata in BMAP.
 
-(defsubst phpinspect-region-size (region)
-  (- (phpinspect-region-end region) (phpinspect-region-start region)))
-
-(defsubst phpinspect-region> (reg1 reg2)
-  (> (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
-
-(defsubst phpinspect-region< (reg1 reg2)
-  (< (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
-
-(defsubst phpinspect-region-overlaps-point (reg point)
-  (and (> (phpinspect-region-end reg) point)
-       (<= (phpinspect-region-start reg) point)))
-
-(defsubst phpinspect-region-overlaps (reg1 reg2)
-  (or (phpinspect-region-overlaps-point reg1 (phpinspect-region-start reg2))
-      (phpinspect-region-overlaps-point reg1 (- (phpinspect-region-end reg2) 1))
-      (phpinspect-region-overlaps-point reg2 (phpinspect-region-start reg1))
-      (phpinspect-region-overlaps-point reg2 (- (phpinspect-region-end reg1) 1))))
-
-(defsubst phpinspect-region-encloses (reg1 reg2)
-  (and (<= (phpinspect-region-start reg1) (phpinspect-region-start reg2))
-       (>= (phpinspect-region-end reg1) (phpinspect-region-end reg2))))
-
-(define-inline phpinspect-overlay-bmap (overlay)
-  (inline-quote (car (nthcdr 4 ,overlay))))
-
-(define-inline phpinspect-overlay-delta (overlay)
-  (inline-quote (cadddr ,overlay)))
-
-(define-inline phpinspect-overlay-start (overlay)
-  (inline-quote (cadr ,overlay)))
-
-(define-inline phpinspect-overlay-end (overlay)
-  (inline-quote (caddr ,overlay)))
-
-(define-inline phpinspect-overlay-overlaps-point (overlay point)
-  (inline-letevals (overlay point)
-    (inline-quote
-     (and (> (phpinspect-overlay-end ,overlay) ,point)
-          (<= (phpinspect-overlay-start ,overlay) ,point)))))
-
-(defsubst phpinspect-bmap-register (bmap start end token &optional whitespace-before overlay)
-  (let* ((starts (phpinspect-bmap-starts bmap))
-         (ends (phpinspect-bmap-ends bmap))
-         (meta (phpinspect-bmap-meta bmap))
+If RECYCLE is non-nil, it is assumed to be a `phpinspect-meta'
+object and re-used instead of instantiating a new object."
+  (let* ((meta (phpinspect-bmap-meta bmap))
          (last-token-start (phpinspect-bmap-last-token-start bmap))
-         (existing-end (gethash end ends))
-         (token-meta (or overlay (phpinspect-make-meta nil start end whitespace-before token))))
+         (token-meta (or recycle (phpinspect-make-meta nil start end whitespace-before token))))
+
     (when (< end start)
       (error "Token %s ends before it starts. Start: %s, end: %s" token start end))
 
     (unless whitespace-before
       (setq whitespace-before ""))
 
-    (puthash start token-meta starts)
-     (if existing-end
-        (push token existing-end)
-      (puthash end (list token-meta) ends))
-
-     (puthash token token-meta meta)
+    (puthash token token-meta meta)
+    (when phpinspect-bmap-map-token-metadata
+      (puthash token token-meta phpinspect-token-references))
 
      (when (and last-token-start
                 (<= start last-token-start))
@@ -148,7 +124,8 @@ map parsed tokens to metadata about them and vice versa."
          (setf (phpinspect-bmap-token-stack bmap) stack)))
 
      (setf (phpinspect-bmap-last-token-start bmap) start)
-     (push token-meta (phpinspect-bmap-token-stack bmap))))
+     (push token-meta (phpinspect-bmap-token-stack bmap))
+     (setf (phpinspect-bmap-last-meta bmap) token-meta)))
 
 (define-inline phpinspect-pctx-register-token (pctx token start end)
   (inline-letevals (pctx)
@@ -157,89 +134,100 @@ map parsed tokens to metadata about them and vice versa."
       (phpinspect-pctx-bmap ,pctx) ,start ,end ,token (phpinspect-pctx-consume-whitespace ,pctx)))))
 
 
-(defsubst phpinspect-overlay-p (overlay)
-  (and (listp overlay)
-       (eq 'overlay (car overlay))))
+(define-inline phpinspect-bmap-token-starting-at (bmap point)
+  (inline-letevals (bmap point)
+    (inline-quote
+     (when-let ((root-meta (phpinspect-bmap-root-meta ,bmap)))
+       (if (= ,point (phpinspect-meta-start root-meta))
+           root-meta
+         (phpinspect-meta-find-child-starting-at-recursively
+          root-meta ,point))))))
 
-(defsubst phpinspect-bmap-overlay-at-point (bmap point)
-  (let ((overlay (phpinspect-splayt-find-largest-before (phpinspect-bmap-overlays bmap) point)))
-    (when (and overlay (phpinspect-overlay-overlaps-point overlay point))
-      overlay)))
-
-(cl-defmethod phpinspect-bmap-token-starting-at ((overlay (head overlay)) point)
-  (phpinspect-bmap-token-starting-at
-   (phpinspect-overlay-bmap overlay) (- point (phpinspect-overlay-delta overlay))))
-
-(cl-defmethod phpinspect-bmap-token-starting-at ((bmap phpinspect-bmap) point)
-  (let ((overlay (phpinspect-bmap-overlay-at-point bmap point)))
-    (if overlay
-        (phpinspect-bmap-token-starting-at overlay point)
-      (gethash point (phpinspect-bmap-starts bmap)))))
-
-(cl-defmethod phpinspect-bmap-tokens-ending-at ((overlay (head overlay)) point)
-  (phpinspect-bmap-tokens-ending-at
-   (phpinspect-overlay-bmap overlay) (- point (phpinspect-overlay-delta overlay))))
-
-(cl-defmethod phpinspect-bmap-tokens-ending-at ((bmap phpinspect-bmap) point)
-  (let ((overlay (phpinspect-bmap-overlay-at-point bmap point)))
-    (if overlay
-        (phpinspect-bmap-tokens-ending-at overlay point)
-      (gethash point (phpinspect-bmap-ends bmap)))))
+(define-inline phpinspect-bmap-token-starting-after (bmap point)
+  (inline-letevals (bmap point)
+    (inline-quote
+     (when-let ((root-meta (phpinspect-bmap-root-meta ,bmap)))
+       (phpinspect-meta-find-child-after-recursively root-meta ,point)))))
 
 (defsubst phpinspect-bmap-tokens-overlapping (bmap point)
   (sort
    (phpinspect-meta-find-overlapping-children (phpinspect-bmap-root-meta bmap) point)
    #'phpinspect-meta-sort-width))
 
-(defsubst phpinspect-overlay-encloses-meta (overlay meta)
-  (and (>= (phpinspect-meta-start meta) (phpinspect-overlay-start overlay))
-       (<= (phpinspect-meta-end meta) (phpinspect-overlay-end overlay))))
+(defun phpinspect-bmap-token-meta (_bmap token)
+  "Get metadata object associated with TOKEN.
 
-(cl-defmethod phpinspect-bmap-token-meta ((overlay (head overlay)) token)
-  (phpinspect-bmap-token-meta (phpinspect-overlay-bmap overlay) token))
+Requires `phpinspect-bmap-map-token-metadata' to be
+non-nil. Otherwise no references are not stored in
+`phpinspect-token-references' while parsing.
 
-(cl-defmethod phpinspect-bmap-token-meta ((bmap phpinspect-bmap) token)
-  (unless (phpinspect-probably-token-p token)
-    (error "Unexpected argument, expected `phpinspect-token-p'. Got invalid token %s" token))
+The _BMAP parameter is not used as references are stored in a
+global variable. It has been kept as an argument for backwards
+compatibility with tests and for easy refactoring later on."
+  (unless phpinspect-bmap-map-token-metadata
+    (error "`phpinspect-bmap-map-token-metadata' is not enabled"))
 
-  (or (gethash token (phpinspect-bmap-meta bmap))
-      (let ((found?))
-        (catch 'found
-          (phpinspect-splayt-traverse (overlay (phpinspect-bmap-overlays bmap))
-            (when (setq found? (phpinspect-bmap-token-meta overlay token))
-              ;; Hit overlay's node to rebalance tree
-              (phpinspect-splayt-find
-               (phpinspect-bmap-overlays bmap) (phpinspect-overlay-end overlay))
-              (throw 'found found?)))))))
+  (gethash token phpinspect-token-references))
 
-(cl-defmethod phpinspect-bmap-last-token-before-point ((bmap phpinspect-bmap) point)
+(defun phpinspect-bmap-last-token-before-point (bmap point)
   "Search backward in BMAP for last token ending before POINT."
   (phpinspect-meta-find-child-before-recursively (phpinspect-bmap-root-meta bmap) point))
 
-(defsubst phpinspect-bmap-overlay (bmap bmap-overlay token-meta pos-delta &optional whitespace-before)
-  (let* ((overlays (phpinspect-bmap-overlays bmap))
-         (start (+ (phpinspect-meta-start token-meta) pos-delta))
-         (end (+ (phpinspect-meta-end token-meta) pos-delta))
-         overlay
-         (last-overlay (phpinspect-splayt-node-value (phpinspect-splayt-root-node overlays))))
+(define-inline phpinspect-bmap-recycle (bmap token-meta pos-delta &optional whitespace-before)
+  "Re-use TOKEN-META as a token in BMAP, applying POS-DELTA.
 
-    (phpinspect-meta-with-changeset token-meta
-      (phpinspect-meta-detach-parent token-meta)
-      (phpinspect-meta-shift token-meta pos-delta)
+TOKEN-META start and end positions are shifted by POS-DELTA. See
+`phpinspect-meta-shift'.
 
-      (if (and last-overlay (= (- start (length whitespace-before)) (phpinspect-overlay-end last-overlay))
-               (= pos-delta (phpinspect-overlay-delta last-overlay)))
-          (progn
-            (phpinspect--log "Expanding previous overlay from (%d,%d) to (%d,%d)"
-                             (phpinspect-overlay-start last-overlay) (phpinspect-overlay-end last-overlay)
-                             (phpinspect-overlay-start last-overlay) end)
-            (setf (phpinspect-overlay-end last-overlay) end)
-            (setf (phpinspect-meta-overlay token-meta) last-overlay))
-        (phpinspect--log "Inserting new overlay at (%d,%d)" start end)
-        (setq overlay `(overlay ,start ,end ,pos-delta ,bmap-overlay ,token-meta))
-        (setf (phpinspect-meta-overlay token-meta) overlay)
-        (phpinspect-splayt-insert (phpinspect-bmap-overlays bmap) (phpinspect-overlay-start overlay) overlay))
-      (phpinspect-bmap-register bmap start end (phpinspect-meta-token token-meta) whitespace-before token-meta))))
+If WHITESPACE-BEFORE is provided, it is assigned to TOKEN-META's
+whitespace-before slot.
+
+Before mutating TOKEN-META, its slots are saved in a changeset
+which can be used to revert the changes. Changesets are managed
+via `phpinspect-parse-context'."
+  (inline-letevals (bmap token-meta pos-delta whitespace-before)
+    (inline-quote
+     (let* ((start (+ (phpinspect-meta-start ,token-meta) ,pos-delta))
+            (end (+ (phpinspect-meta-end ,token-meta) ,pos-delta)))
+
+         (setf (phpinspect-bmap-recycled-p ,bmap) t)
+
+         (phpinspect-meta-with-changeset ,token-meta
+           (phpinspect-meta-detach-parent ,token-meta)
+           (phpinspect-meta-shift ,token-meta ,pos-delta)
+
+           (dlet ((phpinspect-meta--point-offset-base nil))
+             (phpinspect-bmap-register
+              ,bmap start end (phpinspect-meta-token ,token-meta) ,whitespace-before ,token-meta)))))))
+
+(defun phpinspect-make-region (start end)
+  (list start end))
+
+(defalias 'phpinspect-region-start #'car)
+(defalias 'phpinspect-region-end #'cadr)
+
+(defun phpinspect-region-size (region)
+  (- (phpinspect-region-end region) (phpinspect-region-start region)))
+
+(defun phpinspect-region> (reg1 reg2)
+  (> (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
+
+(defun phpinspect-region< (reg1 reg2)
+  (< (phpinspect-region-size reg1) (phpinspect-region-size reg2)))
+
+(defun phpinspect-region-overlaps-point (reg point)
+  (and (> (phpinspect-region-end reg) point)
+       (<= (phpinspect-region-start reg) point)))
+
+(defun phpinspect-region-overlaps (reg1 reg2)
+  (or (phpinspect-region-overlaps-point reg1 (phpinspect-region-start reg2))
+      (phpinspect-region-overlaps-point reg1 (- (phpinspect-region-end reg2) 1))
+      (phpinspect-region-overlaps-point reg2 (phpinspect-region-start reg1))
+      (phpinspect-region-overlaps-point reg2 (- (phpinspect-region-end reg1) 1))))
+
+(defun phpinspect-region-encloses (reg1 reg2)
+  (and (<= (phpinspect-region-start reg1) (phpinspect-region-start reg2))
+       (>= (phpinspect-region-end reg1) (phpinspect-region-end reg2))))
 
 (defun phpinspect-bmap-make-location-resolver (bmap)
   (lambda (token)

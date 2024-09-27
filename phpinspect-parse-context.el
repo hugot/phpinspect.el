@@ -108,7 +108,6 @@ thrown.")
           phpinspect-parse-context (phpinspect-make-changeset ,meta)))
        ,body))))
 
-
 (define-inline phpinspect-pctx-check-interrupt (pctx)
   (inline-letevals (pctx)
     (inline-quote

@@ -93,10 +93,10 @@ A buffer's metadata is fresh when the buffer's last parsed tree
 was parsed from scratch and no edits have been applied
 afterwards. An incrementally parsed tree that has incorporated
 edits does not count as fresh (because incremental parsing has its flaws)."
-  (and (not (phpinspect-buffer-needs-parse-p buffer))
-      ;; If the buffer map has overlays, the last parsed tree has incorporated
-      ;; edits and is not fresh.
-      (phpinspect-splayt-empty-p (phpinspect-bmap-overlays (phpinspect-buffer-map buffer)))))
+  (not (or (phpinspect-buffer-needs-parse-p buffer)
+           ;; If the buffer map has recycled tokens, the last parsed tree has
+           ;; incorporated edits and is not fresh.
+           (phpinspect-bmap-recycled-p (phpinspect-buffer-map buffer)))))
 
 (defun phpinspect-buffer-reparse-if-not-fresh (buffer)
   "If BUFFER's tree is fresh, return it. Otherwise reparse the
@@ -202,6 +202,13 @@ linked with."
     ,token :class-declaration :function-declaration :const :class-variable :function)))
 
 (cl-defmethod phpinspect-buffer-delete-index-for-token ((buffer phpinspect-buffer) token)
+  "Delete index entities that were derived from TOKEN.
+
+Index entities can be any object in the buffer's project cache:
+classes, functions, variables, return types etc.
+
+Normally, this function is used to delete index entities for
+tokens that have been deleted from a buffer."
   (unless (phpinspect-probably-token-p token)
     (error "%s does not seem to be a token" token))
 
@@ -260,11 +267,15 @@ linked with."
 
   (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer)))
 
-(cl-defmethod phpinspect-buffer-reparse ((buffer phpinspect-buffer))
+(defun phpinspect-buffer-reparse (buffer)
+  "Discard BUFFER's current token tree and re-parse fully."
+  (interactive (list (or phpinspect-current-buffer (error "Not a phpinspect buffer"))))
   (phpinspect-buffer-reset buffer)
   (phpinspect-buffer-parse buffer 'no-interrupt))
 
-(cl-defmethod phpinspect-buffer-reindex ((buffer phpinspect-buffer))
+(defun phpinspect-buffer-reindex (buffer)
+  "Delete all existing index entities for tokens in BUFFER and re-index."
+  (interactive (list (or phpinspect-current-buffer (error "Not a phpinspect buffer"))))
   (dolist (token (hash-table-keys (phpinspect-buffer-token-index buffer)))
 
     (phpinspect-buffer-delete-index-for-token buffer token))
@@ -558,6 +569,7 @@ continuing execution."
         (unless (eq map (phpinspect-buffer--last-indexed-bmap buffer))
           (phpinspect--log "Updating project index")
 
+          ;; Process deleted tokens
           (dolist (deletion (phpinspect-buffer--deletions buffer))
             (pcase (phpinspect-meta-token deletion)
               ((pred phpinspect--can-delete-buffer-index-for-token)
@@ -570,6 +582,7 @@ continuing execution."
                                         class #'phpinspect-class-declaration-p)))
                  (phpinspect-buffer--index-class-declaration buffer declaration 'force)))))
 
+          ;; Process newly parsed tokens
           (dolist (addition (phpinspect-buffer--additions buffer))
             (pcase (phpinspect-meta-token addition)
               ((pred phpinspect-class-declaration-p)
@@ -619,8 +632,11 @@ continuing execution."
   (phpinspect-buffer--query-with-cache buffer `(tokens-enclosing ,point)
     (phpinspect-bmap-tokens-overlapping (phpinspect-buffer-map buffer) point)))
 
-(cl-defmethod phpinspect-buffer-token-meta ((buffer phpinspect-buffer) token)
-  (phpinspect-bmap-token-meta (phpinspect-buffer-map buffer) token))
+(defun phpinspect-buffer-token-meta (buffer token)
+  "Get metadata object for TOKEN.
+
+TOKEN must be a token that was parsed in BUFFER."
+  (gethash token (phpinspect-buffer--tokens buffer)))
 
 (cl-defmethod phpinspect-buffer-location-resolver ((buffer phpinspect-buffer))
   "Derive location resolver from BUFFER's buffer map. Guarantees to
@@ -628,11 +644,10 @@ retrieve the lastest available map of BUFFER upon first
 invocation, but subsequent invocations will not update the used
 map afterwards, so don't keep the resolver around for long term
 use."
-  (let ((bmap-resolver))
-    (lambda (token)
-      (funcall (with-memoization bmap-resolver
-                 (phpinspect-bmap-make-location-resolver (phpinspect-buffer-map buffer)))
-               token))))
+  (lambda (token)
+    (when-let ((meta (phpinspect-buffer-token-meta buffer token)))
+      (phpinspect-make-region (phpinspect-meta-start meta)
+                              (phpinspect-meta-end meta)))))
 
 (defun phpinspect-buffer-root-meta (buffer)
   (phpinspect-bmap-root-meta (phpinspect-buffer-map buffer)))

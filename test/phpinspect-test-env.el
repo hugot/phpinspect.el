@@ -14,6 +14,9 @@
 (phpinspect-ensure-worker)
 (phpinspect-purge-cache)
 
+(require 'phpinspect-bmap)
+(setq phpinspect-bmap-map-token-metadata t)
+
 (defvar phpinspect-test-directory
   (file-name-directory (macroexp-file-name))
   "Directory that phpinspect tests reside in.")

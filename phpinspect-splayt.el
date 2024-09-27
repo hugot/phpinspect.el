@@ -340,7 +340,8 @@ The PLACE is assigned the value of each node.
 (define-inline phpinspect-splayt-find-node (splayt key)
   (inline-letevals (splayt key)
     (inline-quote
-     (let ((current (phpinspect-splayt-root-node ,splayt)))
+     (let ((current (phpinspect-splayt-root-node ,splayt))
+           last)
        (catch 'return
          (while current
            (if (= ,key (phpinspect-splayt-node-key current))
@@ -348,8 +349,16 @@ The PLACE is assigned the value of each node.
                  (phpinspect-splay ,splayt current)
                  (throw 'return current))
              (if (phpinspect-splayt-node-key-greater-p current ,key)
-                 (setq current (phpinspect-splayt-node-left current))
-               (setq current (phpinspect-splayt-node-right current))))))))))
+                 (setq last current
+                       current (phpinspect-splayt-node-left current))
+               (setq last current
+                     current (phpinspect-splayt-node-right current)))))
+
+         ;; No matching node was found, splay to last consulted node to optimize
+         ;; for lookups nearby
+         (when last
+           (phpinspect-splay ,splayt last)
+           nil))))))
 
 (define-inline phpinspect-splayt-find-insertion-node (splayt key)
   (inline-letevals (splayt key)
@@ -387,6 +396,8 @@ The PLACE is assigned the value of each node.
              (setf current (phpinspect-splayt-node-right current)))
             (t (throw 'break nil)))))
 
+       (phpinspect-splay ,splayt smallest)
+
        smallest))))
 
 (define-inline phpinspect-splayt-find-largest-node-before (splayt key)
@@ -398,7 +409,7 @@ The PLACE is assigned the value of each node.
        (catch 'break
          (while current
            (cond
-            ((and (phpinspect-splayt-node-key-less-p current ,key))
+            ((phpinspect-splayt-node-key-less-p current ,key)
              (when (and largest
                         (phpinspect-splayt-node-key-less-p
                          current (phpinspect-splayt-node-key largest)))
@@ -408,6 +419,8 @@ The PLACE is assigned the value of each node.
             ((phpinspect-splayt-node-left current)
              (setf current (phpinspect-splayt-node-left current)))
             (t (throw 'break nil)))))
+
+       (phpinspect-splay splayt largest)
 
        largest))))
 

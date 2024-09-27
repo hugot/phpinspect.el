@@ -263,22 +263,28 @@ Type can be any of the token types returned by
   (inline-letevals (token)
     (inline-quote
      (and (phpinspect-root-p ,token)
-	  (seq-find #'phpinspect-incomplete-token-p (cdr ,token))))))
+	      (seq-find #'phpinspect-incomplete-token-p (cdr ,token))))))
 
 ;; Note: `phpinspect-incomplete-token-p' is used in the taint iterator during
 ;; incremental parses to determine whether a token should be reparsed or not. It
 ;; should not perform very complicated logic because it can be called a lot of
 ;; times per parse.
 (defun phpinspect-incomplete-token-p (token)
-  (unless (phpinspect-atom-p token)
-    (or (phpinspect-incomplete-root-p token)
-	(phpinspect-incomplete-class-p token)
-	(phpinspect-incomplete-block-p token)
-	(phpinspect-incomplete-list-p token)
-	(phpinspect-incomplete-array-p token)
-	(phpinspect-incomplete-const-p token)
-	(phpinspect-incomplete-namespace-p token)
-	(phpinspect-incomplete-keyword-body-p token))))
+    (unless (phpinspect-atom-p token)
+      (or (phpinspect-incomplete-root-p token)
+	      (phpinspect-incomplete-class-p token)
+          ;; use slightly more optimized `phpinspect-token-type-p' instead of
+          ;; separate functions for the same token types.
+          (phpinspect-token-type-p
+           token
+           :incomplete-list :incomplete-array
+           :incomplete-block :incomplete-const)
+	      ;; (phpinspect-incomplete-block-p token)
+	      ;; (phpinspect-incomplete-list-p token)
+	      ;; (phpinspect-incomplete-array-p token)
+	      ;; (phpinspect-incomplete-const-p token)
+	      (phpinspect-incomplete-namespace-p token)
+	      (phpinspect-incomplete-keyword-body-p token))))
 
 (defun phpinspect--static-terminator-p (token)
   (or (phpinspect-function-p token)
@@ -363,31 +369,31 @@ Type can be any of the token types returned by
 
 (defun phpinspect-incomplete-function-p (token)
   (when (phpinspect-function-p token)
-    (let (declaration terminator arg-list name block function-keyword)
-      (dolist (component token)
-	(cond ((phpinspect-declaration-p component)
-	       (setq declaration component)
-	       (dolist (subcomp component)
-		 (cond ((and (not arg-list) (phpinspect-list-p subcomp))
-			(setq arg-list subcomp))
-		       ((and (not arg-list) (phpinspect-word-p subcomp))
-			;; First word encountered will be a function
-			;; keyword. After that comes the function name.
-			(if (and (not function-keyword) (string= "function" (cadr subcomp)))
-			    (setq function-keyword subcomp)
-			  (setq name subcomp)))
-		       ((and arg-list (phpinspect-terminator-p subcomp))
-			(setq terminator subcomp)))))
-	      ((phpinspect-block-p component)
-	       (setq block component))))
+      (let (declaration terminator arg-list name block function-keyword)
+        (dolist (component token)
+	      (cond ((phpinspect-declaration-p component)
+	             (setq declaration component)
+	             (dolist (subcomp component)
+		           (cond ((and (not arg-list) (phpinspect-list-p subcomp))
+			              (setq arg-list subcomp))
+		                 ((and (not arg-list) (phpinspect-word-p subcomp))
+			              ;; First word encountered will be a function
+			              ;; keyword. After that comes the function name.
+			              (if (and (not function-keyword) (string= "function" (cadr subcomp)))
+			                  (setq function-keyword subcomp)
+			                (setq name subcomp)))
+		                 ((and arg-list (phpinspect-terminator-p subcomp))
+			              (setq terminator subcomp)))))
+	            ((phpinspect-block-p component)
+	             (setq block component))))
 
-      (or
-       ;; Incomplete block = incomplete function
-       (phpinspect-incomplete-block-p block)
-       ;; No declaration, arg-list or name = incomplete function
-       (not (and declaration arg-list name))
-       ;; terminator = abstract function, which is complete. No block and no
-       ;; terminator = incomplete.
-       (not (or block terminator))))))
+        (or
+         ;; Incomplete block = incomplete function
+         (phpinspect-incomplete-block-p block)
+         ;; No declaration, arg-list or name = incomplete function
+         (not (and declaration arg-list name))
+         ;; terminator = abstract function, which is complete. No block and no
+         ;; terminator = incomplete.
+         (not (or block terminator))))))
 
 (provide 'phpinspect-token-predicates)
