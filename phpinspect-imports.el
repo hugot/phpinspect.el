@@ -54,7 +54,7 @@ resulting in an unjust removal."
            (phpinspect-namespace-is-blocked-p (phpinspect-meta-token token-meta)))
       (phpinspect-find-first-use (phpinspect-meta-last-child token-meta))
     (phpinspect-meta-find-first-child-matching
-     token-meta (phpinspect-meta-wrap-token-pred #'phpinspect-use-p))))
+     token-meta (phpinspect-meta-token-predicate #'phpinspect-use-p))))
 
 (defun phpinspect-add-use (fqn buffer &optional namespace-meta)
   "Add use statement for FQN to BUFFER.
@@ -80,12 +80,12 @@ buffer position to insert the use statement at."
             (phpinspect-insert-at-point
              (phpinspect-meta-end
               (phpinspect-meta-find-first-child-matching
-               namespace-meta (phpinspect-meta-wrap-token-pred #'phpinspect-terminator-p)))
+               namespace-meta (phpinspect-meta-token-predicate #'phpinspect-terminator-p)))
              (format "%c%cuse %s;%c" ?\n ?\n fqn ?\n)))))
     ;; else
     (let ((existing-use (phpinspect-meta-find-first-child-matching
                          (phpinspect-buffer-root-meta buffer)
-                        (phpinspect-meta-wrap-token-pred #'phpinspect-use-p))))
+                        (phpinspect-meta-token-predicate #'phpinspect-use-p))))
       (if existing-use
           (phpinspect-insert-at-point
            (phpinspect-meta-start existing-use)

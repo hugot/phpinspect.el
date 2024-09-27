@@ -167,8 +167,8 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
       (cond
        ;; Method call
        ((setq match-result (phpinspect--match-sequence (last statement 2)
-                             :f (phpinspect-meta-wrap-token-pred #'phpinspect-attrib-p)
-                             :f (phpinspect-meta-wrap-token-pred #'phpinspect-list-p)))
+                             :f (phpinspect-meta-token-predicate #'phpinspect-attrib-p)
+                             :f (phpinspect-meta-token-predicate #'phpinspect-list-p)))
         (phpinspect--log "Eldoc context is a method call")
 
         (setq arg-list (car (last match-result))
@@ -197,8 +197,8 @@ be implemented for return values of `phpinspect-eld-strategy-execute'")
           (when method
             (phpinspect-make-function-doc :fn method :arg-pos arg-pos))))
        ((setq match-result (phpinspect--match-sequence (last statement 2)
-                             :f (phpinspect-meta-wrap-token-pred #'phpinspect-word-p)
-                             :f (phpinspect-meta-wrap-token-pred #'phpinspect-list-p)))
+                             :f (phpinspect-meta-token-predicate #'phpinspect-word-p)
+                             :f (phpinspect-meta-token-predicate #'phpinspect-list-p)))
         (phpinspect--log "Eldoc context is a function call")
 
         (setq arg-list (car (last match-result))

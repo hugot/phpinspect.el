@@ -52,3 +52,14 @@
     (phpinspect-meta-detach-parent meta)
 
     (should (length= (phpinspect-meta-flatten parent) 1))))
+
+(ert-deftest phpinspect-meta-find-child-starting-at ()
+  (let ((grandchild (phpinspect-make-meta nil 14 16 "" 'grandchild))
+        (meta (phpinspect-make-meta nil 10 20 "" 'child))
+        (parent (phpinspect-make-meta nil 9 22 "" 'parent)))
+    (phpinspect-meta-set-parent meta parent)
+    (phpinspect-meta-set-parent grandchild meta)
+
+    (should (phpinspect-meta-find-child-starting-at parent 10))
+
+    (should (eq grandchild (phpinspect-meta-find-child-starting-at-recursively parent 14)))))

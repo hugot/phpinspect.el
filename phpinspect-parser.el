@@ -127,14 +127,70 @@ You can purge the parser cache with \\[phpinspect-purge-parser-cache]."
        ,(if (alist-get 'inline attribute-alist)
             `(define-inline ,inline-name (,@arguments)
                ,docstring
+               (declare (speed 3))
                ,@body)
           `(defsubst ,inline-name (,@arguments)
              ,docstring
+             (declare (speed 3))
              ,@body))
 
        (put (quote ,inline-name) 'phpinspect--handler t)
        (put (quote ,inline-name) 'definition-name (quote ,name))
        (put (quote ,regexp-inline-name) 'definition-name (quote ,name)))))
+
+(defun phpinspect--recycle-token (context taint-iterator point original-point token-meta tokens-rear &optional delimiter-predicate)
+  "Attempt to re-use TOKEN-META and any of its eligible righthand siblings."
+  (declare (speed 3))
+
+  (when-let ((bmap (phpinspect-pctx-bmap context))
+             (first-iteration t))
+    (catch 'phpinspect--return
+      ;; Use while loop instead of recursion for better performance.
+      (while t
+        ;; Set point-offset-base for more efficient execution of
+        ;; `phpinspect-meta-start' and related functions.
+        (dlet ((phpinspect-meta--point-offset-base original-point))
+          (if (or (not token-meta)
+                  (phpinspect-taint-iterator-token-is-tainted-p taint-iterator token-meta))
+              ;; If the first passed token is tainted. Return tainted symbol to
+              ;; signal failure to parser loop. Otherwise return re-used tokens.
+              (throw 'phpinspect--return (if first-iteration 'tainted tokens-rear))
+
+            ;; Token is eligible for re-use.
+            (let ((parent-offset (phpinspect-meta-parent-offset token-meta))
+                  (delta (- point original-point))
+                  (current-end-position (+ point (phpinspect-meta-width token-meta)))
+                  (token (phpinspect-meta-token token-meta))
+                  (right-sibling (phpinspect-meta-find-right-sibling token-meta)))
+              ;; Note: recycling the token will update its parent and
+              ;; positions. Its properties should no longer be queried (aside
+              ;; from its width, which always stays the same)
+              (phpinspect-bmap-recycle
+               bmap token-meta delta (phpinspect-pctx-consume-whitespace context))
+
+              (goto-char current-end-position)
+              (setq tokens-rear (setcdr tokens-rear (cons token nil)))
+
+              ;; Override point-offset-base again, but this time for
+              ;; right-sibling
+              (dlet ((phpinspect-meta--point-offset-base nil))
+                (if-let (((not (and delimiter-predicate (funcall delimiter-predicate token))))
+                         (right-sibling right-sibling)
+                         ((setq phpinspect-meta--point-offset-base
+                                (+ original-point (- (phpinspect-meta-parent-offset right-sibling)
+                                                     parent-offset))))
+                         ((not (phpinspect-taint-iterator-region-is-tainted-p
+                                taint-iterator current-end-position (+ delta (phpinspect-meta-start right-sibling))))))
+                    (progn
+                      ;; There was a right sibling and it is eligible for
+                      ;; re-use. Set token-meta and "recurse".
+                      (setq first-iteration nil
+                            token-meta right-sibling
+                            point (+ delta (phpinspect-meta-start right-sibling))
+                            original-point (phpinspect-meta-start right-sibling)))
+
+                  ;; No eligible right sibling, break.
+                  (throw 'phpinspect--return tokens-rear))))))))))
 
 (eval-when-compile
   (defun phpinspect-make-parser-function (name tree-type handlers &optional delimiter-predicate delimiter-condition)
@@ -157,6 +213,7 @@ delimiter predicate and have parsing stop when the last parsed
 token is \";\", which marks the end of a statement in PHP."
     (cl-assert (symbolp delimiter-predicate))
     `(defun ,(phpinspect-parser-func-name name "simple") (buffer max-point &optional skip-over continue-condition &rest _ignored)
+       (declare (speed 3))
        (with-current-buffer buffer
          (let* ((tokens (cons ,tree-type nil))
                 (tokens-rear tokens)
@@ -182,19 +239,18 @@ token is \";\", which marks the end of a statement in PHP."
            ;; Return
            tokens))))
 
-
-  (defun phpinspect-make-incremental-parser-function
+    (defun phpinspect-make-incremental-parser-function
       (name tree-type handlers &optional delimiter-predicate delimiter-condition)
     "Like `phpinspect-make-parser-function', but returned function
 is able to reuse an already parsed tree."
     (cl-assert (symbolp delimiter-predicate))
     `(defun ,(phpinspect-parser-func-name name "incremental")
          (context buffer max-point &optional skip-over continue-condition root)
+       (declare (speed 3))
        (with-current-buffer buffer
          (let* ((tokens (cons ,tree-type nil))
                 (tokens-rear tokens)
                 (root-start (point))
-                (bmap (phpinspect-pctx-bmap context))
                 (previous-bmap (phpinspect-pctx-previous-bmap context))
                 (edtrack (phpinspect-pctx-edtrack context))
                 (taint-iterator (when edtrack (phpinspect-edtrack-make-taint-iterator edtrack)))
@@ -203,9 +259,6 @@ is able to reuse an already parsed tree."
                 ;; Loop variables
                 (start-position)
                 (original-position)
-                (current-end-position)
-                (existing-meta)
-                (delta)
                 (token))
            (when skip-over (forward-char skip-over))
 
@@ -225,30 +278,52 @@ is able to reuse an already parsed tree."
                  (phpinspect-pctx-check-interrupt context))
 
                (setq start-position (point))
-               (cond ((and previous-bmap edtrack
-                           (setq existing-meta
-                                 (phpinspect-bmap-token-starting-at
-                                  previous-bmap
-                                  (setq original-position
-                                        (phpinspect-edtrack-original-position-at-point edtrack start-position))))
-                           (not (or (phpinspect-root-p (phpinspect-meta-token existing-meta))
-                                    (phpinspect-taint-iterator-token-is-tainted-p taint-iterator existing-meta))))
-                      (setq delta (- start-position original-position)
-                            current-end-position (+ (phpinspect-meta-end existing-meta) delta)
-                            token (phpinspect-meta-token existing-meta))
 
-                      ;;(message "Reusing token  %s at point %s" (phpinspect-meta-string existing-meta) (point))
-                      ;; Re-register existing token
-                      (phpinspect-bmap-overlay
-                       bmap previous-bmap existing-meta delta
-                       (phpinspect-pctx-consume-whitespace context))
+               (cond ((and-let*
+                          ((edtrack)
+                           (previous-bmap)
+                           (result
+                            ;; Look for an already parsted token at POINT to
+                            ;; adopt into new tree.
+                            (or (phpinspect--recycle-token
+                                 context
+                                 taint-iterator
+                                 start-position
+                                 (setq original-position
+                                       (phpinspect-edtrack-original-position-at-point edtrack start-position))
+                                 (phpinspect-bmap-token-starting-at previous-bmap original-position)
+                                 tokens-rear
+                                 ,(if delimiter-predicate `(quote ,delimiter-predicate) 'nil))
+                                ;; There is no token at POINT exactly. Attempt
+                                ;; to find any other adoptable token after
+                                ;; POINT.
+                                (when-let
+                                    ((token-after (phpinspect-bmap-token-starting-after previous-bmap original-position))
+                                     (start (phpinspect-meta-start token-after))
 
-                      (goto-char current-end-position)
+                                     ((not (phpinspect-taint-iterator-region-is-tainted-p
+                                            taint-iterator original-position start)))
+                                     (current-start (+ start-position (- start original-position))))
+                                  (goto-char current-start)
+                                  (phpinspect--recycle-token
+                                   context taint-iterator current-start start token-after tokens-rear
+                                   ,(if delimiter-predicate `(quote ,delimiter-predicate) 'nil)))))
+
+                           ;; `phpinspect--recycle-token' will return the symbol
+                           ;; 'tainted' when the token that it tried to reuse
+                           ;; was tainted. When this happens, we know that we
+                           ;; can't re-use the token and we should continue
+                           ;; parsing.
+                           ((not (eq result 'tainted)))
+
+                           ;; Re-using tokens was a success, update tokens-rear
+                           ((setq tokens-rear result))))
 
                       ;; Skip over whitespace after so that we don't do a full
                       ;; run down all of the handlers during the next iteration
-                      (when (looking-at (phpinspect-handler-regexp whitespace))
-                        (,(phpinspect-handler-func-name 'whitespace) (match-string 0))))
+                      (when (looking-at (phpinspect--whitespace-handler-regexp))
+                        (phpinspect--whitespace-handler (match-string 0))))
+
                      ,@(mapcar
                         (lambda (handler)
                           `((looking-at (,(phpinspect-handler-regexp-func-name handler)))
@@ -785,7 +860,8 @@ static keywords with the same meaning as in a class block."
          (parsed (phpinspect--parse-class-block
                   (current-buffer) max-point (length start-token) continue-condition)))
     (if complete-block
-        (goto-char (+ complete-block 1))
+        (progn
+        (goto-char (+ complete-block 1)))
       (setcar parsed :incomplete-block))
     parsed))
 
