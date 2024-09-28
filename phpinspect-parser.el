@@ -62,7 +62,8 @@ If STRING has text properties, they are stripped."
     (intern (concat "phpinspect--parse-" (symbol-name name) (if suffix (concat "-" suffix) "")))))
 
 (defmacro phpinspect-defhandler (name arguments docstring attribute-alist &rest body)
-  "Define a parser handler that becomes available for use with phpinspect-parse.
+  "Define a parser handler that becomes available for use with
+`phpinspect-defparser'.
 
 A parser handler is a function that is able to identify and parse
 tokens from PHP code at `point` in the current buffer.  It's
@@ -77,9 +78,9 @@ code is something akin to the following:
 
 (while ...
   (cond (((looking-at \"{\")
-          (funcall block-handler (match-string 0) max-point)
+          (block-handler (match-string 0) max-point)
          ((looking-at \"\\$\")
-          (funcall variable-handler ...
+          (variable-handler ...
 etc.
 
 NAME must be a symbol.  It does not need to be prefixed with a
@@ -95,19 +96,16 @@ may not want/need to respect MAX-POINT, in which case you can
 ignore it.
 
 DOCSTRING is mandatory.  It should contain a description of the
-tokens the handler is able to process and (if present) any
-particularities of the handler.
+tokens the handler is able to process and any particularities
+abou the handler's behaviour.
 
 ATTRIBUTE-ALIST is an alist that must contain at least a `regexp` key.
     Possible keys:
         - regexp: The regular expression that marks the start of the token.
+        - inline: Set to `t' to define handler function with `define-inline'
 
 BODY is a function body as accepted by `lambda` that parses the
-text at point and returns the resulting token.
-
-When altering/adding handlers during runtime, make sure to purge
-the parser cache to make sure that your new handler functions are used.
-You can purge the parser cache with \\[phpinspect-purge-parser-cache]."
+text at point and returns the resulting token."
   (declare (indent defun))
   (when (not (symbolp name))
     (error "In definition of phpinspect handler %s: NAME bust be a symbol" name))
@@ -461,10 +459,13 @@ parsing incrementally."
 
          (put (quote ,simple-name) 'phpinspect--parser t)
          (put (quote ,incremental-name) 'phpinspect--incremental-parser t)
+         (put (quote ,simple-name) 'definition-name (quote ,name))
+         (put (quote ,incremental-name) 'definition-name (quote ,name))
 
          ;; Stub function to please the byte compiler (real function will be
          ;; defined by `phpinspect-define-parser-functions'.
-         (defun ,func-name (_buffer _max-point &optional _skip-over _continue-condition _root))))))
+         (defun ,func-name (_buffer _max-point &optional _skip-over _continue-condition _root))
+         (put (quote ,func-name) 'definition-name (quote ,name))))))
 
 (define-inline phpinspect-parser-func-bound-p (symbol)
   (inline-quote (get ,symbol 'phpinspect--parser)))
