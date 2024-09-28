@@ -185,7 +185,7 @@ then returned."
                            :file-indexer (phpinspect-project-make-file-indexer project)
                            :project-root-resolver (phpinspect-project-make-root-resolver project))))
           (setf (phpinspect-project-autoload project) autoloader)
-          (phpinspect-autoloader-refresh autoloader)
+          (phpinspect-autoloader-refresh autoloader nil 'report-progress)
           (phpinspect-project-enqueue-include-dirs project))))
     project))
 

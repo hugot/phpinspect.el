@@ -28,7 +28,32 @@
 (require 'phpinspect-util)
 (require 'phpinspect-type)
 (require 'phpinspect-pipeline)
+(require 'phpinspect-typedef)
 (require 'json)
+
+(defcustom phpinspect-autoload-classmaps nil
+  "Enable support for classmap auoload directives.
+
+The classmap autoload directive is a key in the composer.json
+which allows package authors to define directories which should
+be parsed wholesale to discover available classes and functions.
+
+Enabling this feature can make indexation take considerably
+longer. It can also make the in-memory index larger as all files
+in the classmap directories are indexed in their entirety.
+
+On low powered systems, you may want to keep this feature
+disabled unless your projects depend heavily on code which uses
+the classmap directive.
+
+Note: A prominent package which uses the classmap directive is
+      PHPUnit. Users of PHPUnit will want to have this feature
+      enabled.
+
+As of [2024-09-28] this is a new feature and therefore subject to
+change and not enabled by default."
+  :type 'boolean
+  :group 'phpinspect)
 
 (cl-defstruct (phpinspect-psrX
                (:constructor phpinspect-make-psrX-generated))
@@ -75,7 +100,12 @@ execution of this strategy."))
   (list nil
         :type list
         :documentation
-        "List of files to be indexed"))
+        "List of files to be indexed")
+  (own nil
+       :type boolean))
+
+(cl-defstruct (phpinspect-classmap (:constructor phpinspect-make-classmap)
+                                   (:include phpinspect-files)))
 
 (cl-defgeneric phpinspect-al-strategy-request-type-name (_strategy _file-name)
   "Returns FQN when STRATEGY is responsible for autoloading FILE-NAME.
@@ -114,6 +144,10 @@ qualified name of a type should be based on the file name alone."
 
 (cl-defstruct (phpinspect-autoloader
                (:constructor phpinspect-make-autoloader))
+  (-progress-reporter nil
+                     :type progress-reporter)
+  (-type-counter 0
+                 :type integer)
   (refresh-thread nil
                   :type thread)
   (fs nil
@@ -154,18 +188,36 @@ could be added as imports for an ambiguous bare type name.")
    :documentation
    "List of autoload strategies local to the project."))
 
-;; FIXME: This is another scenario where an LRU Cache might come in handy (we
-;; don't want to re-compare string prefixes everytime the same namespace is
-;; checked).
-(defun phpinspect-autoloader-get-own-types-in-namespace (al namespace)
+(defun phpinspect-autoloader-get-types-in-namespace (al namespace &optional exclude-vendor)
+  "Find types known to AL, defined in NAMESPACE.
+
+If EXCLUDE-VENDOR is nil, all known namespaces are queried. If it
+is non-nil, only project-local namespaces are queried.
+
+NAMESPACE must be a string. It will be resolved using
+`phpinspect--resolve-type-name' to ensure that it is a FQN.
+
+Return value is a list containing instances of
+`phpinspect--type'."
   (cl-assert (stringp namespace))
-  (let ((namespace-fqn (phpinspect--resolve-type-name nil nil namespace))
-	types)
-    (dolist (name (hash-table-keys (phpinspect-autoloader-own-types al)))
-      (when (string-prefix-p namespace-fqn (phpinspect-name-string name))
-	(push (phpinspect--make-type-generated :name name :fully-qualified t)
-	      types)))
+
+  (let ((namespace-fqn (phpinspect-intern-name
+                        (phpinspect--resolve-type-name nil nil namespace)))
+        types)
+
+    (maphash (lambda (key _ignored)
+               (when (eq namespace-fqn (phpinspect-name-namespace key))
+                 (push (phpinspect--make-type-generated :name key :fully-qualified t) types)))
+
+             (if exclude-vendor
+                 (phpinspect-autoloader-own-types al)
+               (phpinspect-autoloader-types al)))
+
     types))
+
+(defun phpinspect-autoloader-get-own-types-in-namespace (al namespace)
+  "Find types known to AL, defined in project-local NAMESPACE."
+  (phpinspect-autoloader-get-types-in-namespace al namespace 'exclude-vendor))
 
 (cl-defmethod phpinspect--read-json-file (fs file)
   (with-temp-buffer
@@ -264,19 +316,70 @@ re-executes the strategy."
     (when own
       (push strat (phpinspect-autoloader-local-strategies al)))))
 
+(cl-defmethod phpinspect-files-compute-list ((strat phpinspect-files))
+  (phpinspect-files-list strat))
+
+(defun phpinspect-php-file-extension-p (file-name)
+  (equal (file-name-extension file-name)  "php"))
+
+(defun phpinspect--file-expand-wildcards (file-name)
+  "Like `file-expand-wildcards', but returns single element list if
+FILE-NAME does not contain any wildcards, instead of nil."
+  (or (file-expand-wildcards file-name t) (list file-name)))
+
+(cl-defmethod phpinspect-files-compute-list ((strat phpinspect-classmap))
+  "Generate file list for classmap directories."
+  (let* ((fs (phpinspect-autoloader-fs (phpinspect-files-autoloader strat)))
+         (directories
+          (thread-last (phpinspect-files-list strat)
+                       ;; Handle wildcards
+                       ;; (https://getcomposer.org/doc/04-schema.md#classmap)
+                       (mapcar #'phpinspect--file-expand-wildcards)
+                       (apply #'append)))
+         files)
+    (dolist (dir directories)
+      (pcase dir
+        ((pred (phpinspect-fs-file-directory-p fs))
+         (setq files
+               (nconc files (phpinspect-fs-directory-files-recursively fs dir "\\.php$"))))
+        ((pred phpinspect-php-file-extension-p)
+         (push dir files))
+        (_ (phpinspect-message
+            "Unexpected file in classmap directive: %s (not a directory nor a PHP file)" dir))))
+    files))
+
 (cl-defmethod phpinspect-al-strategy-execute ((strat phpinspect-files))
-  (phpinspect--log "indexing files list: %s" (phpinspect-files-list strat))
-  (let* ((indexer (phpinspect-autoloader-file-indexer (phpinspect-files-autoloader strat)))
+  (let* ((list (phpinspect-files-compute-list strat))
+         (al (phpinspect-files-autoloader strat))
+         (types (phpinspect-autoloader-types al))
+         (own-types (phpinspect-autoloader-own-types al))
+         (own (phpinspect-files-own strat))
+         (indexer (phpinspect-autoloader-file-indexer al))
          (wrapped-indexer (lambda (file)
                             (condition-case-unless-debug err
-                                (funcall indexer file)
+                                (let ((result (funcall indexer file)))
+                                  (dolist (index result)
+                                    (when (phpinspect-typedef-p index)
+                                      ;; Make autoloader aware of indexed types.
+                                      (let ((name (phpinspect--type-name (phpi-typedef-name index))))
+                                      (puthash name file types)
+                                      (when own
+                                        (puthash name file own-types))
+
+                                      (phpinspect-autoloader-put-type-bag al name)))))
                               (t (phpinspect--log "Error indexing file %s: %s" file err))))))
-    (phpinspect-pipeline (phpinspect-files-list strat)
+    (phpinspect--log "indexing files list: %s" list)
+    (phpinspect-pipeline list
       :into (funcall :with-context wrapped-indexer))))
 
 (cl-defmethod phpinspect-autoloader-put-type-bag ((al phpinspect-autoloader) (type-fqn (head phpinspect-name)))
   (let* ((base-name (phpinspect-name-base type-fqn))
          (bag (gethash base-name (phpinspect-autoloader-type-name-fqn-bags al))))
+    (when-let ((pr (phpinspect-autoloader--progress-reporter al))
+               (i (cl-incf (phpinspect-autoloader--type-counter al)))
+               ((= 0 (mod i 10))))
+      (progress-reporter-update pr i (format "%d types found" i)))
+
     (if bag
         (setcdr bag (cons type-fqn (cdr bag)))
       (push type-fqn bag)
@@ -336,13 +439,22 @@ re-executes the strategy."
                      (push strategy batch))
                    prefixes))
                  ("files"
-                  (setq strategy
-                        (phpinspect-make-files
+                  (push (phpinspect-make-files
                          :list (mapcar
                                 (lambda (file) (file-name-concat project-root file))
                                 prefixes)
-                         :autoloader al))
-                  (push strategy batch))
+                         :autoloader al
+                         :own (eq 'local (car file)))
+                        batch))
+                 ("classmap"
+                  (when phpinspect-autoload-classmaps
+                    (push (phpinspect-make-classmap
+                           :list (mapcar
+                                  (lambda (dir) (file-name-concat project-root dir))
+                                  prefixes)
+                           :autoloader al
+                           :own (eq 'local (car file)))
+                          batch)))
                  (_ (phpinspect--log "Unsupported autoload strategy \"%s\" encountered" type)))))
            autoload)))
       (phpinspect--log "Number of autoload strategies in batch: %s" (length batch))
@@ -365,7 +477,7 @@ re-executes the strategy."
   (or (gethash typename (phpinspect-autoloader-own-types autoloader))
       (gethash typename (phpinspect-autoloader-types autoloader))))
 
-(cl-defmethod phpinspect-autoloader-refresh ((autoloader phpinspect-autoloader) &optional async-callback)
+(cl-defmethod phpinspect-autoloader-refresh ((autoloader phpinspect-autoloader) &optional async-callback report-progress)
   "Refresh autoload definitions by reading composer.json files
   from the project and vendor folders."
   (let* ((project-root (funcall (phpinspect-autoloader-project-root-resolver autoloader)))
@@ -377,19 +489,31 @@ re-executes the strategy."
     (setf (phpinspect-autoloader-types autoloader)
           (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
 
+    (when report-progress
+      (message "Setting progress reporter")
+      (setf (phpinspect-autoloader--progress-reporter autoloader)
+            (make-progress-reporter
+                     (format "[phpinspect] indexing %s" (file-name-base project-root)))))
+
     (let ((time-start (current-time)))
       (setf (phpinspect-autoloader-refresh-thread autoloader)
             (phpinspect-pipeline (phpinspect-find-composer-json-files fs project-root)
-              :async (or async-callback
-                         (lambda (_result error)
-                           (if error
-                               (phpinspect-message "Error during autoloader refresh: %s" error)
-                             (phpinspect-message
-                              (concat "Refreshed project autoloader. Found %d types within project,"
-                                      " %d types total. (finished in %d ms)")
-                              (hash-table-count (phpinspect-autoloader-own-types autoloader))
-                              (hash-table-count (phpinspect-autoloader-types autoloader))
-                              (string-to-number (format-time-string "%s%3N" (time-since time-start)))))))
+              :async (lambda (result error)
+                       (when report-progress
+                         (progress-reporter-done (phpinspect-autoloader--progress-reporter autoloader))
+                         (setf (phpinspect-autoloader--progress-reporter autoloader) nil))
+
+                       (funcall (or async-callback
+                                    (lambda (_result error)
+                                      (if error
+                                          (phpinspect-message "Error during autoloader refresh: %s" error)
+                                        (phpinspect-message
+                                         (concat "Refreshed project autoloader. Found %d types within project,"
+                                                 " %d types total. (finished in %d ms)")
+                                         (hash-table-count (phpinspect-autoloader-own-types autoloader))
+                                         (hash-table-count (phpinspect-autoloader-types autoloader))
+                                         (string-to-number (format-time-string "%s%3N" (time-since time-start)))))))
+                                result error))
               :into (phpinspect-iterate-composer-jsons :with-context autoloader)
               :into phpinspect-al-strategy-execute)))))
 

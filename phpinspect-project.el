@@ -108,14 +108,19 @@ serious performance hits. Enable at your own risk (:")
 (cl-defmethod phpinspect-project-add-index
   ((project phpinspect-project) (index (head phpinspect--root-index)) &optional index-dependencies)
   (phpinspect-project-edit project
-    (when index-dependencies
-      (phpinspect-project-enqueue-imports project (alist-get 'imports (cdr index))))
+    (let (indexed)
+      (when index-dependencies
+        (phpinspect-project-enqueue-imports project (alist-get 'imports (cdr index))))
 
-    (dolist (indexed-typedef (alist-get 'classes (cdr index)))
-      (phpinspect-project-add-typedef project (cdr indexed-typedef) index-dependencies))
+      (dolist (indexed-typedef (alist-get 'classes (cdr index)))
+        (push (phpinspect-project-add-typedef project (cdr indexed-typedef) index-dependencies)
+              indexed))
 
-    (dolist (func (alist-get 'functions (cdr index)))
-      (phpinspect-project-set-function project func))))
+      (dolist (func (alist-get 'functions (cdr index)))
+        (phpinspect-project-set-function project func)
+        (push func indexed))
+
+      indexed)))
 
 (cl-defmethod phpinspect-project-add-index ((_project phpinspect-project) _index)
   (cl-assert (not _index))
@@ -202,7 +207,9 @@ serious performance hits. Enable at your own risk (:")
         (when index-dependencies
           (phpinspect-project-enqueue-types project (phpi-typedef-get-dependencies typedef)))
 
-        (puthash typedef-name typedef (phpinspect-project-typedef-index project))))))
+        (puthash typedef-name typedef (phpinspect-project-typedef-index project))
+
+        typedef))))
 
 (cl-defmethod phpinspect-project-set-typedef
   ((project phpinspect-project) (typedef-fqn phpinspect--type) (typedef phpinspect-typedef))
@@ -299,7 +306,7 @@ before the search is executed."
   (let* ((autoloader (phpinspect-project-autoload project)))
     (when (eq index-new 'index-new)
       (phpinspect-project-edit project
-        (phpinspect-autoloader-refresh autoloader)))
+        (phpinspect-autoloader-refresh autoloader nil 'report-progress)))
     (let* ((result (phpinspect-autoloader-resolve
                     autoloader (phpinspect--type-name type))))
       (if (not result)

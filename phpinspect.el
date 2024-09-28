@@ -219,21 +219,51 @@ To automatically add missing use statements for used classes to a
 visited file, use `phpinspect-fix-imports'
 (bound to \\[phpinspect-fix-imports]].)
 
-By default, phpinspect looks for a composer.json file that can be
-used to get autoload information for the classes that are present
-in your project. It is also possible to index an entire directory
-by adding it as an include dir. To do this, use
+By default, phpinspect loads code like PHP does: via standards
+compliant autoloading. Upon opening a file and activating
+phpinspect-mode, phpinspect will look for a composer.json file to
+extract autoload-information from. Supported autoload directives
+are:
+  - files: list of files to parse/index wholesale
+  - PSR-0: directory with nested subdirectories structured according to
+           the namespacing scheme.
+  - PSR-4: PSR-0 directory with namespace prefix
+  - classmap: Directories/files to parse and index wholesale.
+              (not enabled by default, see additional note)
+
+Note on classmap directive: As of [2024-09-28], the classmap
+autoload directive has been implemented but is not enabled by
+default. It can be enabled by setting
+`phpinspect-autoload-classmaps' to `t'.
+
+It is also possible to wholesale index an entire directory by
+adding it as an include dir. To do this, use
 \\[phpinspect-project-add-include-dir]. Include directories can
 be edited at all times using \\[customize-group] RET phpinspect.
+Include dirs do not depend on the project using composer.
 
 Because of limitations in the current autoloader implementation,
-you will have to run \\[phpinspect-index-current-project] every
-time you create a new autoloadable file.
+you will have to run \\[phpinspect-index-current-project] when
+you delete a file, for it to be removed from the autoloader.
 
 Example configuration if you already have a completion
 UI (Company, Corfu) setup that can take advantage of completion
 at point (capf) functions:
 
+With `use-package':
+    (use-package phpinspect
+      :ensure nil
+      :commands (phpinspect-mode)
+      :bind ((\"C-c c\" . phpinspect-find-own-class-file)
+             (\"C-c u\" . phpinspect-fix-imports)
+             :map phpinspect-mode-map
+             (\"C-c a\" . phpinspect-find-class-file))
+      ;; Automatically add missing imports before saving a file
+      :hook ((before-save . phpinspect-fix-imports))
+      :custom (phpinspect-autoload-classmaps t
+               \"Enable classmap autoload directive\"))
+
+With a classic hook function:
     (defun my-php-personal-hook ()
       ;; Shortcut to add use statements for classes you use.
       (define-key php-mode-map (kbd \"C-c u\") #\\='phpinspect-fix-imports)
@@ -418,7 +448,7 @@ before the search is executed."
     ;; appear frozen while the thread is executing.
     (redisplay)
 
-    (phpinspect-autoloader-refresh autoloader)))
+    (phpinspect-autoloader-refresh autoloader nil 'report-progress)))
 
 (defun phpinspect-index-current-project ()
   "Index all available FQNs in the current project."
