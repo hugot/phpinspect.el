@@ -163,8 +163,6 @@
 
 Reparses the entire buffer without token reuse."
   (when (and (boundp 'phpinspect-mode) phpinspect-mode)
-    (phpinspect-buffer-reindex phpinspect-current-buffer)
-
     ;; Make sure that the project's autoloader is aware of the file
     (when-let ((file-name (buffer-file-name))
                (project (phpinspect-buffer-project phpinspect-current-buffer))
@@ -458,6 +456,29 @@ before the search is executed."
                   (phpinspect-current-project-root))))
     (phpinspect-project-refresh-autoloader project)
     (phpinspect-project-enqueue-include-dirs project)))
+
+(defun phpinspect-insert-skeleton ()
+  "Insert a PHP opening tag and a namespace at the top of the buffer.
+
+Only works when in a PSR0 or PSR4 autoload-able directory."
+  (interactive)
+  (when (and phpinspect-mode buffer-file-name)
+    (when-let ((type-name (phpinspect-autoloader-request-type-name
+                           (phpinspect-project-autoload
+                            (phpinspect-current-project))
+                           buffer-file-name)))
+      (save-excursion
+        (goto-char (point-min))
+
+        (insert (format "<?php
+
+namespace %s;
+
+" (phpinspect-name-non-fqn-string
+   (phpinspect-name-namespace type-name))))))))
+
+(when (featurep 'autoinsert)
+  (define-auto-insert "\\.php$" #'phpinspect-insert-skeleton))
 
 (provide 'phpinspect)
 ;;; phpinspect.el ends here

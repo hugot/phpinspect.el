@@ -96,6 +96,10 @@ Return value is itself an instance of `phpinspect-name'."
                     (phpinspect-name-string-namespace)
                     (phpinspect-intern-name))))))
 
+(define-inline phpinspect-name-non-fqn-string (name)
+  (inline-quote
+   (string-trim-left (phpinspect-name-string ,name) "\\\\")))
+
 (defun phpinspect-names-to-alist (names)
   (let ((alist))
     (dolist (name names)

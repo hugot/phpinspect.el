@@ -131,7 +131,13 @@ qualified name of a type should be based on the file name alone."
       (dolist (dir (phpinspect-psrX-directories strategy))
         (when (string-prefix-p (expand-file-name dir) file-name)
           (throw 'phpinspect--return
-                 (phpinspect-psrX-filename-to-typename strategy dir file-name)))))))
+                 (phpinspect-psrX-file-name-to-type-name strategy dir file-name)))))))
+
+(defun phpinspect-autoloader-request-type-name (autoloader file-name)
+  (catch 'phpinspect--return
+    (dolist (strat (phpinspect-autoloader-local-strategies autoloader))
+      (when-let ((type-name (phpinspect-al-strategy-request-type-name strat file-name)))
+        (throw 'phpinspect--return type-name)))))
 
 (defun phpinspect-autoloader-ensure-file-indexed (autoloader file-name)
   (catch 'phpinspect--break
