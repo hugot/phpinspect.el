@@ -336,15 +336,15 @@ before the search is executed."
      nil)))
 
 (cl-defmethod phpinspect-project-index-file
-  ((project phpinspect-project) (filename string))
+  ((project phpinspect-project) (file-name string))
   "Index "
   (let ((fs (phpinspect-project-fs project)))
     (with-temp-buffer
-      (phpinspect-fs-insert-file-contents fs filename 'prefer-async)
+      (phpinspect-fs-insert-file-contents fs file-name 'prefer-async)
       (phpinspect-index-current-buffer))))
 
-(cl-defmethod phpinspect-project-add-file-index ((project phpinspect-project) (filename string))
-  (phpinspect-project-add-index project (phpinspect-project-index-file project filename)))
+(cl-defmethod phpinspect-project-add-file-index ((project phpinspect-project) (file-name string))
+  (phpinspect-project-add-index project (phpinspect-project-index-file project file-name)))
 
 (defcustom phpinspect-projects nil
   "PHPInspect Projects."
@@ -354,8 +354,8 @@ before the search is executed."
   :group 'phpinspect)
 
 (defun phpinspect-project-make-file-indexer (project)
-  (lambda (filename)
-    (phpinspect-project-add-file-index project filename)))
+  (lambda (file-name)
+    (phpinspect-project-add-file-index project file-name)))
 
 (defun phpinspect-project-make-root-resolver (project)
   (lambda () (phpinspect-project-root project)))

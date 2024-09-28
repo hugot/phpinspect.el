@@ -33,11 +33,6 @@
                            (file-name-directory (macroexp-file-name))))
 
 
-(ert-deftest phpinspect-filename-to-typename ()
-  (should (eq (phpinspect-intern-name "\\Foo\\Bar") (phpinspect-filename-to-typename "src/" "src/Foo////////Bar.php")))
-
-  (should (eq (phpinspect-intern-name "\\Foo\\Bar") (phpinspect-filename-to-typename "src/somewhere/else/" "src/somewhere/else/Foo/Bar.php"))))
-
 
 (ert-deftest phpinspect-find-composer-json-files ()
   (let* ((fs (phpinspect-make-virtual-fs)))
@@ -215,3 +210,12 @@
 
     ;; If file was already known to autoloader, do nothing
     (should-not (phpinspect-autoloader-ensure-file-indexed autoloader "/project/root/src/Peanuts.php"))))
+
+(ert-deftest phpinspect-file-name-to-type-name ()
+  (let ((names `((("/var/////src///app" "/var/src/app//Controller.php" "\\App") "\\App\\Controller")
+                 (("src/" "src/Foo////////Bar.php") "\\Foo\\Bar")
+                 (("src/" "src////Foo////////Bar.php") "\\Foo\\Bar")
+                 (("src/somewhere/else/" "src/somewhere/else/Foo/Bar.php") "\\Foo\\Bar"))))
+
+    (dolist (name names)
+      (should (eq (phpinspect-intern-name (cadr name)) (apply #'phpinspect-file-name-to-type-name (car name)))))))

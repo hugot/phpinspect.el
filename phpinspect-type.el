@@ -65,7 +65,7 @@ that the collection is expected to contain")
   (mapcar (lambda (name) (phpinspect--make-type :name name))
           type-name-strings))
 
-(defconst phpinspect-native-typenames
+(defconst phpinspect-native-type-names
   ;; self, parent and resource are not valid type name.
   ;; see https://www.php.net/manual/ja/language.types.declarations.php
   ;;;
@@ -75,7 +75,7 @@ that the collection is expected to contain")
 
 (defvar phpinspect-native-types
   (phpinspect--make-types (mapcar (lambda (name) (concat "\\" name))
-                                  phpinspect-native-typenames)))
+                                  phpinspect-native-type-names)))
 
 (defvar phpinspect-collection-types
   (phpinspect--make-types '("\\array" "\\iterable" "\\SplObjectCollection" "\\mixed"))
@@ -91,7 +91,7 @@ that the collection is expected to contain")
 (defun phpinspect-define-standard-types ()
   (setq phpinspect-native-types
         (phpinspect--make-types (mapcar (lambda (name) (concat "\\" name))
-                                        phpinspect-native-typenames))
+                                        phpinspect-native-type-names))
         phpinspect-collection-types (phpinspect--make-types
                                      '("\\array" "\\iterable" "\\SplObjectCollection" "\\mixed"))
         phpinspect--object-type (phpinspect--make-type :name "\\object" :fully-qualified t)
@@ -174,7 +174,7 @@ NAMESPACE may be nil, or a string with a namespace FQN."
          type)
 
         ;; Native type
-        ((member type phpinspect-native-typenames)
+        ((member type phpinspect-native-type-names)
          (concat "\\" type))
 
         ;; Relative FQN

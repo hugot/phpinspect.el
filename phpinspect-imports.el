@@ -106,15 +106,15 @@ buffer position to insert the use statement at."
              (phpinspect-meta-start first-token)
              (format "%c%cuse %s;%c%c" ?\n ?\n fqn ?\n ?\n))))))))
 
-(defun phpinspect-add-use-interactive (typename buffer project &optional namespace-token)
+(defun phpinspect-add-use-interactive (type-name buffer project &optional namespace-token)
   (let* ((autoloader (phpinspect-project-autoload project))
-         (fqns (phpinspect-autoloader-get-type-bag autoloader typename)))
+         (fqns (phpinspect-autoloader-get-type-bag autoloader type-name)))
     (cond ((= 1 (length fqns))
            (phpinspect-add-use (phpinspect-name-string (car fqns)) buffer namespace-token))
           ((> (length fqns) 1)
            (phpinspect-add-use (completing-read "Class: " (phpinspect-names-to-alist fqns))
                                buffer namespace-token))
-          (t (phpinspect-message "No import found for type %s" (phpinspect-name-string typename))))))
+          (t (phpinspect-message "No import found for type %s" (phpinspect-name-string type-name))))))
 
 (defalias 'phpinspect-fix-uses-interactive #'phpinspect-fix-imports
   "Alias for backwards compatibility")
@@ -235,7 +235,7 @@ determine the scope of the imports (global or local namespace)."
                              nil namespace-name (phpinspect-name-string type)))
                            (phpinspect-autoloader-types
                             (phpinspect-project-autoload project))))
-        (unless (member (phpinspect-name-string type) phpinspect-native-typenames)
+        (unless (member (phpinspect-name-string type) phpinspect-native-type-names)
           (phpinspect-add-use-interactive type buffer project namespace)
           (phpinspect-buffer-parse buffer 'no-interrupt))))))
 
@@ -321,16 +321,7 @@ that there are import (\"use\") statements for them."
 
   (if phpinspect-current-buffer
       (let* ((buffer phpinspect-current-buffer)
-             ;; use buffer-reparse to ensure fully structurally correct
-             ;; tree. (at the time of writing, incremental parsing has some
-             ;; limitations causing reused tokens to lose their special meaning
-             ;; when they are reused. For example the "class" keyword being
-             ;; reused as just a word instead of a special keyword marking the
-             ;; start of a class)
-             ;;
-             ;; FIXME: Change to buffer-parse when this particular problem in
-             ;; incremental parsing has been solved
-             (tree (phpinspect-buffer-reparse-if-not-fresh buffer))
+             (tree (phpinspect-buffer-parse buffer 'no-interrupt))
              (index (phpinspect--index-tokens
                      tree nil (phpinspect-buffer-location-resolver buffer)))
              (namespaces (alist-get 'namespaces index))

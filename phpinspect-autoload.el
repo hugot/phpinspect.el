@@ -89,11 +89,11 @@ execution of this strategy."))
           :type string
           :documentation "The namespace prefix for which the directories contain code."))
 
-(cl-defmethod phpinspect-psrX-filename-to-typename ((psr4 phpinspect-psr4) directory filename)
-  (phpinspect-filename-to-typename directory filename (phpinspect-psr4-prefix psr4)))
+(cl-defmethod phpinspect-psrX-file-name-to-type-name ((psr4 phpinspect-psr4) directory file-name)
+  (phpinspect-file-name-to-type-name directory file-name (phpinspect-psr4-prefix psr4)))
 
-(cl-defmethod phpinspect-psrX-filename-to-typename ((_psr0 phpinspect-psr0) directory filename)
-  (phpinspect-filename-to-typename directory filename))
+(cl-defmethod phpinspect-psrX-file-name-to-type-name ((_psr0 phpinspect-psr0) directory file-name)
+  (phpinspect-file-name-to-type-name directory file-name))
 
 (cl-defstruct (phpinspect-files (:constructor phpinspect-make-files))
   (autoloader nil)
@@ -225,19 +225,21 @@ Return value is a list containing instances of
     (goto-char 0)
     (phpinspect-json-preset (json-read))))
 
-(define-inline phpinspect-filename-to-typename (dir filename &optional prefix)
-  (inline-quote
-   (phpinspect-intern-name
-    (replace-regexp-in-string
-     "\\\\[\\]+"
-     "\\\\"
-     (concat "\\"
-             (or ,prefix "")
-             (replace-regexp-in-string
-              "/" "\\\\"
-              (string-remove-suffix
-               ".php"
-               (string-remove-prefix ,dir ,filename))))))))
+(define-inline phpinspect-file-name-to-type-name (dir file-name &optional prefix)
+  (inline-letevals ((dir (inline-quote (apply #'file-name-concat (file-name-split ,dir))))
+                    (file-name (inline-quote (apply #'file-name-concat (file-name-split ,file-name)))))
+    (inline-quote
+     (phpinspect-intern-name
+      (replace-regexp-in-string
+       "\\\\[\\]+"
+       "\\\\"
+       (concat "\\"
+               (or ,prefix "")
+               (replace-regexp-in-string
+                "/" "\\\\"
+                (string-remove-suffix
+                 ".php"
+                 (string-remove-prefix ,dir ,file-name)))))))))
 
 (defun phpinspect-find-composer-json-files (fs project-root)
   "Find all composer.json files that are relevant for a project.
@@ -303,7 +305,7 @@ re-executes the strategy."
          types-found type-fqn)
     (dolist (dir (phpinspect-psrX-directories strat))
       (dolist (file (phpinspect-fs-directory-files-recursively fs dir "\\.php$"))
-        (setq type-fqn (phpinspect-psrX-filename-to-typename strat dir file))
+        (setq type-fqn (phpinspect-psrX-file-name-to-type-name strat dir file))
 
         (push type-fqn types-found)
         (phpinspect-autoloader-put-type-bag al type-fqn)
@@ -462,7 +464,7 @@ FILE-NAME does not contain any wildcards, instead of nil."
 
 
 (cl-defmethod phpinspect-autoloader-resolve ((autoloader phpinspect-autoloader)
-                                             (typename (head phpinspect-name)))
+                                             (type-name (head phpinspect-name)))
   ;; Wait for pending refresh if not running in main thread.
   (unless (eq main-thread (current-thread))
     (when (and (phpinspect-autoloader-refresh-thread autoloader)
@@ -474,8 +476,8 @@ FILE-NAME does not contain any wildcards, instead of nil."
       (phpinspect--log "Autoload refresh completed, continuing waiting thread %s"
                        (thread-name (current-thread)))))
 
-  (or (gethash typename (phpinspect-autoloader-own-types autoloader))
-      (gethash typename (phpinspect-autoloader-types autoloader))))
+  (or (gethash type-name (phpinspect-autoloader-own-types autoloader))
+      (gethash type-name (phpinspect-autoloader-types autoloader))))
 
 (cl-defmethod phpinspect-autoloader-refresh ((autoloader phpinspect-autoloader) &optional async-callback report-progress)
   "Refresh autoload definitions by reading composer.json files
