@@ -55,6 +55,11 @@ change and not enabled by default."
   :type 'boolean
   :group 'phpinspect)
 
+(defcustom phpinspect-autoload-progress-interval 10
+  "Report indexation progress every X amount of discovered types."
+  :type 'integer
+  :group 'phpinspect)
+
 (cl-defstruct (phpinspect-psrX
                (:constructor phpinspect-make-psrX-generated))
   "A base structure to be included in PSR autoload strategy
@@ -385,7 +390,7 @@ FILE-NAME does not contain any wildcards, instead of nil."
          (bag (gethash base-name (phpinspect-autoloader-type-name-fqn-bags al))))
     (when-let ((pr (phpinspect-autoloader--progress-reporter al))
                (i (cl-incf (phpinspect-autoloader--type-counter al)))
-               ((= 0 (mod i 10))))
+               ((= 0 (mod i phpinspect-autoload-progress-interval))))
       (progress-reporter-update pr i (format "%d types found" i)))
 
     (if bag
@@ -498,8 +503,8 @@ FILE-NAME does not contain any wildcards, instead of nil."
           (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
 
     (when report-progress
-      (message "Setting progress reporter")
-      (setf (phpinspect-autoloader--progress-reporter autoloader)
+      (setf (phpinspect-autoloader--type-counter autoloader) 0
+            (phpinspect-autoloader--progress-reporter autoloader)
             (make-progress-reporter
                      (format "[phpinspect] indexing %s" (file-name-base project-root)))))
 
