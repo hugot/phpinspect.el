@@ -140,40 +140,38 @@ already present in the queue."
 
 (cl-defmethod phpinspect-worker-make-thread-function ((worker phpinspect-worker))
   (lambda ()
-    (while (phpinspect-worker-continue-running worker)
-      ;; This error is used to wake up the thread when new tasks are added to the
-      ;; queue.
-      (condition-case err
-          (progn
-            (phpinspect--log "Dequeueing next task")
-            (ignore-error phpinspect-wakeup-thread
-              ;; Prevent quitting during tasks, as this can break data integrity
-              (let* ((inhibit-quit t)
-                     (task (phpinspect-queue-dequeue (phpinspect-worker-queue worker))))
+    (let ((inhibit-quit t))
+      (while (phpinspect-worker-continue-running worker)
+        (condition-case err
+            (progn
+              (phpinspect--log "Dequeueing next task")
+              (let* ((task (phpinspect-queue-dequeue (phpinspect-worker-queue worker))))
                 (if task
                     ;; Execute task if it belongs to a project that has not been
                     ;; purged (meaning that it is still actively used).
                     (if (phpinspect-project-purged (phpinspect-task-project task))
-                        (phpinspect--log "Projecthas been purged. Skipping task")
+                        (phpinspect--log "Project has been purged. Skipping task")
                       (phpinspect--log "Executing task")
                       (phpinspect-task-execute task worker))
                   ;; else: join with the main thread until wakeup is signaled
                   (phpinspect--log "No tasks, joining main thread")
-                  (thread-join main-thread))))
+                  (thread-join main-thread)))
 
-            ;; Pause for a second after indexing something, to allow user input to
-            ;; interrupt the thread.
-            (unless (or (not (phpinspect--input-pending-p))
-                        (phpinspect-worker-skip-next-pause worker))
-              (phpinspect--worker-pause))
-            (setf (phpinspect-worker-skip-next-pause worker) nil))
-        (quit (ignore-error phpinspect-wakeup-thread
-                (phpinspect--worker-pause)))
-        (phpinspect-wakeup-thread)
-        ((debug error) (thread-signal main-thread 'phpinspect-worker-error err))
-        (t (phpinspect--log "Phpinspect worker thread errored :%s" err))))
-    (phpinspect--log "Worker thread exiting")
-    (phpinspect-message "phpinspect worker thread exited")))
+              ;; Pause for a second after indexing something, to allow user input to
+              ;; interrupt the thread.
+              (when (or (phpinspect--input-pending-p)
+                        ;; Pause if quit-flag is set
+                        quit-flag
+                        (not (phpinspect-worker-skip-next-pause worker)))
+                (phpinspect--worker-pause))
+              (setf (phpinspect-worker-skip-next-pause worker) nil))
+          ;; This error is used to wake up the thread when new tasks are added
+          ;; to the queue.
+          (phpinspect-wakeup-thread)
+          ((debug error) (thread-signal main-thread 'phpinspect-worker-error err))
+          (t (phpinspect--log "Phpinspect worker thread errored :%s" err))))
+      (phpinspect--log "Worker thread exiting")
+      (phpinspect-message "phpinspect worker thread exited"))))
 
 (cl-defmethod phpinspect-worker-make-thread-function ((worker phpinspect-dynamic-worker))
   (phpinspect-worker-make-thread-function

@@ -28,7 +28,7 @@
 (define-error 'phpinspect-pipeline-incoming "Signal for incoming pipeline data")
 (define-error 'phpinspect-pipeline-error "Signal for pipeline errors")
 
-(defcustom phpinspect-pipeline-pause-time 0.5
+(defcustom phpinspect-pipeline-pause-time 0.1
   "Number of seconds to pause a pipeline thread when emacs receives
 user input. This is similar to `phpinspect-worker-pause-time',
 but pipelines are meant to run in bursts. For that reason, the
@@ -129,7 +129,8 @@ directories."
 (define-inline phpinspect-pipeline-pause ()
   "Pause the current pipeline thread"
   (inline-quote
-   (if (phpinspect--input-pending-p)
+   ;; If quit flag is set, behave as it input is pending.
+   (if (or quit-flag (phpinspect--input-pending-p))
        (let ((mx (make-mutex)))
          (phpinspect-thread-pause
           phpinspect-pipeline-pause-time mx (make-condition-variable mx "phpinspect-pipeline-pause")))
@@ -172,16 +173,15 @@ directories."
          (make-thread
           (lambda ()
             (let ((,continue-running t)
+                  ;; Inhibit quitting
+                  (inhibit-quit t)
                   ,incoming ,outgoing ,end ,incoming-end)
 
               (phpinspect-pipeline--register-wakeup-function ,inc-queue)
               (while ,continue-running
                 (condition-case err
                     (progn
-                      (phpinspect-pipeline-pause)
-                      ;; Prevent quitting during step execution, as this could
-                      ;; break data integrity.
-                      (let ((inhibit-quit t))
+                        (phpinspect-pipeline-pause)
                         (setq ,incoming (phpinspect-pipeline-receive ,inc-queue))
 
                         (if (phpinspect-pipeline-end-p ,incoming)
@@ -204,9 +204,7 @@ directories."
                             (setq ,end (phpinspect-make-pipeline-end :thread (current-thread)))
                             (phpinspect-pipeline-ctx-register-end ,pctx-sym ,end)
                             (setq ,continue-running nil))
-                          (phpinspect-pipeline--enqueue ,out-queue ,outgoing))))
-                  (quit (ignore-error phpinspect-pipeline-incoming
-                          (phpinspect-pipeline-pause)))
+                          (phpinspect-pipeline--enqueue ,out-queue ,outgoing)))
                   (phpinspect-pipeline-incoming)
                   (t (phpinspect-message "Pipeline thread errored: %s" err)
                      (setq ,end (phpinspect-make-pipeline-end :thread (current-thread) :error err))
@@ -311,6 +309,7 @@ directories."
                 (,queue-sym (phpinspect-make-queue))
                 (,end-queue-sym (phpinspect-make-queue))
                 (,collecting-sym t)
+                (inhibit-quit t)
                 ,recv-sym ,result-sym ,seed-sym)
 
            ,(phpinspect--chain-pipeline-steps steps queue-sym end-queue-sym ctx-sym)
@@ -352,10 +351,11 @@ directories."
     `(if-let ((,async-sym ,async))
          (make-thread
           (lambda ()
-            (condition-case err
-                (let ((,result (phpinspect--pipeline ,seed-form ,@macro-params)))
-                  (funcall ,async-sym (or ,result 'phpinspect-pipeline-nil-result) nil))
-              (t (funcall ,async-sym nil err))))
+            (let ((inhibit-quit t))
+              (condition-case err
+                  (let ((,result (phpinspect--pipeline ,seed-form ,@macro-params)))
+                    (funcall ,async-sym (or ,result 'phpinspect-pipeline-nil-result) nil))
+                (error (funcall ,async-sym nil err)))))
           "phpinspect-pipeline-async")
        (phpinspect--pipeline ,seed-form ,@macro-params))))
 
