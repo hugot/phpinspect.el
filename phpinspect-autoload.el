@@ -490,45 +490,56 @@ FILE-NAME does not contain any wildcards, instead of nil."
   (or (gethash type-name (phpinspect-autoloader-own-types autoloader))
       (gethash type-name (phpinspect-autoloader-types autoloader))))
 
+
+(defun phpinspect-autoloader-refreshing-p (autoloader)
+  (and-let* ((thread (phpinspect-autoloader-refresh-thread autoloader))
+             ((thread-live-p thread)))))
+
 (cl-defmethod phpinspect-autoloader-refresh ((autoloader phpinspect-autoloader) &optional async-callback report-progress)
   "Refresh autoload definitions by reading composer.json files
   from the project and vendor folders."
-  (let* ((project-root (funcall (phpinspect-autoloader-project-root-resolver autoloader)))
-         (fs (phpinspect-autoloader-fs autoloader)))
-    (setf (phpinspect-autoloader-type-name-fqn-bags autoloader)
-          (make-hash-table :test 'eq :size 3000 :rehash-size 3000))
-    (setf (phpinspect-autoloader-own-types autoloader)
-          (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
-    (setf (phpinspect-autoloader-types autoloader)
-          (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
+  (if (phpinspect-autoloader-refreshing-p autoloader)
+      (if async-callback
+          (funcall async-callback nil '(error "Autoloader already refreshing"))
+        (phpinspect-message "Autoloader already refreshing"))
 
-    (when report-progress
-      (setf (phpinspect-autoloader--type-counter autoloader) 0
-            (phpinspect-autoloader--progress-reporter autoloader)
-            (make-progress-reporter
-                     (format "[phpinspect] indexing %s" (file-name-base project-root)))))
+    (let* ((project-root (funcall (phpinspect-autoloader-project-root-resolver autoloader)))
+           (fs (phpinspect-autoloader-fs autoloader)))
+      (setf (phpinspect-autoloader-type-name-fqn-bags autoloader)
+            (make-hash-table :test 'eq :size 3000 :rehash-size 3000))
+      (setf (phpinspect-autoloader-own-types autoloader)
+            (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
+      (setf (phpinspect-autoloader-types autoloader)
+            (make-hash-table :test 'eq :size 10000 :rehash-size 10000))
 
-    (let ((time-start (current-time)))
-      (setf (phpinspect-autoloader-refresh-thread autoloader)
-            (phpinspect-pipeline (phpinspect-find-composer-json-files fs project-root)
-              :async (lambda (result error)
-                       (when report-progress
-                         (progress-reporter-done (phpinspect-autoloader--progress-reporter autoloader))
-                         (setf (phpinspect-autoloader--progress-reporter autoloader) nil))
+      (when report-progress
+        (setf (phpinspect-autoloader--type-counter autoloader) 0
+              (phpinspect-autoloader--progress-reporter autoloader)
+              (make-progress-reporter
+               (format "[phpinspect] indexing %s" (file-name-base project-root)))))
 
-                       (funcall (or async-callback
-                                    (lambda (_result error)
-                                      (if error
-                                          (phpinspect-message "Error during autoloader refresh: %s" error)
-                                        (phpinspect-message
-                                         (concat "Refreshed project autoloader. Found %d types within project,"
-                                                 " %d types total. (finished in %d ms)")
-                                         (hash-table-count (phpinspect-autoloader-own-types autoloader))
-                                         (hash-table-count (phpinspect-autoloader-types autoloader))
-                                         (string-to-number (format-time-string "%s%3N" (time-since time-start)))))))
-                                result error))
-              :into (phpinspect-iterate-composer-jsons :with-context autoloader)
-              :into phpinspect-al-strategy-execute)))))
+      (let ((time-start (current-time)))
+        (setf (phpinspect-autoloader-refresh-thread autoloader)
+              (phpinspect-pipeline (phpinspect-find-composer-json-files fs project-root)
+                :async (lambda (result error)
+                         (when report-progress
+                           (progress-reporter-done (phpinspect-autoloader--progress-reporter autoloader))
+                           (setf (phpinspect-autoloader--progress-reporter autoloader) nil))
 
-(provide 'phpinspect-autoload)
+                         (funcall
+                          (or async-callback
+                              (lambda (_result error)
+                                (if error
+                                    (phpinspect-message "Error during autoloader refresh: %s" error)
+                                  (phpinspect-message
+                                   (concat "Refreshed project autoloader. Found %d types within project,"
+                                           " %d types total. (finished in %d ms)")
+                                   (hash-table-count (phpinspect-autoloader-own-types autoloader))
+                                   (hash-table-count (phpinspect-autoloader-types autoloader))
+                                   (string-to-number (format-time-string "%s%3N" (time-since time-start)))))))
+                          result error))
+                :into (phpinspect-iterate-composer-jsons :with-context autoloader)
+                :into phpinspect-al-strategy-execute))))))
+
+  (provide 'phpinspect-autoload)
 ;;; phpinspect-autoload.el ends here
