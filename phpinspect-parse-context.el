@@ -21,6 +21,13 @@
 
 ;;; Commentary:
 
+;; A parse context is an object which is used during the lifetime of a parse
+;; cycle. Several variables can be set through the parse context to influence
+;; the behavior of the parser.
+
+;; See also M-x cl-describe-type RET phpinspect-pctx for a more readable
+;; overview of the slot documentation.
+
 ;;; Code:
 
 (require 'phpinspect-util)
@@ -34,53 +41,92 @@ parsing. Usually used in combination with
 
 (cl-defstruct (phpinspect-pctx (:constructor phpinspect-make-pctx))
   "Parser Context"
-  (incremental nil)
-  (meta-iterator nil)
-  (interrupt-threshold (time-convert '(0 0 2000 0) t)
-                       :documentation
-                       "After how much time `interrupt-predicate'
-should be polled. This is 2ms by default.")
-  (-start-time nil
-               :documentation "The time at which the parse started.
-This variable is for private use and not always set.")
-  (interrupt-predicate nil
-                      :documentation
-                      "A function that is called in intervals during parsing when
-set. If this function returns a non-nil value, the parse process
-is interrupted and the symbol `phpinspect-parse-interrupted' is
-thrown.")
-  (changesets nil
-              :type list
-              :documentation "Metadata change sets executed during this parse")
-  (edtrack nil
-           :type phpinspect-edtrack)
-  (bmap nil
-        :type phpinspect-bmap)
-  (previous-bmap nil
-                 :type phpinspect-bmap)
-  (whitespace-before ""
-                     :type string))
+  (incremental
+   nil
+   :type boolean
+   :documentation
+   "A non-nil value enables incremental parsing.")
+  (interrupt-threshold
+   (time-convert '(0 0 2000 0) t)
+   :documentation
+   "After how much time `interrupt-predicate' should be consulted.
+This is 2ms by default.")
+  (-start-time
+   nil
+   :documentation "The time at which the currently active parse cycle started.
+This slot is for private use and does not always have a value.")
+  (interrupt-predicate
+   nil
+   :documentation
+   "When non-nil, this should be a function. When the parse time
+exceeds the configured interrupt-threshold, this function will be
+called after each parsed token to make the final decision of
+interrupting the parser. If this function returns a non-nil
+value, the parse process is interrupted and the symbol
+`phpinspect-parse-interrupted' is signaled.")
+  (changesets
+   nil
+   :type list
+   :documentation
+   "Restore points for metadata changes executed during this
+parse. Usually populated through `phpinspect-meta-with-changeset'.")
+  (edtrack
+   nil
+   :type phpinspect-edtrack
+   :documentation
+   "When parsing incrementally, the edit tracker is used to determine
+whether a token from a previous parse (in the buffer map that is
+in the `previous-bmap' slot) can be recycled or is tainted/edited
+and should not be recycled.")
+  (bmap
+   nil
+   :type phpinspect-bmap
+   :documentation
+   "The new buffer map to register metadata objects with.")
+  (previous-bmap
+   nil
+   :type phpinspect-bmap
+   :documentation
+   "If set, this should be a buffer map containing the metadata
+gathered during the previous parse cycle of the
+buffer-to-be-parsed. Eligible tokens will be removed from the old
+metadata tree and recycled in the new buffer map (in the `bmap'
+slot of this structure.)")
+  (whitespace-before
+   ""
+   :type string
+   :documentation
+   "A slot that is used by the parser to store whitespace which is
+encountered before each parsed token. Whitespace is not parsed as
+a regular token to avoid pollution of the syntax tree with
+useless metadata tokens."))
 
 (define-inline phpinspect-pctx-whitespace-before-length (ctx)
   (inline-quote (length (phpinspect-pctx-whitespace-before ,ctx))))
 
 (defmacro phpinspect-with-parse-context (ctx &rest body)
+  "Set the currently active parce context to CTX and execute body.
+
+If BODY signals an error, `phpinspect-pctx-cancel' is called in
+an attempt to revert all changes made to the metadata tree while
+parsing incrementally.
+
+The error signal is not intercepted and will still need to be
+handled by the code using this macro."
   (declare (indent 1))
-  (let ((old-ctx (gensym))
-        (completed (gensym))
+  (let ((completed (gensym))
         (result (gensym)))
-    `(let ((,old-ctx phpinspect-parse-context)
-           (,result)
-           (,completed))
-       (unwind-protect
+    `(dlet ((phpinspect-parse-context ,ctx))
+       (let ((,result)
+             (,completed))
+         (unwind-protect
+             (progn
+               (setq phpinspect-parse-context ,ctx
+                     ,result (progn ,@body)
+                     ,completed t)
+               ,result)
            (progn
-             (setq phpinspect-parse-context ,ctx
-                   ,result (progn ,@body)
-                   ,completed t)
-             ,result)
-         (progn
-           (unless ,completed (phpinspect-pctx-cancel ,ctx))
-           (setq phpinspect-parse-context ,old-ctx))))))
+             (unless ,completed (phpinspect-pctx-cancel ,ctx))))))))
 
 (defmacro phpinspect-pctx-save-whitespace (pctx &rest body)
   (declare (indent 1))
@@ -98,6 +144,12 @@ thrown.")
      (push ,changeset (phpinspect-pctx-changesets ,pctx)))))
 
 (define-inline phpinspect-meta-with-changeset (meta &rest body)
+  "Perform mutations on META in BODY, saving changes.
+
+Before BODY is executed, important slots of META are stored in a
+changeset object and appended to the changesets slot of the
+currently active parse context. The original state of META can be
+restored by calling `phpinspect-pctx-cancel'."
   (declare (indent 1))
   (inline-letevals (meta)
     (push 'progn body)
@@ -109,6 +161,15 @@ thrown.")
        ,body))))
 
 (define-inline phpinspect-pctx-check-interrupt (pctx)
+  "Signal `phpinspect-parse-interrupted' when conditions are met.
+
+Parsing will be interrupted when the time passed since
+`phpinspect--pctx-start-time' exceeds
+`phpinspect-pctx-interrupt-threshold' and
+`phpinspect-pctx-interrupt-predicate' returns non-nil.
+
+When parsing is interrupted, any changes made to buffer token
+metadata will be reverted in a call to `pphinspect-pctx-cancel'."
   (inline-letevals (pctx)
     (inline-quote
      (progn
@@ -133,6 +194,12 @@ thrown.")
     whitespace))
 
 (defun phpinspect-pctx-cancel (pctx)
+  "Cancel PCTX, revert all changes made during its lifetime.
+
+Revert all changes made to the metadata tree while parsing
+incrementally. This function is usually called by
+`phpinspect-pctx-check-interrupt' when interrupt conditions are
+met."
   (phpinspect--log "Cancelling parse context")
   (dolist (changeset (phpinspect-pctx-changesets pctx))
     (phpinspect-changeset-revert changeset))
