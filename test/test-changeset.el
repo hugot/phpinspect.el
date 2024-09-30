@@ -47,9 +47,10 @@
     (phpinspect-changeset-revert (car (phpinspect-pctx-changesets pctx)))
 
     (should (eq parent (phpinspect-meta-parent child)))
-    (should (length= (phpinspect-splayt-to-list
-                      (phpinspect-meta-children parent))
-                     1))))
+    (let ((children (phpinspect-splayt-to-list
+                     (phpinspect-meta-children parent))))
+      (should (length= children 1))
+      (should (eq 'child (phpinspect-meta-token (car children)))))))
 
 
 ;;; test-changeset.el ends here
