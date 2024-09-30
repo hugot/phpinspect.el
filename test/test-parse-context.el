@@ -35,13 +35,11 @@
       (phpinspect-meta-with-changeset meta
         (setf (phpinspect-meta-absolute-start meta) 222)
         (setf (phpinspect-meta-absolute-end meta) 1234)
-        (phpinspect-meta-set-parent meta (phpinspect-make-meta nil 1 2000 "" 'parent-token))
-        (setf (phpinspect-meta-overlay meta) 'not-overlay)))
+        (phpinspect-meta-set-parent meta (phpinspect-make-meta nil 1 2000 "" 'parent-token))))
 
     (should (= 222 (phpinspect-meta-start meta)))
     (should (= 1234 (phpinspect-meta-end meta)))
     (should (phpinspect-meta-parent meta))
-    (should (eq 'not-overlay (phpinspect-meta-overlay meta)))
     (should (= 221 (phpinspect-meta-parent-offset meta)))
 
     (phpinspect-pctx-cancel pctx)
@@ -49,5 +47,4 @@
     (should (= 10 (phpinspect-meta-start meta)))
     (should (= 20 (phpinspect-meta-end meta)))
     (should-not (phpinspect-meta-parent meta))
-    (should-not (phpinspect-meta-parent-offset meta))
-    (should (eq 'overlay (phpinspect-meta-overlay meta)))))
+    (should-not (phpinspect-meta-parent-offset meta))))

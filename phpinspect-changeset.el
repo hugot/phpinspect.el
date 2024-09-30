@@ -26,11 +26,13 @@
 (eval-when-compile
   (require 'phpinspect-meta))
 
+(require 'phpinspect-splayt)
+
 (define-inline phpinspect-make-changeset (meta)
   (inline-letevals (meta)
     (inline-quote
      (list (phpinspect-meta-start ,meta) (phpinspect-meta-end ,meta)
-           (phpinspect-meta-parent ,meta) (phpinspect-meta-overlay ,meta)
+           (phpinspect-meta-parent ,meta)
            (phpinspect-meta-parent-offset ,meta) ,meta))))
 
 (define-inline phpinspect-changeset-start (set)
@@ -42,23 +44,30 @@
 (define-inline phpinspect-changeset-parent (set)
   (inline-quote (caddr ,set)))
 
-(define-inline phpinspect-changeset-overlay (set)
-  (inline-quote (cadddr ,set)))
-
 (define-inline phpinspect-changeset-parent-offset (set)
-  (inline-quote (car (cddddr ,set))))
+  (inline-quote (car (cdddr ,set))))
 
 (define-inline phpinspect-changeset-meta (set)
-  (inline-quote (car (nthcdr 5 ,set))))
+  (inline-quote (car (nthcdr 4 ,set))))
 
 (define-inline phpinspect-changeset-revert (changeset)
   (inline-letevals (changeset)
     (inline-quote
      (progn
-       (setf (phpinspect-meta-parent (phpinspect-changeset-meta ,changeset))
-             (phpinspect-changeset-parent ,changeset))
-       (setf (phpinspect-meta-overlay (phpinspect-changeset-meta ,changeset))
-             (phpinspect-changeset-overlay ,changeset))
+       (let ((parent (phpinspect-changeset-parent ,changeset)))
+         (unless (eq parent
+                     (phpinspect-meta-parent
+                      (phpinspect-changeset-meta ,changeset)))
+
+           (setf (phpinspect-meta-parent (phpinspect-changeset-meta ,changeset))
+                 parent)
+
+           (when parent
+             (phpinspect-splayt-insert
+              (phpinspect-meta-children parent)
+              (phpinspect-changeset-start ,changeset)
+              (phpinspect-changeset-meta ,changeset)))))
+
        (setf (phpinspect-meta-absolute-start (phpinspect-changeset-meta ,changeset))
              (phpinspect-changeset-start ,changeset))
        (setf (phpinspect-meta-absolute-end (phpinspect-changeset-meta ,changeset))

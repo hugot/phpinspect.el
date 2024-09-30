@@ -72,10 +72,10 @@ maintain. It requires a lot of mental tracing to know when to
 set/unset this variable."))
 
 (define-inline phpinspect-make-meta
-  (parent start end whitespace-before token &optional overlay children parent-offset)
+  (parent start end whitespace-before token &optional children parent-offset)
   "Create a metadata object for TOKEN."
   (inline-letevals (start end)
-    (inline-quote (list 'meta ,parent ,start ,end ,whitespace-before ,token ,overlay
+    (inline-quote (list 'meta ,parent ,start ,end ,whitespace-before ,token
                         (or ,children (phpinspect-make-splayt)) ,parent-offset))))
 
 (define-inline phpinspect-meta-p (meta)
@@ -85,13 +85,11 @@ set/unset this variable."))
   (inline-quote (cadr ,meta)))
 
 (define-inline phpinspect-meta-children (meta)
-  (inline-quote (car (nthcdr 7 ,meta))))
+  (inline-quote (car (nthcdr 6 ,meta))))
 
 (define-inline phpinspect-meta-parent-offset (meta)
-  (inline-quote (car (nthcdr 8 ,meta))))
+  (inline-quote (car (nthcdr 7 ,meta))))
 
-(define-inline phpinspect-meta-overlay (meta)
-  (inline-quote (car (nthcdr 6 ,meta))))
 
 (define-inline phpinspect-meta-token (meta)
   (inline-quote (car (nthcdr 5 ,meta))))
