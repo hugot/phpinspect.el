@@ -331,10 +331,14 @@ class AAA {
           (insert "    "))
         (setq switch (not switch))
 
+        (phpinspect-parse-string (buffer-string))
         (phpinspect-buffer-parse buffer 'no-interrupt)
 
         (let ((token (phpinspect-bmap-last-token-before-point
                       (phpinspect-buffer-map buffer) (+ 68 delta))))
+          ;; (message "Map:")
+          ;; (dolist (meta (mapcar #'phpinspect-meta-string (sort (phpinspect-meta-flatten (phpinspect-buffer-root-meta buffer)) #'phpinspect-meta-sort-start)))
+          ;;   (message " - %s" meta))
           (should token)
           (should (phpinspect-variable-p (phpinspect-meta-token token)))
           (should (string= "banana" (cadr (phpinspect-meta-token token))))

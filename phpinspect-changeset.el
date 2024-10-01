@@ -54,26 +54,26 @@
   (inline-letevals (changeset)
     (inline-quote
      (progn
-       (let ((parent (phpinspect-changeset-parent ,changeset)))
-         (unless (eq parent
-                     (phpinspect-meta-parent
-                      (phpinspect-changeset-meta ,changeset)))
-
-           (setf (phpinspect-meta-parent (phpinspect-changeset-meta ,changeset))
-                 parent)
-
-           (when parent
-             (phpinspect-splayt-insert
-              (phpinspect-meta-children parent)
-              (phpinspect-changeset-start ,changeset)
-              (phpinspect-changeset-meta ,changeset)))))
 
        (setf (phpinspect-meta-absolute-start (phpinspect-changeset-meta ,changeset))
              (phpinspect-changeset-start ,changeset))
        (setf (phpinspect-meta-absolute-end (phpinspect-changeset-meta ,changeset))
              (phpinspect-changeset-end ,changeset))
        (setf (phpinspect-meta-parent-offset (phpinspect-changeset-meta ,changeset))
-             (phpinspect-changeset-parent-offset ,changeset))))))
+             (phpinspect-changeset-parent-offset ,changeset))
+
+       (let ((parent (phpinspect-changeset-parent ,changeset)))
+         (unless (eq parent
+                     (phpinspect-meta-parent
+                      (phpinspect-changeset-meta ,changeset)))
+           (setf (phpinspect-meta-parent (phpinspect-changeset-meta ,changeset))
+                 parent)
+
+           (when parent
+             (phpinspect-splayt-insert
+              (phpinspect-meta-children parent)
+              (phpinspect-changeset-parent-offset ,changeset)
+              (phpinspect-changeset-meta ,changeset)))))))))
 
 (provide 'phpinspect-changeset)
 ;;; phpinspect-changeset.el ends here

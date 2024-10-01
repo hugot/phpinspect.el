@@ -139,7 +139,7 @@ text at point and returns the resulting token."
 (defun phpinspect--recycle-token (context taint-iterator point original-point token-meta tokens-rear &optional delimiter-predicate)
   "Attempt to re-use TOKEN-META and any of its eligible righthand siblings."
   (declare (speed 3))
-
+  ;;(message "Recycle token called at %d, %s" (point) (phpinspect-meta-token token-meta))
   (when-let ((bmap (phpinspect-pctx-bmap context))
              (first-iteration t))
     (catch 'phpinspect--return
@@ -148,11 +148,20 @@ text at point and returns the resulting token."
         ;; Set point-offset-base for more efficient execution of
         ;; `phpinspect-meta-start' and related functions.
         (dlet ((phpinspect-meta--point-offset-base original-point))
+          ;; (while (and token-meta (phpinspect-taint-iterator-token-is-tainted-p taint-iterator token-meta))
+          ;;   (pp taint-iterator)
+          ;;   (message "finding child of %s" (phpinspect-meta-string token-meta))
+          ;;   (setq token-meta (phpinspect-meta-find-child-starting-at token-meta original-point)))
+
           (if (or (not token-meta)
                   (phpinspect-taint-iterator-token-is-tainted-p taint-iterator token-meta))
-              ;; If the first passed token is tainted. Return tainted symbol to
-              ;; signal failure to parser loop. Otherwise return re-used tokens.
-              (throw 'phpinspect--return (if first-iteration 'tainted tokens-rear))
+              (progn
+                ;; If the first passed token is tainted. Return tainted symbol to
+                ;; signal failure to parser loop. Otherwise return re-used tokens.
+                (throw 'phpinspect--return
+                       (if first-iteration
+                           (if (not token-meta) nil 'tainted)
+                         tokens-rear)))
 
             ;; Token is eligible for re-use.
             (let ((parent-offset (phpinspect-meta-parent-offset token-meta))
@@ -163,6 +172,7 @@ text at point and returns the resulting token."
               ;; Note: recycling the token will update its parent and
               ;; positions. Its properties should no longer be queried (aside
               ;; from its width, which always stays the same)
+              ;;(message "recycling %s" (phpinspect-meta-string token-meta))
               (phpinspect-bmap-recycle
                bmap token-meta delta (phpinspect-pctx-consume-whitespace context))
 
@@ -180,6 +190,7 @@ text at point and returns the resulting token."
                          ((not (phpinspect-taint-iterator-region-is-tainted-p
                                 taint-iterator current-end-position (+ delta (phpinspect-meta-start right-sibling))))))
                     (progn
+                      ;;(message "using sibling %s" (phpinspect-meta-string right-sibling))
                       ;; There was a right sibling and it is eligible for
                       ;; re-use. Set token-meta and "recurse".
                       (setq first-iteration nil
@@ -277,6 +288,8 @@ is able to reuse an already parsed tree."
 
                (setq start-position (point))
 
+               ;;(message "Start: %d" start-position)
+
                (cond ((and-let*
                           ((edtrack)
                            (previous-bmap)
@@ -298,11 +311,11 @@ is able to reuse an already parsed tree."
                                 (when-let
                                     ((token-after (phpinspect-bmap-token-starting-after previous-bmap original-position))
                                      (start (phpinspect-meta-start token-after))
-
                                      ((not (phpinspect-taint-iterator-region-is-tainted-p
-                                            taint-iterator original-position start)))
-                                     (current-start (+ start-position (- start original-position))))
-                                  (goto-char current-start)
+                                            taint-iterator original-position (+ start (phpinspect-meta-width token-after)))))
+                                     ;;(current-start (+ start-position (- start original-position))))
+                                     (current-start (phpinspect-edtrack-current-position-at-point edtrack start)))
+                                  ;; (message "YAAS: (%d,%d) '%s'" start current-start (buffer-substring current-start (point-max)))
                                   (phpinspect--recycle-token
                                    context taint-iterator current-start start token-after tokens-rear
                                    ,(if delimiter-predicate `(quote ,delimiter-predicate) 'nil)))))
@@ -316,6 +329,7 @@ is able to reuse an already parsed tree."
 
                            ;; Re-using tokens was a success, update tokens-rear
                            ((setq tokens-rear result))))
+                      ;;(message "recycled")
 
                       ;; Skip over whitespace after so that we don't do a full
                       ;; run down all of the handlers during the next iteration

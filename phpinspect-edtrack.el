@@ -103,17 +103,19 @@ of all known edits before EDIT's start."
       point)))
 
 (defsubst phpinspect-edtrack-current-position-at-point (track point)
-  (let ((edit (phpinspect-edtrack-edits track))
-        (encroached)
-        (pos))
+  "Like `phpinspect-edtrack-original-position-at-point' but in reverse.
+
+Calculate the current position in of original POINT, based on edits performed."
+  (let ((edit (phpinspect-edtrack-edits track)))
+    ;; Find last edit before point
     (while (and edit (<= point (phpinspect-edit-original-end edit)))
       (setq edit (cdr edit)))
 
-    (setq pos (+ point (phpinspect-edit-delta edit)))
-
-    (if (< 0 (setq encroached (- (+ (phpinspect-edit-original-end edit) (or (cdar edit) 0)) point)))
-        (- pos encroached)
-      pos)))
+    (if edit
+        ;; Subtract cumulative edit delta
+        (+ point (phpinspect-edit-delta edit))
+      ;; else: no edits have taken place, return POINT
+      point)))
 
 (define-inline phpinspect-taint-start (taint)
   (inline-quote (car ,taint)))
@@ -254,9 +256,9 @@ of all known edits before EDIT's start."
      (or (and (phpinspect-taint-iterator-follow ,iter (phpinspect-meta-start ,meta))
               (phpinspect-taint-overlaps-meta
                (phpinspect-taint-iterator-current ,iter) ,meta))
-	 ;; Incomplete tokens should be regarded as tainted regardless of
-	 ;; region, as their end-position is unlikely to be correct.
-	 (phpinspect-incomplete-token-p (phpinspect-meta-token ,meta))))))
+	     ;; Incomplete tokens should be regarded as tainted regardless of
+	     ;; region, as their end-position is unlikely to be correct.
+	     (phpinspect-incomplete-token-p (phpinspect-meta-token ,meta))))))
 
 (define-inline phpinspect-taint-iterator-region-is-tainted-p (iter start end)
   (inline-letevals (iter start end)
