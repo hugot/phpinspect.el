@@ -46,8 +46,9 @@
     (inline-quote
      (or (phpinspect-return-p ,token)
          (phpinspect-end-of-statement-p ,token)
+         (phpinspect-fat-arrow-p ,token)
          (phpinspect-string-concatenator-p ,token)
-	 (phpinspect-use-p ,token)
+	     (phpinspect-use-p ,token)
          (phpinspect-function-p ,token)))))
 
 (cl-defstruct (phpinspect--resolvecontext

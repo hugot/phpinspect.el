@@ -291,7 +291,7 @@ Ignores `eldoc-argument-case` and `eldoc-echo-area-use-multiline-p`.
 TODO:
  - Respect `eldoc-echo-area-use-multiline-p`
 "
-  (catch 'phpinspect-parse-interrupted
+  (catch 'phpinspect-interrupted
     (let ((resp (phpinspect-eldoc-query-execute
                  (phpinspect-make-eldoc-query
                   :buffer phpinspect-current-buffer

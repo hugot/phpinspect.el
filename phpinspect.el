@@ -131,14 +131,11 @@
   (when (and phpinspect-load-stubs (not phpinspect-stub-cache))
     (phpinspect-load-stub-index))
 
-  (setq phpinspect-current-buffer
-        (phpinspect-make-buffer :buffer (current-buffer)))
+  (phpinspect-claim-buffer (current-buffer))
 
   (phpinspect-register-current-buffer
    (lambda () (phpinspect-buffer-reset phpinspect-current-buffer)))
   (add-hook 'kill-buffer-hook #'phpinspect-unregister-current-buffer)
-
-  (add-hook 'after-change-functions #'phpinspect-after-change-function)
 
   (when (featurep 'company)
     (make-local-variable 'company-backends)
@@ -353,7 +350,7 @@ Example configuration for `company-mode':
                           arg)))
       (insert "(")))
    ((eq command 'candidates)
-    (catch 'phpinspect-parse-interrupted
+    (catch 'phpinspect-interrupted
       (let ((completion-list (phpinspect--suggest-at-point))
             (candidates))
 

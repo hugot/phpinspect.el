@@ -77,7 +77,6 @@ map parsed tokens to metadata about them and vice versa."
   (last-meta nil :type phpinspect-meta)
   (last-token-start nil
                     :type integer)
-  (mask 0 :type integer)
   (recycled-p nil
               :type boolean
               :documentation "Whether bmap contains recycled tokens")
@@ -146,10 +145,10 @@ object and re-used instead of instantiating a new object."
 (define-inline phpinspect-bmap-token-starting-after (bmap point)
   (inline-letevals (bmap point)
     (inline-quote
-     (when-let ((root-meta (phpinspect-bmap-root-meta ,bmap)))
+     (let ((root-meta (phpinspect-bmap-root-meta ,bmap)))
        (phpinspect-meta-find-child-after-recursively root-meta ,point)))))
 
-(defsubst phpinspect-bmap-tokens-overlapping (bmap point)
+(defun phpinspect-bmap-tokens-overlapping (bmap point)
   (sort
    (phpinspect-meta-find-overlapping-children (phpinspect-bmap-root-meta bmap) point)
    #'phpinspect-meta-sort-width))
@@ -171,7 +170,8 @@ compatibility with tests and for easy refactoring later on."
 
 (defun phpinspect-bmap-last-token-before-point (bmap point)
   "Search backward in BMAP for last token ending before POINT."
-  (phpinspect-meta-find-child-before-recursively (phpinspect-bmap-root-meta bmap) point))
+  (let ((root-meta (phpinspect-bmap-root-meta bmap)))
+    (phpinspect-meta-find-child-before-recursively root-meta point)))
 
 (define-inline phpinspect-bmap-recycle (bmap token-meta pos-delta &optional whitespace-before)
   "Re-use TOKEN-META as a token in BMAP, applying POS-DELTA.
@@ -192,13 +192,13 @@ via `phpinspect-parse-context'."
 
          (setf (phpinspect-bmap-recycled-p ,bmap) t)
 
-         (phpinspect-meta-with-changeset ,token-meta
-           (phpinspect-meta-detach-parent ,token-meta)
-           (phpinspect-meta-shift ,token-meta ,pos-delta)
 
-           (dlet ((phpinspect-meta--point-offset-base nil))
-             (phpinspect-bmap-register
-              ,bmap start end (phpinspect-meta-token ,token-meta) ,whitespace-before ,token-meta)))))))
+         (phpinspect-meta-detach-parent ,token-meta)
+         (phpinspect-meta-shift ,token-meta ,pos-delta)
+
+         (dlet ((phpinspect-meta--point-offset-base nil))
+           (phpinspect-bmap-register
+            ,bmap start end (phpinspect-meta-token ,token-meta) ,whitespace-before ,token-meta))))))
 
 (defun phpinspect-make-region (start end)
   (list start end))

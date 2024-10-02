@@ -285,20 +285,18 @@ Completing words in a comment for example, is usually not useful."
   (and last-query
        (eq (phpinspect-completion-query-buffer last-query)
            (phpinspect-completion-query-buffer query))
-       (let ((taints (phpinspect-edtrack-taint-pool
-                      (phpinspect-buffer-edit-tracker
-                       (phpinspect-completion-query-buffer query))))
+       (let ((change (phpinspect-buffer-last-change
+                       (phpinspect-completion-query-buffer query)))
              (atoms-start
               (phpinspect-with-current-buffer (phpinspect-completion-query-buffer query)
                 (phpinspect--find-atoms-start (phpinspect-completion-query-point query)))))
-         (or (length= taints 0)
-             (and (length= taints 1)
-                  (<= atoms-start
+         (or (not change)
+             (and (<= atoms-start
                       (phpinspect-completion-query-point last-query))
-                  (>= (phpinspect-taint-end (car taints))
+                  (>= (phpi-change-end change)
                       (phpinspect-completion-query-point last-query))
                   (>= 1 (abs (- (phpinspect-completion-query-point query)
-                                (phpinspect-taint-end (car taints))))))))))
+                                (phpi-change-end change)))))))))
 
 (cl-defstruct (phpinspect--completion-parameters
                (:constructor phpinspect--make-completion-parameters))
@@ -474,7 +472,7 @@ Returns list of `phpinspect--completion'."
 
 
 (defun phpinspect-complete-at-point ()
-  (catch 'phpinspect-parse-interrupted
+  (catch 'phpinspect-interrupted
     (let ((comp-list (phpinspect-completion-query-execute (phpinspect--get-completion-query)))
           strings)
       (phpinspect--log "Completion list: %s" comp-list)

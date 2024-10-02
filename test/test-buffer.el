@@ -36,8 +36,8 @@
     (with-temp-buffer
       (insert-file-contents (concat phpinspect-test-php-file-directory "/NamespacedClass.php"))
       (setq phpinspect-current-buffer
-            (phpinspect-make-buffer :buffer (current-buffer)))
-      (setq parsed (phpinspect-buffer-parse phpinspect-current-buffer))
+            (phpinspect-claim-buffer (current-buffer)))
+      (setq parsed (phpinspect-buffer-parse phpinspect-current-buffer 'no-interrupt))
 
       (let* ((class (seq-find #'phpinspect-class-p
                               (seq-find #'phpinspect-namespace-p parsed)))
@@ -98,8 +98,8 @@
 
 (ert-deftest phpinspect-buffer-parse-incrementally ()
   (let* ((document (phpinspect-make-document))
-         (buffer (phpinspect-make-buffer
-                  :buffer (phpinspect-document-buffer document)))
+         (buffer (phpinspect-claim-buffer
+                  (phpinspect-document-buffer document)))
          (parsed))
     ;; TODO: write tests for more complicated cases (multiple edits, etc.)
     (phpinspect-document-set-contents document "<?php function Bello() { echo 'Hello World!'; if ($name) { echo 'Hello ' . $name . '!';} }")
@@ -155,7 +155,7 @@
 
 (ert-deftest phpinspect-buffer-parse-incrementally-position-change ()
   (with-temp-buffer
-    (let ((buffer (phpinspect-make-buffer :buffer (current-buffer))))
+    (let ((buffer (phpinspect-claim-buffer (current-buffer))))
       (insert "<?php
 declare(strict_types=1);
 
@@ -165,12 +165,6 @@ class AccountStatisticsController {
 
     function __construct(){}
 }")
-
-      (setq-local phpinspect-test-buffer t)
-      (add-to-list 'after-change-functions
-                   (lambda (start end pre-change-length)
-                     (when (boundp 'phpinspect-test-buffer)
-                       (phpinspect-buffer-register-edit buffer start end pre-change-length))))
 
       (let* ((bmap (phpinspect-buffer-parse-map buffer))
              (class-location 67)
@@ -196,6 +190,7 @@ class AccountStatisticsController {
           (setq tokens-enclosing (phpinspect-bmap-tokens-overlapping bmap class-location))
           (setq class (seq-find (lambda (meta) (phpinspect-class-p (phpinspect-meta-token meta)))
                                 tokens-enclosing))
+
           (should  class)
           (should (= class-location (phpinspect-meta-start class)))
           (should (phpinspect-class-p (phpinspect-meta-token class)))
@@ -227,8 +222,8 @@ class AccountStatisticsController {
 
 (ert-deftest phpinspect-buffer-parse-incrementally-multiedit ()
   (let* ((document (phpinspect-make-document))
-         (buffer (phpinspect-make-buffer
-                  :buffer (phpinspect-document-buffer document)))
+         (buffer (phpinspect-claim-buffer
+                  (phpinspect-document-buffer document)))
          parsed parsed-after current-tree)
 
     (phpinspect-document-set-contents
@@ -256,8 +251,7 @@ class YYY {
     (phpinspect-document-setq-local document
       phpinspect-current-buffer buffer)
     (phpinspect-with-document-buffer document
-      (setq buffer-undo-list nil)
-      (add-hook 'after-change-functions #'phpinspect-after-change-function))
+      (setq buffer-undo-list nil))
 
     (setq parsed (phpinspect-buffer-parse buffer 'no-interrupt))
 
@@ -294,8 +288,7 @@ class YYY {
 
 (ert-deftest phpinspect-buffer-parse-incrementally-class-with-method ()
   (with-temp-buffer
-  (let* ((buffer (phpinspect-make-buffer
-                  :buffer (current-buffer))))
+  (let* ((buffer (phpinspect-claim-buffer (current-buffer))))
 
 
     (setq-local phpinspect-current-buffer buffer)
@@ -314,7 +307,6 @@ class AAA {
 
 ")
 
-    (add-hook 'after-change-functions #'phpinspect-after-change-function)
     (phpinspect-buffer-parse buffer 'no-interrupt)
 
     (let ((switch t)
@@ -336,9 +328,6 @@ class AAA {
 
         (let ((token (phpinspect-bmap-last-token-before-point
                       (phpinspect-buffer-map buffer) (+ 68 delta))))
-          ;; (message "Map:")
-          ;; (dolist (meta (mapcar #'phpinspect-meta-string (sort (phpinspect-meta-flatten (phpinspect-buffer-root-meta buffer)) #'phpinspect-meta-sort-start)))
-          ;;   (message " - %s" meta))
           (should token)
           (should (phpinspect-variable-p (phpinspect-meta-token token)))
           (should (string= "banana" (cadr (phpinspect-meta-token token))))
@@ -349,8 +338,7 @@ class AAA {
 
 (ert-deftest phpinspect-buffer-parse-incrementally-use ()
   (with-temp-buffer
-  (let* ((buffer (phpinspect-make-buffer
-                  :buffer (current-buffer))))
+  (let* ((buffer (phpinspect-claim-buffer (current-buffer))))
 
 
     (setq-local phpinspect-current-buffer buffer)
@@ -367,7 +355,6 @@ use CCC;
 
 ")
 
-    (add-hook 'after-change-functions #'phpinspect-after-change-function)
     (phpinspect-buffer-parse buffer 'no-interrupt)
     (let ((switch nil)
           (delta 0))
@@ -377,15 +364,11 @@ use CCC;
             (progn
               (setq delta 0)
               (goto-char 44)
-              (insert "hh")
-              (should (phpinspect-edtrack-edits (phpinspect-buffer-edit-tracker buffer)))
-              (should (= 51 (phpinspect-edtrack-current-position-at-point (phpinspect-buffer-edit-tracker buffer) 49))))
+              (insert "hh"))
           (progn
             (setq delta (- 2))
             (goto-char 44)
-            (delete-char 2)
-            (should (phpinspect-edtrack-edits (phpinspect-buffer-edit-tracker buffer)))
-            (should (= 47 (phpinspect-edtrack-current-position-at-point (phpinspect-buffer-edit-tracker buffer) 49)))))
+            (delete-char 2)))
 
         (setq switch (not switch))
 
@@ -532,9 +515,9 @@ public $banana; const CONSTANT = 0;
 
 (ert-deftest phpinspect-buffer-index-typehinted-class-variables ()
   (with-temp-buffer
-    (let ((buffer (phpinspect-make-buffer
-                   :buffer (current-buffer)
-                   :-project (phpinspect--make-project :autoload (phpinspect-make-autoloader)))))
+    (let ((buffer (phpinspect-claim-buffer
+                   (current-buffer)
+                   (phpinspect--make-project :autoload (phpinspect-make-autoloader)))))
       (insert "<?php
 declare(strict_types=1);
 
@@ -600,9 +583,9 @@ class AccountStatisticsController {
 
 (ert-deftest phpinspect-buffer-parse-incrementally-unfinished-variable-scope ()
   (with-temp-buffer
-  (let* ((buffer (phpinspect-make-buffer
-                  :buffer (current-buffer)
-                  :-project (phpinspect--make-dummy-project))))
+  (let* ((buffer (phpinspect-claim-buffer
+                  (current-buffer)
+                  (phpinspect--make-dummy-project))))
 
 
     (setq-local phpinspect-current-buffer buffer)
@@ -620,7 +603,6 @@ class AAA {
 
 ")
 
-    (add-hook 'after-change-functions #'phpinspect-after-change-function)
     (phpinspect-buffer-parse buffer 'no-interrupt)
 
     ;; move to after class brace
@@ -635,7 +617,7 @@ class AAA {
 (ert-deftest phpinspect-buffer-parse-incrementally-trait-config ()
   (with-temp-buffer
     (let* ((project (phpinspect--make-dummy-composer-project-with-code))
-           (buffer (phpinspect-make-buffer :-project project :buffer (current-buffer))))
+           (buffer (phpinspect-claim-buffer (current-buffer) project)))
 
       (insert "<?php
 
@@ -651,7 +633,6 @@ class Bar {
                project (phpinspect--make-type :name "\\App\\Foo") 'no-enqueue))
 
       (setq-local phpinspect-current-buffer buffer)
-      (add-hook 'after-change-functions #'phpinspect-after-change-function)
       (phpinspect-buffer-parse buffer 'no-interrupt)
       (phpinspect-buffer-update-project-index buffer)
 
@@ -682,12 +663,11 @@ class Bar {
 (ert-deftest phpinspect-buffer-parse-incrementally-class-block-scope ()
   (with-temp-buffer
     (let* ((project (phpinspect--make-dummy-composer-project-with-code))
-           (buffer (phpinspect-make-buffer :-project project :buffer (current-buffer))))
+           (buffer (phpinspect-claim-buffer (current-buffer) project)))
 
       (insert "<?php class A { public function A() {} }")
 
       (setq-local phpinspect-current-buffer buffer)
-      (add-hook 'after-change-functions #'phpinspect-after-change-function)
       (let ((expected `(:root
 			(:class
 			 (:class-declaration (:word "A"))
@@ -715,13 +695,14 @@ class Bar {
 	    (backward-char)
 	    (insert " ")
 	    (setq result (phpinspect-buffer-parse buffer 'no-interrupt))
+
 	    (should result)
 	    (should (equal expected result))))))
 
 (ert-deftest phpinspect-buffer-index-update-method-name ()
     (with-temp-buffer
       (let* ((project (phpinspect--make-project :autoload (phpinspect-make-autoloader)))
-	     (buffer (phpinspect-make-buffer :buffer (current-buffer) :-project project))
+	     (buffer (phpinspect-claim-buffer (current-buffer) project))
 	     (class-type (phpinspect--make-type :name "\\NS\\TestClass" :fully-qualified t)))
       (insert "<?php
 namespace NS;
@@ -731,7 +712,6 @@ class TestClass
     function testMe(): RelativeType {}
 }")
       (setq-local phpinspect-current-buffer buffer)
-      (add-hook 'after-change-functions #'phpinspect-after-change-function)
       (phpinspect-buffer-update-project-index buffer)
 
       (goto-char 59)
@@ -751,10 +731,9 @@ class TestClass
 (ert-deftest phpinspect-buffer-parse-incrementally-comment ()
     (with-temp-buffer
       (let* ((project (phpinspect--make-project :autoload (phpinspect-make-autoloader)))
-	     (buffer (phpinspect-make-buffer :buffer (current-buffer) :-project project)))
+	     (buffer (phpinspect-claim-buffer (current-buffer) project)))
 	(insert "<?php\n\n// \n")
 	(setq-local phpinspect-current-buffer buffer)
-	(add-hook 'after-change-functions #'phpinspect-after-change-function)
 
 	(should (equal '(:root (:comment))
 		           (phpinspect-buffer-parse buffer)))
@@ -774,6 +753,7 @@ class TestClass
 
       (should (equal '(:root (:word "aaa") (:word "bbb") (:word "ccc")) (phpinspect-buffer-parse buffer)))
       (should-not (phpinspect-buffer--deletions buffer))
+
       (should (length= (phpinspect-buffer--additions buffer) 4))
 
       (goto-char (- (point-max) 5))

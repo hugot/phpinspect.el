@@ -26,7 +26,7 @@ class Thing
            (phpinspect-project-root-function (lambda () "phpinspect-test"))
            (phpinspect-eldoc-word-width 100)
            (project (phpinspect--make-project :autoload (phpinspect-make-autoloader) :worker 'nil-worker))
-           (buffer (phpinspect-make-buffer :buffer (current-buffer) :-project project))
+           (buffer (phpinspect-claim-buffer (current-buffer) project))
            second-arg-pos inside-nested-list-pos first-arg-pos)
       (setq-local phpinspect-current-buffer buffer)
       (insert php-code)
@@ -104,7 +104,7 @@ class Thing
                      (insert php-code)
                      (backward-char)
                      (setq-local phpinspect-current-buffer
-                                 (phpinspect-make-buffer :buffer (current-buffer) :-project project))
+                                 (phpinspect-claim-buffer (current-buffer) project))
                      (phpinspect-buffer-parse phpinspect-current-buffer)
                      (phpinspect-eldoc-function))))))
 
@@ -131,5 +131,5 @@ class Thing
                    (with-temp-buffer
                      (insert php-code)
                      (setq-local phpinspect-current-buffer
-                                 (phpinspect-make-buffer :buffer (current-buffer)))
+                                 (phpinspect-claim-buffer (current-buffer)))
                      (phpinspect-eldoc-function))))))

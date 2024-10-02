@@ -34,10 +34,9 @@
 (ert-deftest phpinspect-fix-imports-single-namespaced-class ()
   (let ((project (phpinspect--make-dummy-composer-project)))
     (with-temp-buffer
-      (let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
-                                             :-project project)))
+      (phpinspect-claim-buffer (current-buffer) project)
 
-        (insert "<?php
+      (insert "<?php
 
 namespace Not\\App;
 
@@ -45,12 +44,9 @@ class Baz {
     private Foo $foo;
     public Bar $bar;
 }")
-        ;; Ensure buffer is made aware of changes
-        (setq phpinspect-current-buffer buffer)
-        (add-hook 'after-change-functions #'phpinspect-after-change-function)
 
-        (phpinspect-fix-imports)
-        (should (string= "<?php
+      (phpinspect-fix-imports)
+      (should (string= "<?php
 
 namespace Not\\App;
 
@@ -61,16 +57,15 @@ class Baz {
     private Foo $foo;
     public Bar $bar;
 }"
-                         (buffer-string)))))))
+                       (buffer-string))))))
 
 (ert-deftest phpinspect-fix-imports-no-remove-unused ()
   (dlet ((phpinspect-imports-remove-unused nil))
     (let ((project (phpinspect--make-dummy-composer-project)))
       (with-temp-buffer
-	(let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
-                                               :-project project)))
+	    (phpinspect-claim-buffer (current-buffer) project)
 
-          (insert "<?php
+        (insert "<?php
 
 namespace Not\\App;
 
@@ -80,12 +75,9 @@ class Baz {
     private Foo $foo;
     public Bar $bar;
 }")
-          ;; Ensure buffer is made aware of changes
-          (setq phpinspect-current-buffer buffer)
-          (add-hook 'after-change-functions #'phpinspect-after-change-function)
 
-          (phpinspect-fix-imports)
-          (should (string= "<?php
+        (phpinspect-fix-imports)
+        (should (string= "<?php
 
 namespace Not\\App;
 
@@ -97,16 +89,15 @@ class Baz {
     private Foo $foo;
     public Bar $bar;
 }"
-                           (buffer-string))))))))
+                         (buffer-string)))))))
 
 
 (ert-deftest phpinspect-fix-imports-multiple-namespaced-classes ()
   (let ((project (phpinspect--make-dummy-composer-project)))
     (with-temp-buffer
-      (let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
-                                             :-project project)))
+      (phpinspect-claim-buffer (current-buffer) project)
 
-        (insert "<?php
+      (insert "<?php
 
 namespace Not\\App;
 
@@ -117,12 +108,9 @@ class Bee {
 class Baz {
     private Foo $foo;
 }")
-        ;; Ensure buffer is made aware of changes
-        (setq phpinspect-current-buffer buffer)
-        (add-hook 'after-change-functions #'phpinspect-after-change-function)
 
-        (phpinspect-fix-imports)
-        (should (string= "<?php
+      (phpinspect-fix-imports)
+      (should (string= "<?php
 
 namespace Not\\App;
 
@@ -136,13 +124,12 @@ class Bee {
 class Baz {
     private Foo $foo;
 }"
-                         (buffer-string)))))))
+                         (buffer-string))))))
 
 (ert-deftest phpinspect-fix-imports-namespaced-class-and-enum ()
   (let ((project (phpinspect--make-dummy-composer-project)))
     (with-temp-buffer
-      (let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
-                                             :-project project)))
+      (phpinspect-claim-buffer (current-buffer) project)
 
         (insert "<?php
 
@@ -155,9 +142,6 @@ enum Bee: string {
 class Baz {
     private Foo $foo;
 }")
-        ;; Ensure buffer is made aware of changes
-        (setq phpinspect-current-buffer buffer)
-        (add-hook 'after-change-functions #'phpinspect-after-change-function)
 
         (phpinspect-fix-imports)
         (should (string= "<?php
@@ -174,15 +158,14 @@ enum Bee: string {
 class Baz {
     private Foo $foo;
 }"
-                         (buffer-string)))))))
+                         (buffer-string))))))
 
 (ert-deftest phpinspect-fix-imports-namespaced-class-and-function ()
   (let ((project (phpinspect--make-dummy-composer-project)))
     (with-temp-buffer
-      (let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
-                                             :-project project)))
+      (phpinspect-claim-buffer (current-buffer) project)
 
-        (insert "<?php
+      (insert "<?php
 
 namespace Not\\App;
 
@@ -191,12 +174,9 @@ function bar(): Bar {}
 class Baz {
     private Foo $foo;
 }")
-        ;; Ensure buffer is made aware of changes
-        (setq phpinspect-current-buffer buffer)
-        (add-hook 'after-change-functions #'phpinspect-after-change-function)
 
-        (phpinspect-fix-imports)
-        (should (string= "<?php
+      (phpinspect-fix-imports)
+      (should (string= "<?php
 
 namespace Not\\App;
 
@@ -208,13 +188,12 @@ function bar(): Bar {}
 class Baz {
     private Foo $foo;
 }"
-                         (buffer-string)))))))
+                       (buffer-string))))))
 
 (ert-deftest phpinspect-fix-imports-aliased ()
   (let ((project (phpinspect--make-dummy-composer-project)))
     (with-temp-buffer
-      (let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
-                                             :-project project)))
+      (phpinspect-claim-buffer (current-buffer) project)
 
         (insert "<?php
 
@@ -228,9 +207,6 @@ class Baz {
     private FooBar $foo;
     private Foo $notAliased;
 }")
-        ;; Ensure buffer is made aware of changes
-        (setq phpinspect-current-buffer buffer)
-        (add-hook 'after-change-functions #'phpinspect-after-change-function)
 
         (phpinspect-fix-imports)
         (should (string= "<?php
@@ -247,13 +223,12 @@ class Baz {
     private FooBar $foo;
     private Foo $notAliased;
 }"
-                         (buffer-string)))))))
+                         (buffer-string))))))
 
 (ert-deftest phpinspect-fix-imports-fully-qualified-names ()
   (let ((project (phpinspect--make-dummy-composer-project)))
     (with-temp-buffer
-      (let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)
-                                             :-project project)))
+      (phpinspect-claim-buffer (current-buffer) project)
 
         (insert "<?php
 
@@ -264,10 +239,6 @@ function bar(): \\App\\Bar {}
 class Baz {
     private \\App\\Foo $foo;
 }")
-        ;; Ensure buffer is made aware of changes
-        (setq phpinspect-current-buffer buffer)
-        (add-hook 'after-change-functions #'phpinspect-after-change-function)
-
         (phpinspect-fix-imports)
         (should (string= "<?php
 
@@ -278,4 +249,4 @@ function bar(): \\App\\Bar {}
 class Baz {
     private \\App\\Foo $foo;
 }"
-                         (buffer-string)))))))
+                         (buffer-string))))))

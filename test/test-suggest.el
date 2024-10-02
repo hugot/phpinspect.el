@@ -35,11 +35,10 @@
   (with-temp-buffer
     (insert "<?php foreach ($array as $key => $value) {")
 
-    (let* ((buffer (phpinspect-make-buffer :buffer (current-buffer)))
-
-	   (rctx (phpinspect-get-resolvecontext
-		  (phpinspect--make-dummy-project) (phpinspect-buffer-parse-map buffer) (point)))
-	   (variables (phpinspect-suggest-variables-at-point rctx)))
+    (let* ((buffer (phpinspect-claim-buffer (current-buffer)))
+	       (rctx (phpinspect-get-resolvecontext
+		          (phpinspect--make-dummy-project) (phpinspect-buffer-parse-map buffer) (point)))
+	       (variables (phpinspect-suggest-variables-at-point rctx)))
 
       (should (length= variables 3))
       (should (equal (list "array" "key" "value")
@@ -53,23 +52,22 @@ use App\\Foo;
 
 new ")
 
-    (let* ((buffer (phpinspect-make-buffer
-		    :buffer (current-buffer)
-		    :-project (phpinspect--make-dummy-composer-project-with-code)))
-	   (rctx (phpinspect-buffer-get-resolvecontext buffer (point)))
-	   (types (phpinspect-suggest-words-at-point rctx)))
+    (let* ((buffer (phpinspect-claim-buffer
+		            (current-buffer)
+		            (phpinspect--make-dummy-composer-project-with-code)))
+	       (rctx (phpinspect-buffer-get-resolvecontext buffer (point)))
+	       (types (phpinspect-suggest-words-at-point rctx)))
       (setq-local phpinspect-current-buffer buffer)
-      (add-hook 'after-change-functions #'phpinspect-after-change-function)
       (should (length= types 2))
       (should (equal (list "\\App\\Baz" "\\App\\Foo")
-		     (sort (mapcar #'phpinspect--type-name-string types) #'string<)))
+		             (sort (mapcar #'phpinspect--type-name-string types) #'string<)))
 
       (insert "Fo")
       (setq rctx (phpinspect-buffer-get-resolvecontext buffer (point))
-	    types (phpinspect-suggest-words-at-point rctx))
+	        types (phpinspect-suggest-words-at-point rctx))
       (should (length= types 2))
       (should (equal (list "\\App\\Baz" "\\App\\Foo")
-		     (sort (mapcar #'phpinspect--type-name-string types) #'string<))))))
+		             (sort (mapcar #'phpinspect--type-name-string types) #'string<))))))
 
 (ert-deftest phpinspect-suggest-types-at-point-include-current-namespace ()
   (with-temp-buffer
@@ -81,14 +79,14 @@ use \\DateTime;
 
 new ")
 
-      (let* ((buffer (phpinspect-make-buffer
-		      :buffer (current-buffer)
-		      :-project (phpinspect--make-dummy-composer-project-with-code)))
-	     (rctx (phpinspect-buffer-get-resolvecontext buffer (point)))
-	     (types (phpinspect-suggest-words-at-point rctx)))
-	(should (length= types 6))
-	(should (equal (list "\\App\\Bar" "\\App\\Barry" "\\App\\Baz" "\\App\\Foo" "\\App\\Harry" "\\DateTime")
-		       (sort (mapcar #'phpinspect--type-name-string types) #'string<))))))
+    (let* ((buffer (phpinspect-claim-buffer
+		            (current-buffer)
+		            (phpinspect--make-dummy-composer-project-with-code)))
+	       (rctx (phpinspect-buffer-get-resolvecontext buffer (point)))
+	       (types (phpinspect-suggest-words-at-point rctx)))
+	  (should (length= types 6))
+	  (should (equal (list "\\App\\Bar" "\\App\\Barry" "\\App\\Baz" "\\App\\Foo" "\\App\\Harry" "\\DateTime")
+		             (sort (mapcar #'phpinspect--type-name-string types) #'string<))))))
 
 (ert-deftest phpinspect-suggest-keywords-at-point-class-body ()
   (with-temp-buffer
@@ -101,11 +99,11 @@ class Foo
 
  ")
 
-      (let* ((buffer (phpinspect-make-buffer
-		      :buffer (current-buffer)
-		      :-project (phpinspect--make-dummy-composer-project-with-code)))
-	     (rctx (phpinspect-buffer-get-resolvecontext buffer (point)))
-	     (words (phpinspect-suggest-words-at-point rctx)))
+      (let* ((buffer (phpinspect-claim-buffer
+		              (current-buffer)
+		              (phpinspect--make-dummy-composer-project-with-code)))
+	         (rctx (phpinspect-buffer-get-resolvecontext buffer (point)))
+	         (words (phpinspect-suggest-words-at-point rctx)))
 	(should (equal (list "const" "function" "private" "protected" "public" "static")
 		       (sort (mapcar #'phpinspect-suggest-keyword-word words) #'string<))))))
 
@@ -121,12 +119,12 @@ class Foo
 public ")
 
     (let* ((buffer (phpinspect-claim-buffer
-		    (current-buffer)
-		    (phpinspect--make-dummy-composer-project-with-code)))
-	     (rctx (phpinspect-buffer-get-resolvecontext buffer (point)))
-	     (results (phpinspect-suggest-words-at-point rctx))
-	     (types (seq-filter #'phpinspect--type-p results))
-	     (words (seq-filter #'phpinspect-suggest-keyword-p results)))
+		            (current-buffer)
+		            (phpinspect--make-dummy-composer-project-with-code)))
+	       (rctx (phpinspect-buffer-get-resolvecontext buffer (point)))
+	       (results (phpinspect-suggest-words-at-point rctx))
+	       (types (seq-filter #'phpinspect--type-p results))
+	       (words (seq-filter #'phpinspect-suggest-keyword-p results)))
 	(should (length= results (+ (length types) (length words))))
 	(should (equal (list "function" "static")
 		       (sort (mapcar #'phpinspect-suggest-keyword-word words) #'string<)))

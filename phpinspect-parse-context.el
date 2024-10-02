@@ -55,6 +55,7 @@ This is 2ms by default.")
    nil
    :documentation "The time at which the currently active parse cycle started.
 This slot is for private use and does not always have a value.")
+  (change nil :type phpinspect-change)
   (interrupt-predicate
    nil
    :documentation
@@ -64,20 +65,20 @@ called after each parsed token to make the final decision of
 interrupting the parser. If this function returns a non-nil
 value, the parse process is interrupted and the symbol
 `phpinspect-parse-interrupted' is signaled.")
-  (changesets
-   nil
-   :type list
-   :documentation
-   "Restore points for metadata changes executed during this
-parse. Usually populated through `phpinspect-meta-with-changeset'.")
-  (edtrack
-   nil
-   :type phpinspect-edtrack
-   :documentation
-   "When parsing incrementally, the edit tracker is used to determine
-whether a token from a previous parse (in the buffer map that is
-in the `previous-bmap' slot) can be recycled or is tainted/edited
-and should not be recycled.")
+;;   (changesets
+;;    nil
+;;    :type list
+;;    :documentation
+;;    "Restore points for metadata changes executed during this
+;; parse. Usually populated through `phpinspect-meta-with-changeset'.")
+;;   (edtrack
+;;    nil
+;;    :type phpinspect-edtrack
+;;    :documentation
+;;    "When parsing incrementally, the edit tracker is used to determine
+;; whether a token from a previous parse (in the buffer map that is
+;; in the `previous-bmap' slot) can be recycled or is tainted/edited
+;; and should not be recycled.")
   (bmap
    nil
    :type phpinspect-bmap
@@ -114,19 +115,8 @@ parsing incrementally.
 The error signal is not intercepted and will still need to be
 handled by the code using this macro."
   (declare (indent 1))
-  (let ((completed (gensym))
-        (result (gensym)))
-    `(dlet ((phpinspect-parse-context ,ctx))
-       (let ((,result)
-             (,completed))
-         (unwind-protect
-             (progn
-               (setq phpinspect-parse-context ,ctx
-                     ,result (progn ,@body)
-                     ,completed t)
-               ,result)
-           (progn
-             (unless ,completed (phpinspect-pctx-cancel ,ctx))))))))
+  `(dlet ((phpinspect-parse-context ,ctx))
+     (progn ,@body)))
 
 (defmacro phpinspect-pctx-save-whitespace (pctx &rest body)
   (declare (indent 1))
@@ -138,27 +128,27 @@ handled by the code using this macro."
              ,@body)
          (setf (phpinspect-pctx-whitespace-before ,pctx) ,save-sym)))))
 
-(define-inline phpinspect-pctx-register-changeset (pctx changeset)
-  (inline-quote
-   (progn
-     (push ,changeset (phpinspect-pctx-changesets ,pctx)))))
+;; (define-inline phpinspect-pctx-register-changeset (pctx changeset)
+;;   (inline-quote
+;;    (progn
+;;      (push ,changeset (phpinspect-pctx-changesets ,pctx)))))
 
-(define-inline phpinspect-meta-with-changeset (meta &rest body)
-  "Perform mutations on META in BODY, saving changes.
+;; (define-inline phpinspect-meta-with-changeset (meta &rest body)
+;;   "Perform mutations on META in BODY, saving changes.
 
-Before BODY is executed, important slots of META are stored in a
-changeset object and appended to the changesets slot of the
-currently active parse context. The original state of META can be
-restored by calling `phpinspect-pctx-cancel'."
-  (declare (indent 1))
-  (inline-letevals (meta)
-    (push 'progn body)
-    (inline-quote
-     (progn
-       (when phpinspect-parse-context
-         (phpinspect-pctx-register-changeset
-          phpinspect-parse-context (phpinspect-make-changeset ,meta)))
-       ,body))))
+;; Before BODY is executed, important slots of META are stored in a
+;; changeset object and appended to the changesets slot of the
+;; currently active parse context. The original state of META can be
+;; restored by calling `phpinspect-pctx-cancel'."
+;;   (declare (indent 1))
+;;   (inline-letevals (meta)
+;;     (push 'progn body)
+;;     (inline-quote
+;;      (progn
+;;        (when phpinspect-parse-context
+;;          (phpinspect-pctx-register-changeset
+;;           phpinspect-parse-context (phpinspect-make-changeset ,meta)))
+;;        ,body))))
 
 (define-inline phpinspect-pctx-check-interrupt (pctx)
   "Signal `phpinspect-parse-interrupted' when conditions are met.
@@ -180,7 +170,6 @@ metadata will be reverted in a call to `pphinspect-pctx-cancel'."
        (when (and (time-less-p (phpinspect-pctx-interrupt-threshold ,pctx)
                                (time-since (phpinspect-pctx--start-time ,pctx)))
                   (funcall (phpinspect-pctx-interrupt-predicate ,pctx)))
-         (phpinspect-pctx-cancel ,pctx)
          (throw 'phpinspect-parse-interrupted nil))))))
 
 (define-inline phpinspect-pctx-register-whitespace (pctx whitespace)
@@ -193,17 +182,16 @@ metadata will be reverted in a call to `pphinspect-pctx-cancel'."
     (setf (phpinspect-pctx-whitespace-before pctx) "")
     whitespace))
 
-(defun phpinspect-pctx-cancel (pctx)
-  "Cancel PCTX, revert all changes made during its lifetime.
+;; (defun phpinspect-pctx-cancel (pctx)
+;;   "Cancel PCTX, revert all changes made during its lifetime.
 
-Revert all changes made to the metadata tree while parsing
-incrementally. This function is usually called by
-`phpinspect-pctx-check-interrupt' when interrupt conditions are
-met."
-  (phpinspect--log "Cancelling parse context")
-  (dolist (changeset (phpinspect-pctx-changesets pctx))
-    (phpinspect-changeset-revert changeset))
-  (setf (phpinspect-pctx-changesets pctx) nil))
+;; Revert all changes made to the metadata tree while parsing
+;; incrementally. This function is usually called by
+;; `phpinspect-pctx-check-interrupt' when interrupt conditions are
+;; met."
+;;   (dolist (changeset (phpinspect-pctx-changesets pctx))
+;;     (phpinspect-changeset-revert changeset))
+;;   (setf (phpinspect-pctx-changesets pctx) nil))
 
 (provide 'phpinspect-parse-context)
 ;;; phpinspect-parse-context.el ends here

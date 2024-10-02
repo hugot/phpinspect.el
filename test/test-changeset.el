@@ -31,38 +31,38 @@
 (require 'phpinspect-meta)
 (require 'phpinspect-parse-context)
 
-(ert-deftest phpinspect-meta-with-changeset-revert-parent-relation ()
-  (let ((parent (phpinspect-make-meta nil 1 20 "" 'parent))
-        (child (phpinspect-make-meta nil 4 8 "" 'child))
-        (pctx (phpinspect-make-pctx))
-        (other-parent (phpinspect-make-meta nil 3 20 "" 'other-parent))
-        parent-offset)
+;; (ert-deftest phpinspect-meta-with-changeset-revert-parent-relation ()
+;;   (let ((parent (phpinspect-make-meta nil 1 20 "" 'parent))
+;;         (child (phpinspect-make-meta nil 4 8 "" 'child))
+;;         (pctx (phpinspect-make-pctx))
+;;         (other-parent (phpinspect-make-meta nil 3 20 "" 'other-parent))
+;;         parent-offset)
 
-    (phpinspect-meta-set-parent child parent)
-    (setq parent-offset (phpinspect-meta-parent-offset child))
+;;     (phpinspect-meta-set-parent child parent)
+;;     (setq parent-offset (phpinspect-meta-parent-offset child))
 
 
-    (phpinspect-with-parse-context pctx
-      (phpinspect-meta-with-changeset child
-        (phpinspect-meta-detach-parent child)
-        (phpinspect-meta-set-parent child other-parent)))
+;;     (phpinspect-with-parse-context pctx
+;;       (phpinspect-meta-with-changeset child
+;;         (phpinspect-meta-detach-parent child)
+;;         (phpinspect-meta-set-parent child other-parent)))
 
-    (phpinspect-changeset-revert (car (phpinspect-pctx-changesets pctx)))
+;;     (phpinspect-changeset-revert (car (phpinspect-pctx-changesets pctx)))
 
-    (should (eq parent (phpinspect-meta-parent child)))
-    (let ((children (phpinspect-splayt-to-list
-                     (phpinspect-meta-children parent))))
-      (should (length= children 1))
-      (should (eq 'child (phpinspect-meta-token (car children))))
+;;     (should (eq parent (phpinspect-meta-parent child)))
+;;     (let ((children (phpinspect-splayt-to-list
+;;                      (phpinspect-meta-children parent))))
+;;       (should (length= children 1))
+;;       (should (eq 'child (phpinspect-meta-token (car children))))
 
-      (should (= parent-offset (phpinspect-meta-parent-offset child)))
-      (should (= 4 (phpinspect-meta-start child)))
-      (should (= 8 (phpinspect-meta-end child)))
-      (should (= 4 (phpinspect-meta-width child)))
+;;       (should (= parent-offset (phpinspect-meta-parent-offset child)))
+;;       (should (= 4 (phpinspect-meta-start child)))
+;;       (should (= 8 (phpinspect-meta-end child)))
+;;       (should (= 4 (phpinspect-meta-width child)))
 
-      (should (eq child (phpinspect-splayt-find
-                         (phpinspect-meta-children parent)
-                         (phpinspect-meta-parent-offset child)))))))
+;;       (should (eq child (phpinspect-splayt-find
+;;                          (phpinspect-meta-children parent)
+;;                          (phpinspect-meta-parent-offset child)))))))
 
 
 ;;; test-changeset.el ends here

@@ -32,6 +32,7 @@
 (require 'phpinspect-util)
 (require 'phpinspect-typedef)
 (require 'phpinspect-token-predicates)
+(require 'phpinspect-change)
 
 (phpinspect--declare-log-group 'buffer)
 
@@ -40,12 +41,17 @@
 buffer. This variable is only set for buffers where
 `phpinspect-mode' is active. Also see `phpinspect-buffer'.")
 
+
 (cl-defstruct (phpinspect-buffer (:constructor phpinspect-make-buffer))
   "An object containing phpinspect related metadata linked to an
 emacs buffer."
   (buffer nil
           :type buffer
           :documentation "The associated emacs buffer")
+  (shadow nil
+          :type buffer)
+  (-changes nil
+            :type list)
   (tree nil
         :documentation
         "Parsed token tree that resulted from last parse")
@@ -56,11 +62,12 @@ emacs buffer."
   (-deletions nil)
   (-additions nil)
   (-tokens nil)
+  (last-change nil :type phpinspect-change)
   (token-index (make-hash-table :test 'eq :size 100 :rehash-size 1.5))
   (-project nil
-            :type phpinspect-project)
-  (edit-tracker (phpinspect-make-edtrack)
-                :type phpinspect-edtrack))
+            :type phpinspect-project))
+  ;; (edit-tracker (phpinspect-make-edtrack)
+  ;;               :type phpinspect-edtrack))
 
 (defmacro phpinspect-buffer--query-with-cache (buffer label &rest body)
   (declare (indent 2))
@@ -79,7 +86,7 @@ emacs buffer."
 
 (defun phpinspect-buffer-tainted-p (buffer)
   "Whether or not BUFFER's current tree needs updating to incorporate edits."
-  (and (phpinspect-edtrack-taint-pool (phpinspect-buffer-edit-tracker buffer)) t))
+  (not (phpi-shadow-synced-p (phpinspect-buffer-shadow buffer))))
 
 (defun phpinspect-buffer-needs-parse-p (buffer)
   "Whether or not BUFFER needs to be parsed for an updated tree to be present."
@@ -150,32 +157,39 @@ edits does not count as fresh (because incremental parsing has its flaws)."
 (cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer) &optional no-interrupt)
   "Parse the PHP code in the the emacs buffer that this object is
 linked with."
-  (let (tree)
-    (if (phpinspect-buffer-needs-parse-p buffer)
-        (with-current-buffer (phpinspect-buffer-buffer buffer)
-          (let* ((map (phpinspect-make-bmap))
-                 (buffer-map (phpinspect-buffer-map buffer))
-                 (ctx (phpinspect-make-pctx
-                       :interrupt-predicate (unless no-interrupt #'phpinspect--input-pending-p)
-                       :bmap map
-                       :incremental t
-                       :previous-bmap buffer-map
-                       :edtrack (phpinspect-buffer-edit-tracker buffer))))
-            (phpinspect-with-parse-context ctx
-              (phpinspect--log "Parsing buffer")
-              (let ((parsed (phpinspect-parse-current-buffer)))
-                ;; Inhibit quitting to guarantee data integrity
-                (let ((inhibit-quit t))
-                  (setf (phpinspect-buffer-tree buffer) parsed)
-                  (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
-                  (phpinspect-buffer--set-map buffer map buffer-map)
+  (phpi-shadow-await-synced (phpinspect-buffer-shadow buffer) (not no-interrupt))
+  (unless (phpinspect-buffer-map buffer)
+    (phpi-shadow-enqueue-task (phpinspect-buffer-shadow buffer) 'parse-fresh)
+    (phpi-shadow-await-synced (phpinspect-buffer-shadow buffer) (not no-interrupt)))
 
-                  ;; set return value
-                  (setq tree parsed))))))
+  (phpinspect-buffer-tree buffer))
 
-      ;; Else: Just return last parse result
-      (setq tree (phpinspect-buffer-tree buffer))
-      tree)))
+;; (let (tree)
+  ;;   (if (phpinspect-buffer-needs-parse-p buffer)
+  ;;       (with-current-buffer (phpinspect-buffer-buffer buffer)
+  ;;         (let* ((map (phpinspect-make-bmap))
+  ;;                (buffer-map (phpinspect-buffer-map buffer))
+  ;;                (ctx (phpinspect-make-pctx
+  ;;                      :interrupt-predicate (unless no-interrupt #'phpinspect--input-pending-p)
+  ;;                      :bmap map
+  ;;                      :incremental t
+  ;;                      :previous-bmap buffer-map
+  ;;                      :edtrack (phpinspect-buffer-edit-tracker buffer))))
+  ;;           (phpinspect-with-parse-context ctx
+  ;;             (phpinspect--log "Parsing buffer")
+  ;;             (let ((parsed (phpinspect-parse-current-buffer)))
+  ;;               ;; Inhibit quitting to guarantee data integrity
+  ;;               (let ((inhibit-quit t))
+  ;;                 (setf (phpinspect-buffer-tree buffer) parsed)
+  ;;                 (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
+  ;;                 (phpinspect-buffer--set-map buffer map buffer-map)
+
+  ;;                 ;; set return value
+  ;;                 (setq tree parsed))))))
+
+  ;;     ;; Else: Just return last parse result
+  ;;     (setq tree (phpinspect-buffer-tree buffer))
+  ;;     tree)))
 
 (cl-defmethod phpinspect-buffer-get-index-for-token ((buffer phpinspect-buffer) token)
   (gethash token (phpinspect-buffer-token-index buffer)))
@@ -265,12 +279,26 @@ tokens that have been deleted from a buffer."
         (phpinspect-buffer-token-index buffer)
         (make-hash-table :test 'eq :size 100 :rehash-size 1.5))
 
-  (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer)))
+  (phpi-shadow-enqueue-task (phpinspect-buffer-shadow buffer) 'parse-fresh))
+
+(defun phpinspect-buffer-state (buffer)
+  (interactive (list (or phpinspect-current-buffer
+                         (error "Not a phpinspect buffer"))))
+
+  (let ((shadow (phpinspect-buffer-shadow buffer)))
+    (pop-to-buffer (generate-new-buffer "phpinspect-buffer-state"))
+    (insert (format (concat "Buffer name: %s\nLast Shadow Error: %s\n"
+                            "Shadow Thread Live: %s")
+                    (phpinspect-with-current-buffer buffer (buffer-name))
+                    (thread-last-error (phpi-shadow-thread shadow))
+                    (phpi-shadow-thread-live-p shadow)))
+    (read-only-mode)))
 
 (defun phpinspect-buffer-reparse (buffer)
   "Discard BUFFER's current token tree and re-parse fully."
   (interactive (list (or phpinspect-current-buffer (error "Not a phpinspect buffer"))))
   (phpinspect-buffer-reset buffer)
+  (phpi-shadow-enqueue-task (phpinspect-buffer-shadow buffer) 'parse-fresh)
   (phpinspect-buffer-parse buffer 'no-interrupt))
 
 (defun phpinspect-buffer-reindex (buffer)
@@ -602,7 +630,7 @@ continuing execution."
 
           (setf (phpinspect-buffer--last-indexed-bmap buffer) map)))))
 
-(defsubst phpinspect-buffer-parse-map (buffer)
+(defun phpinspect-buffer-parse-map (buffer)
   (phpinspect-buffer-parse buffer)
   (phpinspect-buffer-map buffer))
 
@@ -623,8 +651,14 @@ continuing execution."
       (setq start (- start (length (match-string 0))))
       (setq pre-change-length (+ pre-change-length (length (match-string 0))))))
 
-  (phpinspect-edtrack-register-edit
-   (phpinspect-buffer-edit-tracker buffer) start end pre-change-length))
+  ;;(message "Registering edit: %d, %d, %d" start end pre-change-length)
+  (phpi-shadow-enqueue-task
+   (phpinspect-buffer-shadow buffer)
+   (phpi-change-create (phpinspect-buffer-buffer buffer)
+                       start end pre-change-length)))
+
+  ;; (phpinspect-edtrack-register-edit
+  ;;  (phpinspect-buffer-edit-tracker buffer) start end pre-change-length))
 
 (defun phpinspect-buffer-tokens-enclosing-point (buffer point)
   "Return token metadata objects for tokens enclosing POINT in BUFFER."
@@ -650,6 +684,7 @@ use."
                               (phpinspect-meta-end meta)))))
 
 (defun phpinspect-buffer-root-meta (buffer)
+  (phpi-shadow-await-synced (phpinspect-buffer-shadow buffer))
   (phpinspect-bmap-root-meta (phpinspect-buffer-map buffer)))
 
 (defun phpinspect-display-buffer-tree ()
@@ -684,6 +719,12 @@ use."
   (phpinspect-get-resolvecontext
    (phpinspect-buffer-project buffer) (phpinspect-buffer-parse-map buffer) point))
 
+(defun phpinspect-buffer-kill ()
+  (when phpinspect-current-buffer
+    (kill-buffer
+     (phpinspect-buffer-shadow
+      (phpinspect-buffer-shadow
+       phpinspect-current-buffer)))))
 
 (defun phpinspect-claim-buffer (buffer &optional project)
   "Setup an instance of `phpinspect-buffer' for BUFFER.
@@ -697,9 +738,182 @@ BUFFER must be a normal emacs buffer.
 If provided, PROJECT must be an instance of `phpinspect-project'."
   (with-current-buffer buffer
     (setq-local phpinspect-current-buffer
-		(phpinspect-make-buffer :buffer buffer :-project project))
+		        (phpinspect-make-buffer :buffer buffer :-project project))
+    (setf (phpinspect-buffer-shadow phpinspect-current-buffer)
+          (phpinspect-make-shadow phpinspect-current-buffer))
+
     (add-hook 'after-change-functions #'phpinspect-after-change-function nil t)
+    (add-hook 'kill-buffer-hook #'phpinspect-buffer-kill)
 
     phpinspect-current-buffer))
+
+
+;;;;;;;;;; SHADOWING ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar phpinspect--shadow-counter 0)
+
+(defvar phpinspect-shadow-pause-time 0.05)
+
+(define-error 'phpinspect-wakeup-shadow
+              "This error is used to wakeup the shadow thread.")
+
+(cl-defstruct (phpinspect-shadow (:constructor phpinspect-make-shadow-generated)
+                                 (:conc-name phpi-shadow-))
+  (synced-p t :type boolean)
+  (origin nil :type phpinspect-buffer)
+  (buffer nil :type buffer)
+  (queue nil :type phpinspect--queue)
+  (thread nil :type thread)
+  (id nil :type integer))
+
+(defun phpi-shadow-wakeup-thread (shadow)
+  (thread-signal (phpi-shadow-thread shadow) 'phpinspect-wakeup-shadow nil))
+
+(defun phpi-shadow-thread-check-pause ()
+  (ignore-error phpinspect-wakeup-shadow
+    (if (or (phpinspect--input-pending-p)
+            quit-flag)
+        (let* ((mx (make-mutex))
+               (continue (make-condition-variable mx)))
+          (phpinspect-thread-pause phpinspect-shadow-pause-time mx continue))
+      (thread-yield))))
+
+(defun phpi-shadow-make-queue-subscription (shadow)
+  (lambda ()
+    (setf (phpi-shadow-synced-p shadow) nil)
+    (phpi-shadow-wakeup-thread shadow)))
+
+(defun phpi-shadow--thread-make-parser-interrupt-predicate ()
+  (lambda () (phpi-shadow-thread-check-pause) nil))
+
+(defun phpi-shadow-process-change (shadow change)
+  (with-current-buffer (phpi-shadow-buffer shadow)
+    (phpi-change-apply change (current-buffer))
+
+    ;;(message "parsing")
+
+    (let* ((buffer (phpi-shadow-origin shadow))
+           (pctx (phpinspect-make-pctx
+                  :incremental t
+                  :previous-bmap (phpinspect-buffer-map buffer)
+                  :bmap (phpinspect-make-bmap)
+                  :change change
+                  :interrupt-predicate (phpi-shadow--thread-make-parser-interrupt-predicate))))
+
+      (let (result)
+        ;; Parse new content
+        (with-current-buffer (phpi-shadow-buffer shadow)
+          (phpinspect-with-parse-context pctx
+            (setq result (phpinspect-parse-current-buffer))))
+
+        (setf (phpinspect-buffer-tree buffer) result))
+
+        ;;(message "setting map")
+        (phpinspect-buffer--set-map
+         buffer (phpinspect-pctx-bmap pctx) (phpinspect-pctx-previous-bmap pctx)))))
+
+(defun phpi-shadow-parse-fresh (shadow)
+  (with-current-buffer (phpi-shadow-buffer shadow)
+    ;;(message "parsing fresh")
+    (let* ((buffer (phpi-shadow-origin shadow))
+           (pctx (phpinspect-make-pctx
+                  :incremental t
+                  :bmap (phpinspect-make-bmap)
+                  :interrupt-predicate (phpi-shadow--thread-make-parser-interrupt-predicate))))
+
+      (let (result)
+        ;; Parse new content
+        (with-current-buffer (phpi-shadow-buffer shadow)
+          (phpinspect-with-parse-context pctx
+            (setq result (phpinspect-parse-current-buffer))))
+
+        (setf (phpinspect-buffer-tree buffer) result)
+
+        ;;(message "Result: %s" result)
+
+        (phpinspect-buffer--set-map
+         buffer (phpinspect-pctx-bmap pctx) nil)))))
+
+(defun phpinspect-visit-shadow-buffer (buffer)
+  (interactive (list (or phpinspect-current-buffer
+                         (error "Not a phpinspect buffer"))))
+  (pop-to-buffer (phpi-shadow-buffer (phpinspect-buffer-shadow buffer))))
+
+(defun phpi-shadow-make-thread-function (shadow)
+  ;;(message "making thread function")
+  (lambda ()
+    (let ((inhibit-quit t))
+      ;;(message "Func starting")
+      (while t
+        ;;(message "shadow thread working")
+        (if-let ((task (phpinspect-queue-dequeue (phpi-shadow-queue shadow))))
+            (progn
+              (pcase task
+                ((pred phpinspect-change-p)
+                 (phpi-shadow-process-change shadow task))
+                ('parse-fresh
+                 (phpi-shadow-parse-fresh shadow))
+                (_
+                 (phpinspect-message
+                  "Shadow thread received unsupported task type: %s"
+                  (type-of task))))
+
+              ;; Rest after task completion
+              (phpi-shadow-thread-check-pause))
+
+          ;; No work to do, join main thread
+          (setf (phpi-shadow-synced-p shadow) t)
+          (ignore-error 'phpinspect-wakeup-shadow
+            (thread-join main-thread)))))))
+
+(defun phpi-shadow-thread-live-p (shadow)
+  (thread-live-p (phpi-shadow-thread shadow)))
+
+(defun phpi-shadow-await-synced (shadow &optional allow-interrupt)
+  (cl-assert (phpi-shadow-thread-live-p shadow))
+
+  (while (not (phpi-shadow-synced-p shadow))
+    (when (and allow-interrupt (phpinspect--input-pending-p))
+      (throw 'phpinspect-interrupted nil))
+
+    (unless (phpi-shadow-thread-live-p shadow)
+      (error "Shadow thread exited: %s"
+             (thread-last-error (phpi-shadow-thread shadow))))
+
+    (sleep-for 0.005)))
+
+(defun phpi-shadow-make-thread (shadow)
+  (make-thread
+   (phpi-shadow-make-thread-function shadow)
+   (format " **phpinspect-shadow-thread**<%d>" (phpi-shadow-id shadow))))
+
+(defun phpinspect-make-shadow (origin)
+  (cl-assert (phpinspect-buffer-p origin))
+
+  (let* ((id (cl-incf phpinspect--shadow-counter))
+         (shadow (phpinspect-make-shadow-generated
+                  :origin origin
+                  :buffer (generate-new-buffer
+                           (format " **phpinspect-shadow**<%d>" id))
+                  :id id)))
+
+    ;; Copy buffer contents
+    (with-current-buffer (phpi-shadow-buffer shadow)
+      (insert (phpinspect-with-current-buffer origin (buffer-string))))
+
+
+
+    (setf (phpi-shadow-queue shadow)
+          (phpinspect-make-queue (phpi-shadow-make-queue-subscription shadow))
+
+          (phpi-shadow-thread shadow)
+          (phpi-shadow-make-thread shadow))
+
+    ;(phpi-shadow-enqueue-task shadow 'parse-fresh)
+
+    shadow))
+
+(defun phpi-shadow-enqueue-task (shadow task)
+  (phpinspect-queue-enqueue (phpi-shadow-queue shadow) task))
 
 (provide 'phpinspect-buffer)
