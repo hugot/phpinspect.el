@@ -50,24 +50,17 @@ emacs buffer."
           :documentation "The associated emacs buffer")
   (shadow nil
           :type buffer)
-  (-changes nil
-            :type list)
   (tree nil
         :documentation
         "Parsed token tree that resulted from last parse")
   (map nil
        :type phpinspect-bmap)
   (-query-cache (make-hash-table :test 'equal :size 20 :rehash-size 2))
-  (-last-indexed-bmap nil)
-  (-deletions nil)
-  (-additions nil)
   (-tokens nil)
   (last-change nil :type phpinspect-change)
   (token-index (make-hash-table :test 'eq :size 100 :rehash-size 1.5))
   (-project nil
             :type phpinspect-project))
-  ;; (edit-tracker (phpinspect-make-edtrack)
-  ;;               :type phpinspect-edtrack))
 
 (defmacro phpinspect-buffer--query-with-cache (buffer label &rest body)
   (declare (indent 2))
@@ -112,46 +105,46 @@ edits does not count as fresh (because incremental parsing has its flaws)."
       (phpinspect-buffer-tree buffer)
     (phpinspect-buffer-reparse buffer)))
 
-(defun phpinspect-buffer--set-map (buffer bmap old-bmap)
-  (setf (phpinspect-buffer-map buffer) bmap)
+;; (defun phpinspect-buffer--set-map (buffer bmap old-bmap)
+;;   (setf (phpinspect-buffer-map buffer) bmap)
 
-  (let ((buffer-tokens (phpinspect-buffer--tokens buffer))
-        additions)
-    (if buffer-tokens
-        ;; Determine which tokens are new and which were already present in the
-        ;; buffer
-        (maphash
-         (lambda (token meta) (unless (gethash token buffer-tokens)
-                                (puthash token meta buffer-tokens)
-                                (push meta additions)))
-         (phpinspect-bmap-meta bmap))
-      ;; There were no tokens registered, so we can adopt the map's token table
-      (setf (phpinspect-buffer--tokens buffer) (phpinspect-bmap-meta bmap))
-      ;; All tokens are new additions
-      (setq additions (hash-table-values (phpinspect-bmap-meta bmap))))
+;;   (let ((buffer-tokens (phpinspect-buffer--tokens buffer))
+;;         additions)
+;;     (if buffer-tokens
+;;         ;; Determine which tokens are new and which were already present in the
+;;         ;; buffer
+;;         (maphash
+;;          (lambda (token meta) (unless (gethash token buffer-tokens)
+;;                                 (puthash token meta buffer-tokens)
+;;                                 (push meta additions)))
+;;          (phpinspect-bmap-meta bmap))
+;;       ;; There were no tokens registered, so we can adopt the map's token table
+;;       (setf (phpinspect-buffer--tokens buffer) (phpinspect-bmap-meta bmap))
+;;       ;; All tokens are new additions
+;;       (setq additions (hash-table-values (phpinspect-bmap-meta bmap))))
 
-    (if-let ((old-bmap)
-             (root-meta (phpinspect-bmap-root-meta old-bmap)))
-        (progn
-          ;; Register alterations for later processing/indexation
-          (setf
-           ;; Register new tokens
-           (phpinspect-buffer--additions buffer)
-           (nconc (phpinspect-buffer--additions buffer) additions)
+;;     (if-let ((old-bmap)
+;;              (root-meta (phpinspect-bmap-root-meta old-bmap)))
+;;         (progn
+;;           ;; Register alterations for later processing/indexation
+;;           (setf
+;;            ;; Register new tokens
+;;            (phpinspect-buffer--additions buffer)
+;;            (nconc (phpinspect-buffer--additions buffer) additions)
 
-           ;;Register deleted tokens
-           (phpinspect-buffer--deletions buffer)
-           (nconc (phpinspect-buffer--deletions buffer) (phpinspect-meta-flatten root-meta)))
+;;            ;;Register deleted tokens
+;;            (phpinspect-buffer--deletions buffer)
+;;            (nconc (phpinspect-buffer--deletions buffer) (phpinspect-meta-flatten root-meta)))
 
-          (dolist (deletion (phpinspect-buffer--deletions buffer))
-            (remhash (phpinspect-meta-token deletion) buffer-tokens)))
+;;           (dolist (deletion (phpinspect-buffer--deletions buffer))
+;;             (remhash (phpinspect-meta-token deletion) buffer-tokens)))
 
-      ;; There is no previous bmap, so there should also not be any previous additions
-      (setf (phpinspect-buffer--additions buffer) additions))
+;;       ;; There is no previous bmap, so there should also not be any previous additions
+;;       (setf (phpinspect-buffer--additions buffer) additions))
 
-    ;; A new bmap was provided, so the structure of the token tree was
-    ;; changed. All previous query results should be regarded as invalid.
-    (phpinspect-buffer--clear-query-cache buffer)))
+;;     ;; A new bmap was provided, so the structure of the token tree was
+;;     ;; changed. All previous query results should be regarded as invalid.
+;;     (phpinspect-buffer--clear-query-cache buffer)))
 
 
 (cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer) &optional no-interrupt)
@@ -309,8 +302,10 @@ tokens that have been deleted from a buffer."
   (setf (phpinspect-buffer-tree buffer) nil
         (phpinspect-buffer--tokens buffer) nil
         (phpinspect-buffer-map buffer) (phpinspect-make-bmap)
-        (phpinspect-buffer--additions buffer) nil
-        (phpinspect-buffer--deletions buffer) nil
+
+        ;; TODO: figure out what the desired behaviour is here
+        ;; (phpinspect-buffer--additions buffer) nil
+        ;; (phpinspect-buffer--deletions buffer) nil
 
         (phpinspect-buffer-token-index buffer)
         (make-hash-table :test 'eq :size 100 :rehash-size 1.5))
@@ -803,7 +798,50 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
   (buffer nil :type buffer)
   (queue nil :type phpinspect--queue)
   (thread nil :type thread)
-  (id nil :type integer))
+  (id nil :type integer)
+  (-deletions nil :type list)
+  (-additions (make-hash-table :test #'eq) :type hash-table))
+
+(defun phpi--append-token-metadata-to-hash-table (table metadata)
+  (dolist (meta metadata)
+    (puthash (phpinspect-meta-token meta) meta table)))
+
+(defun phpi-shadow--set-buffer-map (shadow bmap old-bmap)
+  (let* ((buffer (phpi-shadow-origin shadow))
+         (buffer-tokens (phpinspect-buffer--tokens buffer)))
+    (setf (phpinspect-buffer-map buffer) bmap)
+
+    (if buffer-tokens
+        (let ((local-additions (phpi-shadow--additions shadow)))
+          ;; Determine which tokens are new and which were already present in the
+          ;; buffer
+          (maphash
+           (lambda (token meta) (unless (gethash token buffer-tokens)
+                                  (puthash token meta buffer-tokens)
+                                  (puthash token meta local-additions)))
+           (phpinspect-bmap-meta bmap)))
+      ;; There were no tokens registered, so we can adopt the map's token table
+      (setf (phpinspect-buffer--tokens buffer) (phpinspect-bmap-meta bmap)
+            ;; All tokens are new additions
+            (phpi-shadow--additions shadow) (phpinspect-bmap-meta bmap)))
+
+    (if-let ((old-bmap)
+             (root-meta (phpinspect-bmap-root-meta old-bmap)))
+        (progn
+          (setf
+           ;;Register deleted tokens
+           (phpi-shadow--deletions shadow)
+           (nconc (phpi-shadow--deletions shadow) (phpinspect-meta-flatten root-meta)))
+
+          (dolist (deletion (phpi-shadow--deletions shadow))
+            (remhash (phpinspect-meta-token deletion) buffer-tokens)))
+
+      ;; There is no previous bmap, so there should also not be any previous additions
+      (setf (phpi-shadow--additions shadow) (make-hash-table :test #'eq)))
+
+    ;; A new bmap was provided, so the structure of the token tree was
+    ;; changed. All previous query results should be regarded as invalid.
+    (phpinspect-buffer--clear-query-cache buffer)))
 
 (defun phpi-shadow-wakeup-thread (shadow)
   (thread-signal (phpi-shadow-thread shadow) 'phpinspect-wakeup-shadow nil))
@@ -845,8 +883,8 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
 
         (setf (phpinspect-buffer-tree buffer) result))
 
-        (phpinspect-buffer--set-map
-         buffer (phpinspect-pctx-bmap pctx) (phpinspect-pctx-previous-bmap pctx)))))
+      (phpi-shadow--set-buffer-map
+       shadow (phpinspect-pctx-bmap pctx) (phpinspect-pctx-previous-bmap pctx)))))
 
 (defun phpi-shadow-parse-fresh (shadow)
   (with-current-buffer (phpi-shadow-buffer shadow)
@@ -864,8 +902,8 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
 
         (setf (phpinspect-buffer-tree buffer) result)
 
-        (phpinspect-buffer--set-map
-         buffer (phpinspect-pctx-bmap pctx) nil)))))
+        (phpi-shadow--set-buffer-map
+         shadow (phpinspect-pctx-bmap pctx) nil)))))
 
 (defun phpinspect-visit-shadow-buffer (buffer)
   (interactive (list (or phpinspect-current-buffer
@@ -951,7 +989,7 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
 (defun phpi-shadow-process-deletions (shadow)
   (let ((buffer (phpi-shadow-origin shadow)))
     ;; Process deleted tokens
-    (dolist (deletion (phpinspect-buffer--deletions buffer))
+    (dolist (deletion (phpi-shadow--deletions shadow))
       (pcase (phpinspect-meta-token deletion)
         ((pred phpinspect--can-delete-buffer-index-for-token)
          (phpinspect-buffer-delete-index-for-token buffer (phpinspect-meta-token deletion)))
@@ -963,29 +1001,32 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
                                   class #'phpinspect-class-declaration-p)))
            (phpinspect-buffer--index-class-declaration buffer declaration 'force)))))
 
-    (setf (phpinspect-buffer--deletions buffer) nil)))
+    (setf (phpi-shadow--deletions shadow) nil)))
 
 (defun phpi-shadow-process-additions (shadow)
   ;; Process newly parsed tokens
-  (let ((buffer (phpi-shadow-origin shadow)))
-    (dolist (addition (phpinspect-buffer--additions buffer))
-      (pcase (phpinspect-meta-token addition)
-        ((pred phpinspect-class-declaration-p)
-         (phpinspect-buffer--index-class-declaration buffer addition))
-        ((pred phpinspect-function-p)
-         (phpinspect-buffer--index-function buffer addition))
-        ((pred phpinspect-use-trait-p)
-         (phpinspect-buffer--index-trait-use buffer addition))
-        ((pred phpinspect-this-p)
-         (phpinspect-buffer--index-this buffer addition))
-        ((or (pred phpinspect-class-variable-p)
-             (pred phpinspect-const-p))
-         (phpinspect-buffer--index-class-variable buffer addition)))
+  (when-let ((additions (phpi-shadow--additions shadow))
+             (buffer (phpi-shadow-origin shadow)))
+    (maphash
+     (lambda (token addition)
+       (pcase (phpinspect-meta-token addition)
+         ((pred phpinspect-class-declaration-p)
+          (phpinspect-buffer--index-class-declaration buffer addition))
+         ((pred phpinspect-function-p)
+          (phpinspect-buffer--index-function buffer addition))
+         ((pred phpinspect-use-trait-p)
+          (phpinspect-buffer--index-trait-use buffer addition))
+         ((pred phpinspect-this-p)
+          (phpinspect-buffer--index-this buffer addition))
+         ((or (pred phpinspect-class-variable-p)
+              (pred phpinspect-const-p))
+          (phpinspect-buffer--index-class-variable buffer addition)))
 
-      ;; Pause in between potentially expensive indexing operations.
-      (phpi-shadow-thread-check-pause))
+       ;; Pause in between potentially expensive indexing operations.
+       (phpi-shadow-thread-check-pause))
+     additions))
 
-    (setf (phpinspect-buffer--additions buffer) nil)))
+    (setf (phpi-shadow--additions shadow) nil))
 
 (defun phpi-shadow-update-project-index (shadow)
   (when (phpinspect-buffer-project (phpi-shadow-origin shadow))
