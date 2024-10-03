@@ -42,7 +42,7 @@
   (target nil
           :documentation
           "The object that this completion is aimed at/completing towards")
-  (value nil :type string)
+  (name nil :type string)
   (meta nil :type string)
   (annotation nil :type string)
   (kind nil :type symbol))
@@ -58,8 +58,8 @@ candidate. Candidates can be indexed functions and variables.")
                     :type integer)
   (completion-end nil
                   :type integer)
-  (completions (obarray-make)
-               :type obarray
+  (completions (make-hash-table :test #'equal :size 10000 :rehash-size 2)
+               :type hash-table
                :documentation
                "A list of completion strings")
   (has-candidates nil))
@@ -70,29 +70,23 @@ candidate. Candidates can be indexed functions and variables.")
 
 (cl-defmethod phpinspect--completion-list-add
   ((comp-list phpinspect--completion-list) (completion phpinspect--completion))
-  ;; Ignore completions in an invalid state (nil values)
-  (when (phpinspect--completion-value completion)
+  ;; Ignore completions in an invalid state (nil names)
+  (when (phpinspect--completion-name completion)
     (setf (phpinspect--completion-list-has-candidates comp-list) t)
-    (unless (intern-soft (phpinspect--completion-value completion)
-                         (phpinspect--completion-list-completions comp-list))
-      (set (intern (phpinspect--completion-value completion)
-                   (phpinspect--completion-list-completions comp-list))
-           completion))))
+    (unless (gethash
+             (phpinspect--completion-name completion)
+             (phpinspect--completion-list-completions comp-list))
+      (puthash (phpinspect--completion-name completion)
+               completion
+               (phpinspect--completion-list-completions comp-list)))))
 
 (cl-defmethod phpinspect--completion-list-get-metadata
   ((comp-list phpinspect--completion-list) (completion-name string))
-  (let ((comp-sym (intern-soft completion-name
-                               (phpinspect--completion-list-completions comp-list))))
-    (when comp-sym
-      (symbol-value comp-sym))))
-
+  (gethash completion-name (phpinspect--completion-list-completions comp-list)))
 
 (cl-defmethod phpinspect--completion-list-strings
   ((comp-list phpinspect--completion-list))
-  (let (strings)
-    (obarray-map (lambda (sym) (push (symbol-name sym) strings))
-                 (phpinspect--completion-list-completions comp-list))
-    strings))
+  (hash-table-keys (phpinspect--completion-list-completions comp-list)))
 
 (cl-defstruct (phpinspect-completion-query (:constructor phpinspect-make-completion-query))
   (completion-point 0
@@ -406,7 +400,7 @@ Returns list of `phpinspect--completion'."
 ;; on less powerful machines, consider implementing an LRU.
 (defun phpinspect-make-fn-completion (completion-candidate)
   (phpinspect--construct-completion
-   :value (phpi-fn-name completion-candidate)
+   :name (phpi-fn-name completion-candidate)
    :meta (concat "(" (mapconcat (lambda (arg)
                                   (concat "$" (if (> (length (car arg)) 8)
                                                   (truncate-string-to-width (car arg) 8 nil)
@@ -437,7 +431,7 @@ Returns list of `phpinspect--completion'."
 
 (cl-defmethod phpinspect--make-completion ((type phpinspect--type))
   (phpinspect--construct-completion
-   :value (propertize (phpinspect--type-base-name type) 'face 'font-lock-type-face)
+   :name (propertize (phpinspect--type-base-name type) 'face 'font-lock-type-face)
    :meta (phpinspect--format-type-name type)
    :target type
    :kind 'class))
@@ -445,7 +439,7 @@ Returns list of `phpinspect--completion'."
 (cl-defmethod phpinspect--make-completion
   ((completion-candidate phpinspect--variable))
   (phpinspect--construct-completion
-   :value (phpinspect--variable-name completion-candidate)
+   :name (phpinspect--variable-name completion-candidate)
    :meta (phpinspect--display-format-type-name
           (or (phpinspect--variable-type completion-candidate)
               phpinspect--null-type))
@@ -458,7 +452,7 @@ Returns list of `phpinspect--completion'."
 
 (cl-defmethod phpinspect--make-completion ((keyword phpinspect-suggest-keyword))
   (phpinspect--construct-completion
-   :value (propertize (phpinspect-suggest-keyword-word keyword) 'face 'font-lock-keyword-face)
+   :name (propertize (phpinspect-suggest-keyword-word keyword) 'face 'font-lock-keyword-face)
    :target keyword
    :kind 'keyword
    :meta "keyword"))
@@ -473,14 +467,13 @@ Returns list of `phpinspect--completion'."
 
 (defun phpinspect-complete-at-point ()
   (catch 'phpinspect-interrupted
-    (let ((comp-list (phpinspect-completion-query-execute (phpinspect--get-completion-query)))
-          strings)
-      (phpinspect--log "Completion list: %s" comp-list)
-      (obarray-map (lambda (sym) (push (symbol-name sym) strings)) (phpinspect--completion-list-completions comp-list))
+    (let ((comp-list (phpinspect-completion-query-execute (phpinspect--get-completion-query))))
+
       (and (phpinspect--completion-list-has-candidates comp-list)
            (list (phpinspect--completion-list-completion-start comp-list)
                  (phpinspect--completion-list-completion-end comp-list)
-                 strings
+                 (completion-table-dynamic (lambda (_)
+                                             (phpinspect--completion-list-strings comp-list)))
                  :affixation-function
                  (lambda (completions)
                    (let (affixated completion)

@@ -154,6 +154,7 @@ text at point and returns the resulting token."
           ;;   (setq token-meta (phpinspect-meta-find-child-starting-at token-meta original-point)))
 
           (if (or (not token-meta)
+                  (not (phpinspect--token-recyclable-p (phpinspect-meta-token token-meta)))
                   (phpinspect-root-p (phpinspect-meta-token token-meta))
                   (phpinspect-incomplete-token-p (phpinspect-meta-token token-meta))
                   (phpi-change-tainted-token-p change token-meta))
@@ -281,6 +282,7 @@ is able to reuse an already parsed tree."
              (when (looking-at (phpinspect-handler-regexp whitespace))
                (,(phpinspect-handler-func-name 'whitespace) (match-string 0)))
 
+
              (while (and (< (point) max-point)
                          (if continue-condition (funcall continue-condition) t)
                          (not ,(if delimiter-predicate
@@ -383,6 +385,9 @@ is able to reuse an already parsed tree."
                   :read-only t
                   :documentation "Name of the keyword that is used as car of the
 root token, in string form without \":\" prefix.")
+    (recycle-only-delimited
+     nil
+     :type boolean)
     (handlers '(array tag equals list comma
                       attribute-reference static-attribute-reference variable
                       assignment-operator whitespace scope-keyword
@@ -436,6 +441,7 @@ version of the parser function."
                (phpinspect-parser-handlers parser)
                (phpinspect-parser-delimiter-predicate parser)
                (phpinspect-parser-delimiter-condition parser)))))
+
 
   (cl-defmethod phpinspect-parser-compile-entry ((parser phpinspect-parser))
     (let ((func-name (phpinspect-parser-func-name (phpinspect-parser-name parser)))
@@ -499,14 +505,49 @@ parsing incrementally."
 (defun phpinspect-handler-bound-p (symbol)
   (get symbol 'phpinspect--handler))
 
+(eval-and-compile
+  (defun phpinspect-make-recycle-predicate (predicate-name names)
+    (let (cases
+          (token-sym (gensym)))
+      (push `(t t) cases)
+      (dolist (name names)
+        (catch 'phpinspect--continue
+          (let ((parser (symbol-value name))
+                body)
+            (unless (or (and (phpinspect-parser-delimiter-condition parser)
+                             (phpinspect-parser-delimiter-predicate parser))
+                        (and (phpinspect-parser-delimiter-predicate parser)
+                             (phpinspect-parser-recycle-only-delimited parser)))
+              (throw 'phpinspect--continue nil))
+
+            (setq body `(,(phpinspect-parser-delimiter-predicate parser) (car (last ,token-sym))))
+
+            (when-let ((condition (phpinspect-parser-delimiter-condition parser)))
+              (setq body `(if (,(phpinspect-parser-delimiter-condition parser) ,token-sym)
+                              ,body
+                            ,(not (phpinspect-parser-recycle-only-delimited parser)))))
+
+            (push `((eq (car ,token-sym) ,(intern (concat ":" (phpinspect-parser-tree-keyword parser))))
+                    ,body)
+                  cases))))
+
+      `(defun ,predicate-name (,token-sym)
+         (cond ,@cases)))))
+
+(eval-and-compile
+  (defun phpinspect--get-parser-function-syms ()
+    (let (names incremental-names)
+      (obarray-map (lambda (sym)
+                     (cond ((phpinspect-parser-func-bound-p sym)
+                            (push sym names))
+                           ((phpinspect-incremental-parser-func-bound-p sym)
+                            (push sym incremental-names))))
+                   obarray)
+      (list names incremental-names))))
+
 (defmacro phpinspect-define-parser-functions ()
-   (let (names incremental-names function-definitions)
-     (obarray-map (lambda (sym)
-                    (cond ((phpinspect-parser-func-bound-p sym)
-                           (push sym names))
-                          ((phpinspect-incremental-parser-func-bound-p sym)
-                           (push sym incremental-names))))
-                  obarray)
+  (pcase-let ((`(,names ,incremental-names) (phpinspect--get-parser-function-syms))
+              (function-definitions))
 
      (dolist (name names)
        (push (phpinspect-parser-compile-entry (symbol-value name))
@@ -522,7 +563,10 @@ parsing incrementally."
 
      (push 'progn function-definitions)
 
-     function-definitions))
+     `(progn
+        ,function-definitions
+        ,(phpinspect-make-recycle-predicate
+          'phpinspect--token-recyclable-p names))))
 
 (phpinspect-defhandler comma (comma &rest _ignored)
   "Handler for comma tokens"
@@ -739,11 +783,13 @@ nature like argument lists"
 
 (phpinspect-defparser use
   :tree-keyword "use"
+  :recycle-only-delimited t
   :handlers '(comment word tag block-without-scopes comma terminator)
   :delimiter-predicate #'phpinspect-end-of-use-p)
 
 (phpinspect-defparser use-trait
   :tree-keyword "use-trait"
+  :recycle-only-delimited t
   :handlers '(comment word tag block-without-scopes comma terminator)
   :delimiter-predicate #'phpinspect-end-of-use-p)
 
@@ -803,6 +849,7 @@ To parse trait use statements in class bodies, see
 
 (phpinspect-defparser namespace
   :tree-keyword "namespace"
+  :recycle-only-delimited t
   :delimiter-condition #'phpinspect--namespace-should-end-at-block-p
   :delimiter-predicate #'phpinspect-block-p)
 
@@ -824,6 +871,7 @@ To parse trait use statements in class bodies, see
 
 (phpinspect-defparser const
   :tree-keyword "const"
+  :recycle-only-delimited t
   :handlers '(word comment assignment-operator string string-concatenator array terminator)
   :delimiter-predicate #'phpinspect-end-of-token-p)
 
@@ -963,6 +1011,7 @@ Returns the consumed text string without face properties."
 (phpinspect-defparser declaration
   :tree-keyword "declaration"
   :handlers '(comment word list terminator tag)
+  :recycle-only-delimited t
   :delimiter-predicate #'phpinspect-end-of-token-p)
 
 (phpinspect-defhandler function-keyword (start-token max-point)
@@ -987,6 +1036,7 @@ Returns the consumed text string without face properties."
   :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
                                string string-concatenator terminator tag comment
                                assignment-operator array word)
+  :recycle-only-delimited t
   :delimiter-predicate #'phpinspect--scope-terminator-p)
 
 (phpinspect-defparser scope-private
@@ -994,10 +1044,12 @@ Returns the consumed text string without face properties."
   :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
                                string string-concatenator terminator tag comment
                                assignment-operator array word)
+  :recycle-only-delimited t
   :delimiter-predicate #'phpinspect--scope-terminator-p)
 
 (phpinspect-defparser scope-protected
   :tree-keyword "protected"
+  :recycle-only-delimited t
   :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
                                string string-concatenator terminator tag comment
                                assignment-operator array word)
@@ -1017,6 +1069,7 @@ Returns the consumed text string without face properties."
 
 (phpinspect-defparser static
   :tree-keyword "static"
+  :recycle-only-delimited t
   :handlers '(comment function-keyword class-variable array word terminator tag)
   :delimiter-predicate #'phpinspect--static-terminator-p)
 
@@ -1068,6 +1121,17 @@ Returns the consumed text string without face properties."
     nil
     (lambda () (not (char-equal (char-after) ?{)))
     'root)))
+
+(phpinspect-defhandler type-declaration (_start-token max-point)
+  "Handler for class, interface, trait declarations."
+  ((regexp . (phpinspect--word-handler-regexp))
+   (inline . t))
+  (inline-quote
+   (phpinspect--parse-class-declaration
+    (current-buffer)
+    ,max-point
+    nil
+    (lambda () (not (char-equal (char-after) ?{))))))
 
 (define-inline phpinspect--skip-over-word (word-plus-whitespace)
   (inline-quote

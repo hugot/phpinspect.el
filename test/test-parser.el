@@ -273,3 +273,8 @@ interface Test
   (dolist (code (list "//" "/*" "// " "/* "))
 
     (should (phpinspect-parse-string code))))
+
+(ert-deftest phpinspect-parser-token-recycle-predicate ()
+  (should (phpinspect--token-recyclable-p '(:list)))
+  (should-not (phpinspect--token-recyclable-p '(:namespace)))
+  (should (phpinspect--token-recyclable-p '(:namespace (:word "bla") (:block)))))

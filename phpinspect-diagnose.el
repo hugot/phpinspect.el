@@ -65,7 +65,6 @@
   (when meta
     (let ((stack (list meta)))
       (while-let ((current (pop stack)))
-        (message "checking")
         ;; A token cannot be a parent of itself.
         (when (eq (phpinspect-meta-parent current) current)
           (let ((message

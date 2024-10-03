@@ -123,14 +123,15 @@ Type can be any of the token types returned by
   (inline-letevals (token)
     (inline-quote
      (and (phpinspect-class-p ,token)
-	  (phpinspect-incomplete-block-p (car (last ,token)))))))
+          (or (not (phpinspect-block-p (car (last ,token))))
+	          (phpinspect-incomplete-block-p (car (last ,token))))))))
 
 (define-inline phpinspect-incomplete-namespace-p (token)
   (inline-letevals (token)
     (inline-quote
      (and (phpinspect-namespace-p ,token)
 	  (or (phpinspect-incomplete-block-p (car (last ,token)))
-              (phpinspect-incomplete-class-p (car (last ,token))))))))
+          (phpinspect-incomplete-class-p (car (last ,token))))))))
 
 (define-inline phpinspect-function-p (token)
   (inline-quote (phpinspect-token-type-p ,token :function)))
@@ -164,6 +165,10 @@ Type can be any of the token types returned by
 (define-inline phpinspect-declaration-p (token)
   (inline-quote
    (phpinspect-token-type-p ,token :declaration :class-declaration)))
+
+(define-inline phpinspect-function-declaration-p (token)
+  (inline-quote
+   (phpinspect-token-type-p ,token :declaration)))
 
 (define-inline phpinspect-class-declaration-p (token)
   (inline-quote

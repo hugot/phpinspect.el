@@ -134,7 +134,7 @@ directories."
        (let ((mx (make-mutex)))
          (phpinspect-thread-pause
           phpinspect-pipeline-pause-time mx (make-condition-variable mx "phpinspect-pipeline-pause")))
-     (thread-yield))))
+     (ignore-errors (thread-yield)))))
 
 (define-inline phpinspect--read-pipeline-emission (&rest body)
   (push 'progn body)

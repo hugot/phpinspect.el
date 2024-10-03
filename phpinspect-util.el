@@ -271,8 +271,8 @@ context for completion."
      ,@body))
 
 (defun phpinspect--input-pending-p (&optional check-timers)
-  (unless noninteractive
-    (input-pending-p check-timers)))
+  (and (input-pending-p check-timers)
+       (not noninteractive)))
 
 (defun phpinspect-thread-pause (pause-time mx continue)
   "Pause current thread using MX and CONTINUE for PAUSE-TIME idle seconds.
@@ -285,7 +285,7 @@ CONTINUE must be a condition-variable"
    pause-time
    nil
    (lambda () (with-mutex mx (condition-notify continue))))
-  (with-mutex mx (condition-wait continue))
+  (ignore-errors (with-mutex mx (condition-wait continue)))
   (phpinspect--log "Thread '%s' continuing execution" (thread-name (current-thread))))
 
 (provide 'phpinspect-util)

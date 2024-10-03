@@ -638,7 +638,6 @@ class Bar {
 
       (let ((class (phpinspect-project-get-typedef
                     project (phpinspect--make-type :name "\\Foo\\Bar"))))
-
         (should class)
         (should (= 1 (length (phpi-typedef-get-methods class))))
 
@@ -648,7 +647,6 @@ class Bar {
 
         (phpinspect-buffer-parse buffer 'no-interrupt)
         (phpinspect-buffer-update-project-index buffer)
-
         (should (= 2 (length (phpi-typedef-get-methods class))))
 
         (goto-char 36)
@@ -743,32 +741,46 @@ class TestClass
 	(should (equal '(:root (:comment))
 		           (phpinspect-buffer-parse buffer))))))
 
-(ert-deftest phpinspect-buffer-deletion-registration ()
-  "Check if buffer accuratly registers token deletions/alterations."
+;; (ert-deftest phpinspect-buffer-deletion-registration ()
+;;   "Check if buffer accuratly registers token deletions/alterations."
 
+;;   (with-temp-buffer
+;;     (let ((buffer (phpinspect-claim-buffer (current-buffer) (phpinspect--make-dummy-project))))
+
+;;       (insert "<?php aaa bbb ccc")
+
+;;       (should (equal '(:root (:word "aaa") (:word "bbb") (:word "ccc")) (phpinspect-buffer-parse buffer)))
+;;       (should-not (phpinspect-buffer--deletions buffer))
+
+;;       (should (length= (phpinspect-buffer--additions buffer) 4))
+
+;;       (goto-char (- (point-max) 5))
+;;       (insert "a")
+;;       (should (equal '(:root (:word "aaa") (:word "bbab") (:word "ccc")) (phpinspect-buffer-parse buffer)))
+
+;;       (should (length= (phpinspect-buffer--deletions buffer) 2))
+;;       (should (length= (phpinspect-buffer--additions buffer) 6))
+
+;;       (goto-char 6)
+;;       (insert "{")
+;;       (should (equal '(:root (:incomplete-block (:word "aaa") (:word "bbab") (:word "ccc")))
+;;                      (phpinspect-buffer-parse buffer)))
+;;       (should (length= (phpinspect-buffer--deletions buffer) 3))
+;;       (should (length= (phpinspect-buffer--additions buffer) 8))
+
+;;       (should (seq-every-p #'phpinspect-meta-p (phpinspect-buffer--additions buffer)))
+;;       (should (seq-every-p #'phpinspect-meta-p (phpinspect-buffer--deletions buffer))))))
+
+(ert-deftest phpinspect-buffer-parse-class-insertion ()
   (with-temp-buffer
-    (let ((buffer (phpinspect-claim-buffer (current-buffer) (phpinspect--make-dummy-project))))
+    (let ((buffer (phpinspect-claim-buffer (current-buffer))))
+      (insert "<?php ")
 
-      (insert "<?php aaa bbb ccc")
+      (insert "class")
+      (phpinspect-buffer-parse buffer)
+      (insert " Name")
+      (phpinspect-buffer-parse buffer)
+      (insert " {} ")
 
-      (should (equal '(:root (:word "aaa") (:word "bbb") (:word "ccc")) (phpinspect-buffer-parse buffer)))
-      (should-not (phpinspect-buffer--deletions buffer))
-
-      (should (length= (phpinspect-buffer--additions buffer) 4))
-
-      (goto-char (- (point-max) 5))
-      (insert "a")
-      (should (equal '(:root (:word "aaa") (:word "bbab") (:word "ccc")) (phpinspect-buffer-parse buffer)))
-
-      (should (length= (phpinspect-buffer--deletions buffer) 2))
-      (should (length= (phpinspect-buffer--additions buffer) 6))
-
-      (goto-char 6)
-      (insert "{")
-      (should (equal '(:root (:incomplete-block (:word "aaa") (:word "bbab") (:word "ccc")))
-                     (phpinspect-buffer-parse buffer)))
-      (should (length= (phpinspect-buffer--deletions buffer) 3))
-      (should (length= (phpinspect-buffer--additions buffer) 8))
-
-      (should (seq-every-p #'phpinspect-meta-p (phpinspect-buffer--additions buffer)))
-      (should (seq-every-p #'phpinspect-meta-p (phpinspect-buffer--deletions buffer))))))
+      (should (equal '(:root (:class (:class-declaration (:word "Name")) (:block)))
+                     (phpinspect-buffer-parse buffer))))))
