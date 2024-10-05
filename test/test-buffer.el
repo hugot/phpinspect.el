@@ -772,15 +772,16 @@ class TestClass
 ;;       (should (seq-every-p #'phpinspect-meta-p (phpinspect-buffer--deletions buffer))))))
 
 (ert-deftest phpinspect-buffer-parse-class-insertion ()
-  (with-temp-buffer
-    (let ((buffer (phpinspect-claim-buffer (current-buffer))))
-      (insert "<?php ")
+  (dlet ((phpi-shadow--run-sync t))
+    (with-temp-buffer
+      (let ((buffer (phpinspect-claim-buffer (current-buffer))))
+        (insert "<?php ")
 
-      (insert "class")
-      (phpinspect-buffer-parse buffer)
-      (insert " Name")
-      (phpinspect-buffer-parse buffer)
-      (insert " {} ")
+        (insert "class")
+        (phpinspect-buffer-parse buffer)
+        (insert " Name")
+        (phpinspect-buffer-parse buffer)
+        (insert " {} ")
 
-      (should (equal '(:root (:class (:class-declaration (:word "Name")) (:block)))
-                     (phpinspect-buffer-parse buffer))))))
+        (should (equal '(:root (:class (:class-declaration (:word "Name")) (:block)))
+                       (phpinspect-buffer-parse buffer)))))))

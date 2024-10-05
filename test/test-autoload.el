@@ -88,7 +88,7 @@
       :async (lambda (res err)
                (setq result res
                      error err))
-      :into (phpinspect-iterate-composer-jsons :with-context autoloader))
+      :into `(phpinspect-iterate-composer-jsons :with-context ,autoloader))
 
     (while (not (or result error))
       (thread-yield))
@@ -159,8 +159,8 @@
       :async (lambda (res err)
                (setq result res
                      error err))
-      :into (phpinspect-iterate-composer-jsons :with-context autoloader)
-      :into phpinspect-al-strategy-execute)
+      :into `(phpinspect-iterate-composer-jsons :with-context ,autoloader)
+      :into #'phpinspect-al-strategy-execute)
 
     (while (not (or result error))
       (thread-yield))

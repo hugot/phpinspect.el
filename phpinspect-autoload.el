@@ -383,7 +383,7 @@ FILE-NAME does not contain any wildcards, instead of nil."
                               (t (phpinspect--log "Error indexing file %s: %s" file err))))))
     (phpinspect--log "indexing files list: %s" list)
     (phpinspect-pipeline list
-      :into (funcall :with-context wrapped-indexer))))
+      :into `(funcall :with-context ,wrapped-indexer))))
 
 (cl-defmethod phpinspect-autoloader-put-type-bag ((al phpinspect-autoloader) (type-fqn (head phpinspect-name)))
   (let* ((base-name (phpinspect-name-base type-fqn))
@@ -538,8 +538,8 @@ FILE-NAME does not contain any wildcards, instead of nil."
                                    (hash-table-count (phpinspect-autoloader-types autoloader))
                                    (string-to-number (format-time-string "%s%3N" (time-since time-start)))))))
                           result error))
-                :into (phpinspect-iterate-composer-jsons :with-context autoloader)
-                :into phpinspect-al-strategy-execute))))))
+                :into `(phpinspect-iterate-composer-jsons :with-context ,autoloader)
+                :into #'phpinspect-al-strategy-execute))))))
 
   (provide 'phpinspect-autoload)
 ;;; phpinspect-autoload.el ends here

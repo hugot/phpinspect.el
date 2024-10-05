@@ -28,7 +28,6 @@ class Thing
            (project (phpinspect--make-project :autoload (phpinspect-make-autoloader) :worker 'nil-worker))
            (buffer (phpinspect-claim-buffer (current-buffer) project))
            second-arg-pos inside-nested-list-pos first-arg-pos)
-      (setq-local phpinspect-current-buffer buffer)
       (insert php-code)
 
       (backward-char)
@@ -37,8 +36,6 @@ class Thing
       (setq inside-nested-list-pos (point))
       (backward-char 8)
       (setq first-arg-pos (point))
-
-      (phpinspect-buffer-reindex buffer)
 
       ;; Strategy should not trigger inside constructor/function arguments
       (let ((query (phpinspect-make-eldoc-query :point inside-nested-list-pos :buffer buffer))
@@ -51,6 +48,8 @@ class Thing
         (let ((query (phpinspect-make-eldoc-query :point (car expected) :buffer buffer))
               (strat (phpinspect-make-eld-function-args))
               (rctx (phpinspect-get-resolvecontext project (phpinspect-buffer-parse-map buffer) (car expected))))
+
+          (phpinspect-buffer-update-project-index buffer)
 
           ;; Subject is correct
           (should (phpinspect-word-p (car (phpinspect--resolvecontext-subject rctx))))

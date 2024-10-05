@@ -33,7 +33,7 @@
   (let (result error)
 
     (phpinspect-pipeline (list "Linux" "Emacs")
-      :into phpinspect--correct-the-record
+      :into #'phpinspect--correct-the-record
       :async (lambda (res err)
                (setq result res
                      error err)))
@@ -52,7 +52,7 @@
 
   (let (result error)
     (phpinspect-pipeline (list "Holy smokey")
-      :into phpinspect--aah-it-broke
+      :into #'phpinspect--aah-it-broke
       :async (lambda (res err)
                (setq result res
                      error err)))
@@ -61,6 +61,27 @@
       (thread-yield))
 
     (should error)
-    (should (equal '(phpinspect-pipeline-error
-                     "Thread phpinspect-pipeline-phpinspect--aah-it-broke signaled error: (it-brokey . Holy smokey)")
-                   error))))
+    (should (phpinspect-pipeline-error-p error))
+    (should (string-suffix-p "(it-brokey . Holy smokey)" (cadr error)))))
+
+(ert-deftest phpinspect-pipeline-auto-emit ()
+  (let (result error)
+
+    (phpinspect-pipeline (list "Linux" "Emacs")
+      :into `(format :with-context "It's not %s"
+                     :with-auto-emit t)
+      :into `(format :with-context "%s, but GNU/... are you listening?"
+                     :with-auto-emit t)
+      :async (lambda (res err)
+               (setq result res
+                     error err)))
+
+    (while (not (or result error))
+      (thread-yield))
+
+    (should-not error)
+
+    (should (equal '("It's not Linux, but GNU/... are you listening?"
+                     "It's not Emacs, but GNU/... are you listening?")
+                   result))
+    (should-not error)))

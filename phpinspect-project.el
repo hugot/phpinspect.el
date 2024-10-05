@@ -446,7 +446,7 @@ before the search is executed."
          (dir (phpinspect-index-dir-task-dir task)))
     (phpinspect--log "Indexing directory %s" dir)
     (phpinspect-pipeline (phpinspect-fs-directory-files-recursively fs dir "\\.php$")
-      :into (phpinspect-project-add-file-index :with-context project))))
+      :into `(phpinspect-project-add-file-index :with-context ,project))))
 
 (provide 'phpinspect-project)
 ;;; phpinspect-project.el ends here

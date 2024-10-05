@@ -24,9 +24,13 @@
 ;;; Code:
 (require 'phpinspect-queue)
 (require 'phpinspect-util)
+(require 'phpinspect-thread)
 
 (define-error 'phpinspect-pipeline-incoming "Signal for incoming pipeline data")
 (define-error 'phpinspect-pipeline-error "Signal for pipeline errors")
+
+(defun phpinspect-pipeline-error-p (obj)
+  (eq 'phpinspect-pipeline-error (car-safe obj)))
 
 (defcustom phpinspect-pipeline-pause-time 0.1
   "Number of seconds to pause a pipeline thread when emacs receives
@@ -74,7 +78,8 @@ directories."
 
 (cl-defmethod phpinspect-pipeline-ctx-register-end ((ctx phpinspect-pipeline-ctx) (end phpinspect-pipeline-end))
   (let ((thread (phpinspect-pipeline-ctx-get-thread ctx (phpinspect-pipeline-end-thread end))))
-    (setf (phpinspect-pipeline-thread-end thread) end)))
+    (unless (phpinspect-pipeline-thread-end thread)
+      (setf (phpinspect-pipeline-thread-end thread) end))))
 
 (cl-defmethod phpinspect-pipeline-ctx-close ((ctx phpinspect-pipeline-ctx))
   (let (errors err end thread-live)
@@ -86,8 +91,10 @@ directories."
 
       (when thread-live
         (if end
-            (setq errors (nconc errors (list (format "Thread %s ended pipeline, but is still running"
-                                                     (thread-name (car thread))))))
+            ;; Give thread cpu time to wrap up
+            (thread-join (car thread))
+          ;; Even if thread is still live, it should have signaled its end at
+          ;; this point.
           (setq errors (nconc errors (list (format "Thread %s is still running when pipeline is closing"
                                                    (thread-name (car thread))))))))
 
@@ -97,10 +104,7 @@ directories."
                                                  err)))))
       (unless end
         (setq errors (nconc errors (list (format "Thread %s never ended"
-                                                 (thread-name (car thread)))))))
-
-      (when (thread-live-p (car thread))
-        (thread-signal (car thread) 'quit nil)))
+                                                 (thread-name (car thread))))))))
 
     (when errors
       (signal 'phpinspect-pipeline-error errors))))
@@ -128,13 +132,7 @@ directories."
 
 (define-inline phpinspect-pipeline-pause ()
   "Pause the current pipeline thread"
-  (inline-quote
-   ;; If quit flag is set, behave as it input is pending.
-   (if (or quit-flag (phpinspect--input-pending-p))
-       (let ((mx (make-mutex)))
-         (phpinspect-thread-pause
-          phpinspect-pipeline-pause-time mx (make-condition-variable mx "phpinspect-pipeline-pause")))
-     (ignore-errors (thread-yield)))))
+  (inline-quote (phpi-thread-yield)))
 
 (define-inline phpinspect--read-pipeline-emission (&rest body)
   (push 'progn body)
@@ -143,240 +141,7 @@ directories."
      ,body
      nil)))
 
-(defmacro phpinspect--run-as-pipeline-step (func-name queue consumer-queue pipeline-ctx &optional local-ctx)
-  (unless (symbolp func-name)
-    (error "Function name must be a symbol, got: %s" func-name))
-
-
-  (let* ((thread-name (concat "phpinspect-pipeline-" (symbol-name func-name)))
-         (statement (list func-name))
-         (statement-rear statement)
-         (incoming (gensym "incoming"))
-         (outgoing (gensym "outgoing"))
-         (inc-queue (gensym "queue"))
-         (out-queue (gensym "queue"))
-         (context-sym (gensym "context"))
-         (continue-running (gensym "continue-running"))
-         (pctx-sym (gensym "pipeline-ctx"))
-         (incoming-end (gensym "incoming-end"))
-         (end (gensym "end")))
-
-      (when local-ctx
-        (setq statement-rear (setcdr statement-rear (cons context-sym nil))))
-
-      (setq statement-rear (setcdr statement-rear (cons incoming nil)))
-
-      `(let ((,inc-queue ,queue)
-             (,out-queue ,consumer-queue)
-             (,context-sym ,local-ctx)
-             (,pctx-sym ,pipeline-ctx))
-         (make-thread
-          (lambda ()
-            (let ((,continue-running t)
-                  ;; Inhibit quitting
-                  (inhibit-quit t)
-                  ,incoming ,outgoing ,end ,incoming-end)
-
-              (phpinspect-pipeline--register-wakeup-function ,inc-queue)
-              (while ,continue-running
-                (condition-case err
-                    (progn
-                        (phpinspect-pipeline-pause)
-                        (setq ,incoming (phpinspect-pipeline-receive ,inc-queue))
-
-                        (if (phpinspect-pipeline-end-p ,incoming)
-                            (progn
-                              (setq ,incoming-end ,incoming)
-                              (when (phpinspect-pipeline-end-value ,incoming)
-                                (progn
-                                  (setq ,incoming (phpinspect-pipeline-end-value ,incoming)
-                                        ,outgoing (phpinspect--read-pipeline-emission ,statement))
-                                  (phpinspect-pipeline--enqueue ,out-queue ,outgoing 'no-notify)))
-
-                              (setq ,end (phpinspect-make-pipeline-end :thread (current-thread)))
-                              (phpinspect-pipeline-ctx-register-end ,pctx-sym ,end)
-                              (setq ,continue-running nil)
-                              (phpinspect-pipeline--enqueue ,out-queue ,end))
-
-                          ;; Else
-                          (setq ,outgoing (phpinspect--read-pipeline-emission ,statement))
-                          (when (phpinspect-pipeline-end-p ,outgoing)
-                            (setq ,end (phpinspect-make-pipeline-end :thread (current-thread)))
-                            (phpinspect-pipeline-ctx-register-end ,pctx-sym ,end)
-                            (setq ,continue-running nil))
-                          (phpinspect-pipeline--enqueue ,out-queue ,outgoing)))
-                  (phpinspect-pipeline-incoming)
-                  (t (phpinspect-message "Pipeline thread errored: %s" err)
-                     (setq ,end (phpinspect-make-pipeline-end :thread (current-thread) :error err))
-                     (setq ,continue-running nil)
-                     (phpinspect-pipeline-ctx-register-end ,pctx-sym ,end)
-                     (phpinspect-pipeline--enqueue ,out-queue ,end))))))
-          ,thread-name))))
-
-
-(defun phpinspect--chain-pipeline-steps (steps start-queue end-queue ctx)
-  (let ((result (gensym "result"))
-        (incoming (gensym "incoming"))
-        (outgoing (gensym "outgoing"))
-        (ctx-sym (gensym "ctx"))
-        body name step statement)
-    (while (setq step (pop steps))
-      (setq name (phpinspect--pipeline-step-name step))
-
-      (setq statement
-            (if (phpinspect--pipeline-step--context-var-name step)
-                `(phpinspect--run-as-pipeline-step
-                  ,name ,incoming ,outgoing ,ctx-sym ,(phpinspect--pipeline-step--context-var-name step))
-              `(phpinspect--run-as-pipeline-step ,name ,incoming ,outgoing ,ctx-sym)))
-      (setq body (nconc body `(,(if steps
-                                    `(setq ,outgoing (phpinspect-make-queue))
-                                  `(setq ,outgoing ,end-queue))
-                               (phpinspect-pipeline-ctx-register-thread ,ctx-sym ,statement ,incoming)
-                               (setq ,incoming ,outgoing)))))
-
-    `(let ((,incoming ,start-queue) (,ctx-sym ,ctx) ,result ,outgoing)
-       ,@body)))
-
-(cl-defstruct (phpinspect--pipeline-step (:constructor phpinspect--make-pipeline-step))
-  (context nil
-           :type any
-           :documentation
-           "An object that is passed as first argument to all step executions")
-  (-context-var-name nil
-                     :type symbol
-                     :documentation
-                     "Variable name used to store context in")
-  (name nil
-        :type symbol
-        :documentation
-        "The name of this step"))
-
-(defmacro phpinspect--pipeline (seed-form &rest parameters)
-  (let (key value steps let-vars)
-
-    (while parameters
-      (setq key (pop parameters)
-            value (pop parameters))
-
-      (pcase key
-        (:into
-         (let* ((construct-params (cons nil nil))
-                (cons-params-rear construct-params)
-                parameters name)
-
-           (if (listp value)
-               (progn
-                 (setq name (car value)
-                       parameters (cdr value)))
-             (setq name value))
-
-           (unless (symbolp name)
-             (error "Step name should be a symbol"))
-
-           (let (key value)
-             (while parameters
-               (setq key (pop parameters)
-                     value (pop parameters))
-               (setq key (intern (string-replace ":with-" ":" (symbol-name key))))
-               (setq cons-params-rear
-                     (setcdr cons-params-rear (cons key (cons value nil))))))
-           (push (apply #'phpinspect--make-pipeline-step `(,@(cdr construct-params) :name ,name))
-                 steps)))
-        (_ (error "unexpected key %s" key))))
-
-    (setq steps (nreverse steps))
-
-    (dolist (step steps)
-      (when (phpinspect--pipeline-step-context step)
-        (setf (phpinspect--pipeline-step--context-var-name step) (gensym "ctx"))
-        (push `(,(phpinspect--pipeline-step--context-var-name step)
-                ,(phpinspect--pipeline-step-context step))
-              let-vars)))
-
-    (let ((queue-sym (gensym "queue"))
-          (end-queue-sym (gensym "end-queue"))
-          (ctx-sym (gensym "ctx"))
-          (recv-sym (gensym))
-          (result-sym (gensym))
-          (seed-sym (gensym))
-          (collecting-sym (gensym)))
-      `(progn
-         (when (eq main-thread (current-thread))
-           (error "Pipelines should not run in the main thread"))
-
-         (let* (,@let-vars
-                (,ctx-sym (phpinspect-make-pipeline-ctx))
-                (,queue-sym (phpinspect-make-queue))
-                (,end-queue-sym (phpinspect-make-queue))
-                (,collecting-sym t)
-                (inhibit-quit t)
-                ,recv-sym ,result-sym ,seed-sym)
-
-           ,(phpinspect--chain-pipeline-steps steps queue-sym end-queue-sym ctx-sym)
-
-           (setq ,seed-sym ,seed-form)
-           (when ,seed-sym
-             (phpinspect-pipeline--enqueue
-              ,queue-sym
-              (phpinspect-make-pipeline-emission :collection ,seed-sym) 'no-notify))
-
-           (phpinspect-pipeline--enqueue
-            ,queue-sym (phpinspect-make-pipeline-end :thread (current-thread)))
-
-           (while ,collecting-sym
-             (ignore-error phpinspect-pipeline-incoming
-               (progn
-                 (phpinspect-pipeline--register-wakeup-function ,end-queue-sym)
-                 (while (not (phpinspect-pipeline-end-p
-                              (setq ,recv-sym (phpinspect-pipeline-receive ,end-queue-sym))))
-                   (setq ,result-sym (nconc ,result-sym (list ,recv-sym))))
-                 (setq ,collecting-sym nil))))
-
-           (phpinspect-pipeline-ctx-close ,ctx-sym)
-           ,result-sym)))))
-
-(defmacro phpinspect-pipeline (seed-form &rest parameters)
-  (declare (indent defun))
-  (let ((result (gensym))
-        (async-sym (gensym))
-        key value async macro-params)
-    (while parameters
-      (setq key (pop parameters)
-            value (pop parameters))
-
-      (pcase key
-        (:async (setq async value))
-        (_ (setq macro-params (nconc macro-params (list key value))))))
-
-    `(if-let ((,async-sym ,async))
-         (make-thread
-          (lambda ()
-            (let ((inhibit-quit t))
-              (condition-case err
-                  (let ((,result (phpinspect--pipeline ,seed-form ,@macro-params)))
-                    (funcall ,async-sym (or ,result 'phpinspect-pipeline-nil-result) nil))
-                (error (funcall ,async-sym nil err)))))
-          "phpinspect-pipeline-async")
-       (phpinspect--pipeline ,seed-form ,@macro-params))))
-
-(define-inline phpinspect-pipeline-receive (queue)
-  (inline-letevals (queue)
-    (inline-quote
-     (let ((val))
-       (while (not (setq val (phpinspect-queue-dequeue ,queue)))
-         (thread-yield))
-       val))))
-
-(defun phpinspect-pipeline-step-name (name &optional suffix)
-  (intern (concat (symbol-name name) (if suffix (concat "-" suffix) ""))))
-
-(define-inline phpinspect-pipeline--register-wakeup-function (queue)
-  (inline-quote
-   (let ((thread (current-thread)))
-     (setf (phpinspect-queue-subscription ,queue)
-           (lambda () (thread-signal thread 'phpinspect-pipeline-incoming nil))))))
-
-(define-inline phpinspect-pipeline--enqueue (queue emission &optional no-notify)
+(define-inline phpinspect--pipeline-enqueue (queue emission &optional no-notify)
   (inline-letevals (queue emission no-notify)
     (inline-quote
      (when ,emission
@@ -388,7 +153,159 @@ directories."
                 ,no-notify))
              (phpinspect-queue-enqueue
               ,queue (pop (phpinspect-pipeline-emission-collection ,emission)) ,no-notify))
-         (phpinspect-queue-enqueue ,queue ,emission ,no-notify))))))
+         (if (and (phpinspect-pipeline-end-p ,emission)
+                  (phpinspect-pipeline-end-value ,emission))
+             (progn
+               (phpinspect-queue-enqueue ,queue (phpinspect-pipeline-end-value ,emission) ,no-notify)
+               (phpinspect-queue-enqueue ,queue ,emission ,no-notify))
+           (phpinspect-queue-enqueue ,queue ,emission ,no-notify)))))))
+
+(defun phpinspect--pipeline-parse-step (step-arguments)
+  (pcase-let ((`(,name ,step)
+               (if (listp step-arguments)
+                   (list (car step-arguments)
+                         (apply #'phpinspect--make-pipeline-step
+                                (append (cdr step-arguments)
+                                        (list :name (car step-arguments)))))
+                 (list step-arguments
+                       (phpinspect--make-pipeline-step :name step-arguments)))))
+
+    (unless (and (symbolp name) (fboundp name))
+      (error "Pipeline step name must be a symbol bound to a function"))
+
+    step))
+
+(defun phpinspect--pipeline-parse-steps (arguments-plist &optional steps async)
+  (if arguments-plist
+      (let ((key (pop arguments-plist))
+            (value (pop arguments-plist)))
+        (pcase key
+          (:into
+           (phpinspect--pipeline-parse-steps
+            arguments-plist
+            (cons (phpinspect--pipeline-parse-step value) steps)
+            async))
+          (:async
+           (phpinspect--pipeline-parse-steps
+            arguments-plist steps value))
+          (_ (error "Unexpected pipeline argument key: %s" key))))
+
+    (list async steps)))
+
+(defun phpinspect-pipeline-step-format-name (step)
+  (format "PHPInspect pipeline thread [%s]"
+          (symbol-name (phpinspect--pipeline-step-name step))))
+
+(defun phpinspect--pipeline-fn-wrap-with-read-pipeline (fn step)
+  (if (phpinspect--pipeline-step-with-auto-emit step)
+      fn
+    (lambda (task) (phpinspect--read-pipeline-emission (funcall fn task)))))
+
+(defun phpinspect--pipeline-fn-wrap-with-end-handler (fn pipeline-ctx)
+  (lambda (task)
+    (let ((result (funcall fn task)))
+      (when (phpinspect-pipeline-end-p result)
+        (phpinspect-pipeline-ctx-register-end pipeline-ctx result))
+
+      result)))
+
+(defun phpinspect--pipeline-fn-wrap-with-error-handler (fn step pipeline-ctx)
+  (lambda (task)
+    (condition-case err
+        (funcall fn task)
+      (t
+       (phpinspect-make-pipeline-end
+        :error err :thread (current-thread))))))
+
+(defun phpinspect--pipeline-fn-wrap-with-ctx (fn ctx)
+  (if ctx
+      (lambda (task)
+        (funcall fn ctx task))
+    (lambda (task) (funcall fn task))))
+
+(defun phpinspect--pipeline-fn-wrap-with-emitter (fn out-queue)
+  (lambda (task)
+    (let ((emission (if (phpinspect-pipeline-end-p task)
+                        (phpinspect-make-pipeline-end :thread (current-thread))
+                      (funcall fn task))))
+      (phpinspect--pipeline-enqueue out-queue emission)
+      emission)))
+
+(defun phpinspect--pipeline-make-run-step-function (pipeline-ctx step out-queue)
+  (let ((step-fn (thread-first
+                   (phpinspect--pipeline-step-name step)
+                   (phpinspect--pipeline-fn-wrap-with-ctx (phpinspect--pipeline-step-with-context step))
+                   (phpinspect--pipeline-fn-wrap-with-read-pipeline step)
+                   (phpinspect--pipeline-fn-wrap-with-error-handler step pipeline-ctx)
+                   (phpinspect--pipeline-fn-wrap-with-emitter out-queue)
+                   (phpinspect--pipeline-fn-wrap-with-end-handler pipeline-ctx))))
+    (lambda (task)
+      (let ((result (funcall step-fn task)))
+        (when (phpinspect-pipeline-end-p task)
+          (phpi-job-queue-end))))))
+
+(defun phpinspect--pipeline-chain (ctx steps &optional out-queue)
+  (if-let ((step (pop steps)))
+      (let* ((job-queue (phpi-start-job-queue (phpinspect-pipeline-step-format-name step)
+                          (phpinspect--pipeline-make-run-step-function ctx step out-queue))))
+        (phpinspect-pipeline-ctx-register-thread ctx (phpi-job-queue-thread job-queue) job-queue)
+        (phpinspect--pipeline-chain ctx steps job-queue))
+    out-queue))
+
+(defun phpinspect-pipeline (seed-form &rest arguments-plist)
+  (declare (indent defun))
+  (pcase-let ((`(,async ,steps) (phpinspect--pipeline-parse-steps arguments-plist))
+              (ctx (phpinspect-make-pipeline-ctx)))
+    (when seed-form
+      (let* (results
+             (in-queue (phpi-start-job-queue "Pipeline result accumulator"
+                         (lambda (result)
+                           (if (phpinspect-pipeline-end-p result)
+                               (phpi-progn
+                                (setq results (nreverse results))
+                                (phpi-job-queue-end))
+                             (push result results))))))
+
+        (let ((out-queue (phpinspect--pipeline-chain ctx steps in-queue)))
+          (phpinspect--pipeline-enqueue
+           out-queue
+           (phpinspect-make-pipeline-emission :collection seed-form) 'no-notify)
+
+          (phpinspect--pipeline-enqueue
+           out-queue (phpinspect-make-pipeline-end :thread (current-thread))))
+
+        (if async
+            (phpi-run-threaded "Pipeline result awaiter"
+              (thread-join (phpi-job-queue-thread in-queue))
+
+              (condition-case err
+                  (progn
+                    (phpinspect-pipeline-ctx-close ctx)
+                    ;; async consumers may use the result being non-nil as a
+                    ;; means to determine whether the pipeline has finished
+                    ;; executing or not. So we return a symbol when the result
+                    ;; is nil to prevent consumer threads from waiting
+                    ;; endlessly.
+                    (funcall async (or results 'phpinspect-pipeline-nil-result) nil))
+                (t
+                 (funcall async results err))))
+          (progn
+            (thread-join (phpi-job-queue-thread in-queue))
+            (phpinspect-pipeline-ctx-close ctx)
+            results))))))
+
+
+(cl-defstruct (phpinspect--pipeline-step (:constructor phpinspect--make-pipeline-step))
+  (with-context nil
+           :type any
+           :documentation
+           "An object that is passed as first argument to all step executions")
+  (with-auto-emit nil
+                  :type boolean)
+  (name nil
+        :type symbol
+        :documentation
+        "The name of this step"))
 
 (provide 'phpinspect-pipeline)
 ;;; phpinspect-pipeline.el ends here
