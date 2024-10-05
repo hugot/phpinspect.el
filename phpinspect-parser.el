@@ -229,11 +229,12 @@ of a statement.  You can use `phpinspect-terminator-p` as
 delimiter predicate and have parsing stop when the last parsed
 token is \";\", which marks the end of a statement in PHP."
     (cl-assert (symbolp delimiter-predicate))
-    `(defun ,(phpinspect-parser-func-name name "simple") (buffer max-point &optional skip-over continue-condition &rest _ignored)
+    `(defun ,(phpinspect-parser-func-name name "simple") (context buffer max-point &optional skip-over continue-condition &rest _ignored)
        (declare (speed 3))
        (with-current-buffer buffer
          (let* ((tokens (cons ,tree-type nil))
                 (tokens-rear tokens)
+                (collaborative (when context (phpinspect-pctx-collaborative context)))
                 token)
            (when skip-over (forward-char skip-over))
            (while (and (< (point) max-point)
@@ -244,6 +245,10 @@ token is \";\", which marks the end of a statement in PHP."
                                            (,delimiter-predicate (car (last tokens))))
                                    `(,delimiter-predicate (car (last tokens))))
                                nil)))
+
+             (when collaborative
+               (phpinspect-pctx-check-yield context))
+
              (cond ,@(mapcar
                       (lambda (handler)
                         `((looking-at (,(phpinspect-handler-regexp-func-name handler)))
@@ -270,7 +275,7 @@ is able to reuse an already parsed tree."
                 (root-start (point))
                 (previous-bmap (phpinspect-pctx-previous-bmap context))
                 (change (phpinspect-pctx-change context))
-                (check-interrupt (phpinspect-pctx-interrupt-predicate context))
+                (collaborative (phpinspect-pctx-collaborative context))
 
                 ;; Loop variables
                 (start-position)
@@ -291,12 +296,11 @@ is able to reuse an already parsed tree."
                                              (,delimiter-predicate (car (last tokens))))
                                      `(,delimiter-predicate (car (last tokens))))
                                  nil)))
-               (when check-interrupt
-                 (phpinspect-pctx-check-interrupt context))
+
+               (when collaborative
+                 (phpinspect-pctx-check-yield context))
 
                (setq start-position (point))
-
-               ;;(message "Start: %d" start-position)
 
                (cond ((and-let*
                           ((change)
@@ -466,7 +470,7 @@ parsing incrementally."
          (if (and phpinspect-parse-context
                   (phpinspect-pctx-incremental phpinspect-parse-context))
              (,incremental-name phpinspect-parse-context buffer max-point skip-over continue-condition root)
-           (,simple-name buffer max-point skip-over continue-condition root)))))
+           (,simple-name phpinspect-parse-context buffer max-point skip-over continue-condition root)))))
 
   ) ;; End of eval-when-compile
 

@@ -209,7 +209,7 @@ directories."
 
       result)))
 
-(defun phpinspect--pipeline-fn-wrap-with-error-handler (fn step pipeline-ctx)
+(defun phpinspect--pipeline-fn-wrap-with-error-handler (fn)
   (lambda (task)
     (condition-case err
         (funcall fn task)
@@ -236,11 +236,11 @@ directories."
                    (phpinspect--pipeline-step-name step)
                    (phpinspect--pipeline-fn-wrap-with-ctx (phpinspect--pipeline-step-with-context step))
                    (phpinspect--pipeline-fn-wrap-with-read-pipeline step)
-                   (phpinspect--pipeline-fn-wrap-with-error-handler step pipeline-ctx)
+                   (phpinspect--pipeline-fn-wrap-with-error-handler)
                    (phpinspect--pipeline-fn-wrap-with-emitter out-queue)
                    (phpinspect--pipeline-fn-wrap-with-end-handler pipeline-ctx))))
     (lambda (task)
-      (let ((result (funcall step-fn task)))
+      (prog1 (funcall step-fn task)
         (when (phpinspect-pipeline-end-p task)
           (phpi-job-queue-end))))))
 

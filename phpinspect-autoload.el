@@ -391,7 +391,7 @@ FILE-NAME does not contain any wildcards, instead of nil."
     (when-let ((pr (phpinspect-autoloader--progress-reporter al))
                (i (cl-incf (phpinspect-autoloader--type-counter al)))
                ((= 0 (mod i phpinspect-autoload-progress-interval))))
-      (progress-reporter-update pr i (format "%d types found" i)))
+      (progress-reporter-force-update pr i (format "%d types found" i)))
 
     (if bag
         (setcdr bag (cons type-fqn (cdr bag)))

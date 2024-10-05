@@ -341,7 +341,8 @@ before the search is executed."
   (let ((fs (phpinspect-project-fs project)))
     (with-temp-buffer
       (phpinspect-fs-insert-file-contents fs file-name 'prefer-async)
-      (phpinspect-index-current-buffer))))
+      (phpinspect-with-parse-context (phpinspect-make-pctx :collaborative t)
+        (phpinspect-index-current-buffer)))))
 
 (cl-defmethod phpinspect-project-add-file-index ((project phpinspect-project) (file-name string))
   (phpinspect-project-add-index project (phpinspect-project-index-file project file-name)))

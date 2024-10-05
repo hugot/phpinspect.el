@@ -136,7 +136,7 @@ linked with."
     (remhash old (phpinspect-buffer-token-index buffer))
     (puthash new index (phpinspect-buffer-token-index buffer))))
 
-(defun phpinspect-get-buffer-index-reference-for-token (buffer token)
+(defun phpinspect-buffer-get-index-reference-for-token (buffer token)
   (gethash token (phpinspect-buffer-token-index buffer)))
 
 (define-inline phpinspect--can-delete-buffer-index-for-token (token)
@@ -229,7 +229,7 @@ tokens that have been deleted from a buffer."
                    (phpinspect-buffer-reindex buffer)
                    (error "invalid index location"))))))))
 
-(defun phpinspect-delete-dynamic-prop-index-reference (buffer token)
+(defun phpinspect-buffer--delete-dynamic-prop-index-reference (buffer token)
   (when-let ((ref (phpinspect-buffer-get-index-reference-for-token buffer token))
              (typedef (phpinspect-project-get-typedef
                        (phpinspect-buffer-project buffer)
@@ -272,7 +272,7 @@ tokens that have been deleted from a buffer."
   (interactive (list (or phpinspect-current-buffer (error "Not a phpinspect buffer"))))
   (phpinspect-buffer-reset buffer)
   (phpi-shadow-enqueue-task (phpinspect-buffer-shadow buffer) 'parse-fresh)
-  (phpi-shadow-await-synced (phpi-buffer-shadow buffer))
+  (phpi-shadow-await-synced (phpinspect-buffer-shadow buffer))
   (phpinspect-buffer-tree buffer))
 
 (defun phpinspect-buffer-reindex (buffer)
@@ -709,8 +709,6 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
 (defvar phpinspect--shadow-counter 0)
 (defvar phpinspect--shadow-run-sync nil)
 
-(defvar phpinspect-shadow-pause-time 0.05)
-
 (define-error 'phpinspect-wakeup-shadow
               "This error is used to wakeup the shadow thread.")
 
@@ -774,9 +772,6 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
   (lambda ()
     (phpi-shadow-wakeup-thread shadow)))
 
-(defun phpi-shadow--thread-make-parser-interrupt-predicate ()
-  (lambda () (phpi-thread-yield) nil))
-
 (defun phpi-shadow-process-change (shadow change)
   (with-current-buffer (phpi-shadow-buffer shadow)
     (phpi-change-apply change (current-buffer))
@@ -787,7 +782,7 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
                   :previous-bmap (phpinspect-buffer-map buffer)
                   :bmap (phpinspect-make-bmap)
                   :change change
-                  :interrupt-predicate (phpi-shadow--thread-make-parser-interrupt-predicate))))
+                  :collaborative t)))
 
       (let (result)
         ;; Parse new content
@@ -808,7 +803,7 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
            (pctx (phpinspect-make-pctx
                   :incremental t
                   :bmap (phpinspect-make-bmap)
-                  :interrupt-predicate (phpi-shadow--thread-make-parser-interrupt-predicate))))
+                  :collaborative t)))
 
       (let (result)
         ;; Parse new content
@@ -899,7 +894,7 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
   (when-let ((additions (phpi-shadow--additions shadow))
              (buffer (phpi-shadow-origin shadow)))
     (maphash
-     (lambda (token addition)
+     (lambda (_token addition)
        (phpi-progn
         (pcase (phpinspect-meta-token addition)
           ((pred phpinspect-class-declaration-p)

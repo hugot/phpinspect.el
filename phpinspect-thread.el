@@ -89,19 +89,22 @@
 
     ,thread-name)))
 
-(defun phpi--main-thread-starving-p ()
-  (if (or quit-flag (phpinspect--input-pending-p))
-      'yes
-    'no))
+(define-inline phpi--main-thread-starving-p ()
+  (inline-quote
+   (if (or quit-flag (phpinspect--input-pending-p))
+       'yes
+     'no)))
 
-(defun phpi-main-thread-starving-p ()
-  (let ((starving (phpi--main-thread-starving-p)))
-    (when (eq 'yes starving)
-      (setf (phpi-condition-value phpinspect--main-thread-starving) starving)
-      t)))
+(define-inline phpi-main-thread-starving-p ()
+  (inline-quote
+   (let ((starving (phpi--main-thread-starving-p)))
+     (when (eq 'yes starving)
+       (setf (phpi-condition-value phpinspect--main-thread-starving) starving)
+       t))))
 
 (defun phpi-await-main-thread-nourished ()
-  (when (phpi-main-thread-startving-p)
+  (message "Waiting for the main thread to be nourished")
+  (when (phpi-main-thread-starving-p)
     (while
         (eq 'yes (phpi-condition-wait
                   phpinspect--main-thread-starving)))))
@@ -112,7 +115,7 @@
 (defun phpi--notify-main-thread-nourished ()
   (setf (phpi-condition-value phpinspect--main-thread-starving) 'no))
 
-(defvar phpinspect-main-thread-nourishment 0.1
+(defvar phpinspect-main-thread-nourishment 0.01
   "Amount of seconds to pause all threads when input is pending.")
 
 (defvar phpinspect-main-thread-nourishment-timer
@@ -155,7 +158,7 @@ If current thread is the main thread, this function does nothing."
                 (while t
                   (if-let ((job (phpinspect-queue-dequeue queue)))
                       (phpi-progn
-                       (condition-case err
+                       (condition-case nil
                            (funcall job-handler job)
                          (phpinspect-job-queue-end
                           ;; If job queue end is signaled, exit after queue has
@@ -176,7 +179,7 @@ If current thread is the main thread, this function does nothing."
 
 (defun phpi-job-queue-kill (queue)
   (when (phpi-job-queue-live-p queue)
-    (phpi-kill-thread (phpi-job-queue-thread queue))))
+    (phpi-thread-kill (phpi-job-queue-thread queue))))
 
 
 (provide 'phpinspect-thread)
