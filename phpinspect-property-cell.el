@@ -39,7 +39,8 @@
   (origin-type nil
 	       :type phpinspect--type)
   (name nil
-	:type phpinspect-name)
+	    :type phpinspect-name)
+  (definition-tokens nil)
   (definition nil
 	      :type phpinspect--variable))
 
@@ -48,6 +49,13 @@
    :name (phpinspect-intern-name (phpinspect--variable-name definition))
    :origin-type origin-type
    :definition definition))
+
+(defun phpi-prop-delete-definition-token (prop token)
+  (setf (phpi-prop-definition-tokens prop)
+        (delq token (phpi-prop-definition-tokens prop))))
+
+(defun phpi-prop-add-definition-token (prop token)
+  (cl-pushnew token (phpi-prop-definition-tokens prop) :test #'eq))
 
 (cl-defstruct (phpinspect-property-cell
 	       (:constructor phpinspect-make-property-cell)
@@ -65,6 +73,7 @@
   (cells nil
 	 :type list
 	 :documentation "<string,phpinspect-property-cell>"))
+
 
 (defun phpi-pcol-find-cell (pcol prop-name &optional remove)
   (cl-assert (phpinspect-name-p prop-name))
@@ -93,8 +102,17 @@
 	      (phpi-prop-inheritable-p property)) ;; Update, only when inheritable
       (setf (phpi-pc-inherited cell) property))))
 
+(define-inline phpi-prop-type (prop)
+  (inline-quote
+   (phpinspect--variable-type (phpi-prop-definition ,prop))))
+
 (defun phpi-pcol-add (pcol property)
   (let ((cell (phpi-pcol-find-cell-create pcol (phpi-prop-name property))))
+    (unless (phpi-prop-type property)
+      (when-let ((prop (phpi-pc-get-for-type cell (phpi-prop-origin-type property)))
+                 (type (phpi-prop-type prop)))
+        (setf (phpi-prop-type property) type)))
+
     (phpi-pc-set
      cell (phpi-pcol-home-type pcol) (phpi-prop-origin-type property) property)))
 
@@ -180,10 +198,6 @@ When NAME is provided, only property with NAME is deleted."
 
 (defun phpi-prop-vanilla-p (prop)
   (phpinspect--variable-vanilla-p (phpi-prop-definition prop)))
-
-(define-inline phpi-prop-type (prop)
-  (inline-quote
-   (phpinspect--variable-type (phpi-prop-definition ,prop))))
 
 (defun phpi-prop-scope (prop)
   (phpinspect--variable-scope (phpi-prop-definition prop)))

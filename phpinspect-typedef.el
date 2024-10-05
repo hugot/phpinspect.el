@@ -479,6 +479,20 @@ them, which are then incorporated into DEF's properties."
   (phpi-typedef-delete-property
    def (phpinspect-intern-name (phpinspect--variable-name var))))
 
+(cl-defmethod phpi-typedef-delete-property ((def phpinspect-typedef)
+                                            (prop phpinspect-property))
+  (phpi-typedef-delete-property
+   def (phpinspect-intern-name (phpi-var-name prop))))
+
+
+(cl-defmethod phpi-typedef-delete-property-token-definition
+  ((def phpinspect-typedef) (prop-name string) token-meta)
+  (when-let ((prop (phpi-typedef-get-property def prop-name)))
+    (phpi-prop-delete-definition-token prop token-meta)
+
+    (unless (phpi-prop-definition-tokens prop)
+      (phpi-typedef-delete-property def prop))))
+
 (cl-defmethod phpi-typedef-get-properties ((def phpinspect-typedef))
   (seq-filter #'phpi-prop-vanilla-p
 	      (phpi-pcol-list-active (phpi-typedef-properties def))))

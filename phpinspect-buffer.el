@@ -107,48 +107,6 @@ edits does not count as fresh (because incremental parsing has its flaws)."
       (phpinspect-buffer-tree buffer)
     (phpinspect-buffer-reparse buffer)))
 
-;; (defun phpinspect-buffer--set-map (buffer bmap old-bmap)
-;;   (setf (phpinspect-buffer-map buffer) bmap)
-
-;;   (let ((buffer-tokens (phpinspect-buffer--tokens buffer))
-;;         additions)
-;;     (if buffer-tokens
-;;         ;; Determine which tokens are new and which were already present in the
-;;         ;; buffer
-;;         (maphash
-;;          (lambda (token meta) (unless (gethash token buffer-tokens)
-;;                                 (puthash token meta buffer-tokens)
-;;                                 (push meta additions)))
-;;          (phpinspect-bmap-meta bmap))
-;;       ;; There were no tokens registered, so we can adopt the map's token table
-;;       (setf (phpinspect-buffer--tokens buffer) (phpinspect-bmap-meta bmap))
-;;       ;; All tokens are new additions
-;;       (setq additions (hash-table-values (phpinspect-bmap-meta bmap))))
-
-;;     (if-let ((old-bmap)
-;;              (root-meta (phpinspect-bmap-root-meta old-bmap)))
-;;         (progn
-;;           ;; Register alterations for later processing/indexation
-;;           (setf
-;;            ;; Register new tokens
-;;            (phpinspect-buffer--additions buffer)
-;;            (nconc (phpinspect-buffer--additions buffer) additions)
-
-;;            ;;Register deleted tokens
-;;            (phpinspect-buffer--deletions buffer)
-;;            (nconc (phpinspect-buffer--deletions buffer) (phpinspect-meta-flatten root-meta)))
-
-;;           (dolist (deletion (phpinspect-buffer--deletions buffer))
-;;             (remhash (phpinspect-meta-token deletion) buffer-tokens)))
-
-;;       ;; There is no previous bmap, so there should also not be any previous additions
-;;       (setf (phpinspect-buffer--additions buffer) additions))
-
-;;     ;; A new bmap was provided, so the structure of the token tree was
-;;     ;; changed. All previous query results should be regarded as invalid.
-;;     (phpinspect-buffer--clear-query-cache buffer)))
-
-
 (cl-defmethod phpinspect-buffer-parse ((buffer phpinspect-buffer) &optional no-interrupt)
   "Parse the PHP code in the the emacs buffer that this object is
 linked with."
@@ -158,33 +116,6 @@ linked with."
     (phpi-shadow-await-synced (phpinspect-buffer-shadow buffer) (not no-interrupt)))
 
   (phpinspect-buffer-tree buffer))
-
-;; (let (tree)
-  ;;   (if (phpinspect-buffer-needs-parse-p buffer)
-  ;;       (with-current-buffer (phpinspect-buffer-buffer buffer)
-  ;;         (let* ((map (phpinspect-make-bmap))
-  ;;                (buffer-map (phpinspect-buffer-map buffer))
-  ;;                (ctx (phpinspect-make-pctx
-  ;;                      :interrupt-predicate (unless no-interrupt #'phpinspect--input-pending-p)
-  ;;                      :bmap map
-  ;;                      :incremental t
-  ;;                      :previous-bmap buffer-map
-  ;;                      :edtrack (phpinspect-buffer-edit-tracker buffer))))
-  ;;           (phpinspect-with-parse-context ctx
-  ;;             (phpinspect--log "Parsing buffer")
-  ;;             (let ((parsed (phpinspect-parse-current-buffer)))
-  ;;               ;; Inhibit quitting to guarantee data integrity
-  ;;               (let ((inhibit-quit t))
-  ;;                 (setf (phpinspect-buffer-tree buffer) parsed)
-  ;;                 (phpinspect-edtrack-clear (phpinspect-buffer-edit-tracker buffer))
-  ;;                 (phpinspect-buffer--set-map buffer map buffer-map)
-
-  ;;                 ;; set return value
-  ;;                 (setq tree parsed))))))
-
-  ;;     ;; Else: Just return last parse result
-  ;;     (setq tree (phpinspect-buffer-tree buffer))
-  ;;     tree)))
 
 (cl-defmethod phpinspect-buffer-get-index-for-token ((buffer phpinspect-buffer) token)
   (gethash token (phpinspect-buffer-token-index buffer)))
@@ -204,6 +135,9 @@ linked with."
   (when-let ((index (gethash old (phpinspect-buffer-token-index buffer))))
     (remhash old (phpinspect-buffer-token-index buffer))
     (puthash new index (phpinspect-buffer-token-index buffer))))
+
+(defun phpinspect-get-buffer-index-reference-for-token (buffer token)
+  (gethash token (phpinspect-buffer-token-index buffer)))
 
 (define-inline phpinspect--can-delete-buffer-index-for-token (token)
   (inline-quote
@@ -252,7 +186,11 @@ tokens that have been deleted from a buffer."
            (when-let ((class (phpinspect-project-get-typedef
                               (phpinspect-buffer-project buffer)
                               (car var))))
-             (phpi-typedef-delete-property class (cdr var)))))
+             (if-let ((token-meta (phpinspect-buffer-token-meta buffer token)))
+                 (phpi-typedef-delete-property-token-definition class (phpi-var-name (car var)) token-meta)
+               (phpi-typedef-delete-property class (cdr var))))))
+        ((or (phpinspect-this-p token) (phpinspect-attrib-p token))
+         (phpinspect-buffer--delete-dynamic-prop-index-reference buffer token))
         ((phpinspect-function-p token)
          (phpinspect-buffer--delete-function-index-reference buffer token))
         (t (error "Cannot delete index for token %s" token))))
@@ -290,6 +228,14 @@ tokens that have been deleted from a buffer."
                 (t (phpinspect-message "Invalid index location, reindexing buffer")
                    (phpinspect-buffer-reindex buffer)
                    (error "invalid index location"))))))))
+
+(defun phpinspect-delete-dynamic-prop-index-reference (buffer token)
+  (when-let ((ref (phpinspect-buffer-get-index-reference-for-token buffer token))
+             (typedef (phpinspect-project-get-typedef
+                       (phpinspect-buffer-project buffer)
+                       (car ref))))
+    (phpi-typedef-delete-property-token-definition
+     typedef (cadr ref) (phpinspect-meta-token (car (last ref))))))
 
 (cl-defmethod phpinspect-buffer-reset ((buffer phpinspect-buffer))
   "Clear all metadata stored in BUFFER."
@@ -550,10 +496,30 @@ DECLARATION must be an object of type `phpinspect-meta'."
         (when-let ((typedef (phpinspect-buffer-get-typedef-for-class-token buffer class))
                    (type (phpinspect-resolve-type-from-context
                      (phpinspect-buffer-get-resolvecontext
-                      buffer (phpinspect-meta-start statement-end))))
-                   (prop (phpi-typedef-get-property typedef accessor-name)))
+                      buffer (phpinspect-meta-start statement-end)))))
 
-          (setf (phpi-prop-type prop) type))))))
+          (if-let ((prop (phpi-typedef-get-property typedef accessor-name)))
+              (progn
+                (setf (phpi-prop-type prop) type)
+                (phpi-prop-add-definition-token prop accessor))
+
+            ;; Property is dynamic
+            (let ((prop (phpinspect-make-property
+                         (phpi-typedef-name typedef)
+                         (phpinspect--make-variable :name accessor-name
+                                                    :type type
+                                                    :scope '(:public)
+                                                    :lifetime (when (phpinspect-static-attrib-p (phpinspect-meta-token accessor))
+                                                                '(:static))))))
+              (phpi-prop-add-definition-token prop accessor)
+              (phpi-typedef-set-property typedef prop)))
+
+          (let ((index-ref (list (phpi-typedef-name typedef) accessor-name this accessor)))
+            (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token this) index-ref)
+            (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token accessor) index-ref)))))))
+
+
+
 
 (defun phpinspect-buffer--index-class-variable (buffer var)
   (let ((class (phpinspect-buffer-find-token-ancestor-matching buffer var #'phpinspect-class-p))
@@ -582,7 +548,8 @@ DECLARATION must be an object of type `phpinspect-meta'."
 
     (setq comment-before (phpinspect-meta-token comment-before))
 
-    (pcase-let* ((`(,imports ,namespace-name) (phpinspect-buffer-get-index-context-for-token buffer var))
+    (pcase-let* ((`(,imports ,namespace-name)
+                  (phpinspect-buffer-get-index-context-for-token buffer var))
                  (type-resolver
                   (phpinspect--make-type-resolver
                    (phpinspect--uses-to-types imports)
@@ -590,20 +557,25 @@ DECLARATION must be an object of type `phpinspect-meta'."
                    namespace-name))
                  (typedef (phpinspect-buffer-get-typedef-for-class-token buffer class)))
 
-      (setq indexed
-            (if (phpinspect-const-p (phpinspect-meta-token var))
-                (phpinspect--index-const-from-scope scope)
-              (phpinspect--index-variable-from-scope
-               type-resolver
-               scope
-               (and (phpinspect-comment-p comment-before) comment-before)
-               static)))
 
+      (setq indexed
+            (phpinspect-make-property
+             (phpi-typedef-name typedef)
+             (if (phpinspect-const-p (phpinspect-meta-token var))
+                 (phpinspect--index-const-from-scope scope)
+
+               (phpinspect--index-variable-from-scope
+                type-resolver
+                scope
+                (and (phpinspect-comment-p comment-before) comment-before)
+                static))))
+
+      (phpi-prop-add-definition-token indexed var)
       (phpi-typedef-set-property typedef indexed)
 
       (phpinspect-buffer-set-index-reference-for-token
        buffer (phpinspect-meta-token var)
-      (cons (phpi-typedef-name typedef) indexed)))))
+       (cons (phpi-typedef-name typedef) indexed)))))
 
 (cl-defmethod phpinspect-buffer-update-project-index ((buffer phpinspect-buffer))
   "Update project index using the last parsed token map of this
@@ -613,52 +585,6 @@ none is available `phpinspect-buffer-parse' is called before
 continuing execution."
 
   (phpi-shadow-await-index-synced (phpinspect-buffer-shadow buffer) t))
-
-  ;; ;; Parse buffer if no map is available.
-  ;; (unless (phpinspect-buffer-map buffer)
-  ;;   (phpinspect-buffer-parse buffer))
-
-  ;; (phpinspect--log "Preparing to update project index")
-  ;; ;; Use inhibit-quit to prevent index corruption though partial index
-  ;; ;; application.
-  ;; (let ((inhibit-quit t))
-  ;;   (when (phpinspect-buffer-project buffer)
-  ;;     (let ((map (phpinspect-buffer-map buffer)))
-  ;;       (unless (eq map (phpinspect-buffer--last-indexed-bmap buffer))
-  ;;         (phpinspect--log "Updating project index")
-
-  ;;         ;; Process deleted tokens
-  ;;         (dolist (deletion (phpinspect-buffer--deletions buffer))
-  ;;           (pcase (phpinspect-meta-token deletion)
-  ;;             ((pred phpinspect--can-delete-buffer-index-for-token)
-  ;;              (phpinspect-buffer-delete-index-for-token buffer (phpinspect-meta-token deletion)))
-  ;;             ((pred phpinspect-use-trait-p)
-  ;;              (when-let ((class (seq-find (phpinspect-meta-token-predicate #'phpinspect-class-p)
-  ;;                                          (phpinspect-buffer-tokens-enclosing-point
-  ;;                                           buffer (phpinspect-meta-start deletion))))
-  ;;                         (declaration (phpinspect-meta-find-first-child-matching-token
-  ;;                                       class #'phpinspect-class-declaration-p)))
-  ;;                (phpinspect-buffer--index-class-declaration buffer declaration 'force)))))
-
-  ;;         ;; Process newly parsed tokens
-  ;;         (dolist (addition (phpinspect-buffer--additions buffer))
-  ;;           (pcase (phpinspect-meta-token addition)
-  ;;             ((pred phpinspect-class-declaration-p)
-  ;;              (phpinspect-buffer--index-class-declaration buffer addition))
-  ;;             ((pred phpinspect-function-p)
-  ;;              (phpinspect-buffer--index-function buffer addition))
-  ;;             ((pred phpinspect-use-trait-p)
-  ;;              (phpinspect-buffer--index-trait-use buffer addition))
-  ;;             ((pred phpinspect-this-p)
-  ;;              (phpinspect-buffer--index-this buffer addition))
-  ;;             ((or (pred phpinspect-class-variable-p)
-  ;;                  (pred phpinspect-const-p))
-  ;;              (phpinspect-buffer--index-class-variable buffer addition))))
-
-  ;;         (setf (phpinspect-buffer--additions buffer) nil
-  ;;               (phpinspect-buffer--deletions buffer) nil))
-
-  ;;         (setf (phpinspect-buffer--last-indexed-bmap buffer) map)))))
 
 (defun phpinspect-buffer-parse-map (buffer)
   (phpinspect-buffer-parse buffer)
@@ -832,10 +758,7 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
           (setf
            ;;Register deleted tokens
            (phpi-shadow--deletions shadow)
-           (nconc (phpi-shadow--deletions shadow) (phpinspect-meta-flatten root-meta)))
-
-          (dolist (deletion (phpi-shadow--deletions shadow))
-            (remhash (phpinspect-meta-token deletion) buffer-tokens)))
+           (nconc (phpi-shadow--deletions shadow) (phpinspect-meta-flatten root-meta))))
 
       ;; There is no previous bmap, so there should also not be any previous additions
       (setf (phpi-shadow--additions shadow) (phpinspect-bmap-meta bmap)))
@@ -965,7 +888,9 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
                                        buffer (phpinspect-meta-start deletion))))
                      (declaration (phpinspect-meta-find-first-child-matching-token
                                    class #'phpinspect-class-declaration-p)))
-            (phpinspect-buffer--index-class-declaration buffer declaration 'force))))))
+            (phpinspect-buffer--index-class-declaration buffer declaration 'force))))
+
+       (remhash (phpinspect-meta-token deletion) (phpinspect-buffer--tokens buffer))))
 
     (setf (phpi-shadow--deletions shadow) nil)))
 
