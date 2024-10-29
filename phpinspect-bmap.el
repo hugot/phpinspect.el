@@ -31,7 +31,6 @@
 
 (require 'phpinspect-splayt)
 (require 'phpinspect-meta)
-(require 'phpinspect-changeset)
 (require 'phpinspect-parse-context)
 (require 'phpinspect-util)
 (require 'compat)
@@ -59,7 +58,6 @@ Useful for testing or debugging.")
   (defvar phpinspect-parse-context nil
     "dummy for compilation")
 
-  (declare-function phpinspect-pctx-register-changeset "phpinspect-parse-context" (pctx changeset))
 
   (phpinspect--declare-log-group 'bmap))
 

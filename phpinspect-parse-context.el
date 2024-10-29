@@ -32,7 +32,6 @@
 
 (require 'phpinspect-util)
 (require 'phpinspect-meta)
-(require 'phpinspect-changeset)
 (require 'phpinspect-thread)
 
 (defvar phpinspect-parse-context nil
