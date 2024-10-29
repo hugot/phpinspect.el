@@ -329,7 +329,6 @@ class FlufferUpper
 (load-file (concat phpinspect-test-directory "/test-bmap.el"))
 (load-file (concat phpinspect-test-directory "/test-resolvecontext.el"))
 (load-file (concat phpinspect-test-directory "/test-parser.el"))
-(load-file (concat phpinspect-test-directory "/test-parse-context.el"))
 (load-file (concat phpinspect-test-directory "/test-splayt.el"))
 (load-file (concat phpinspect-test-directory "/test-pipeline.el"))
 (load-file (concat phpinspect-test-directory "/test-meta.el"))

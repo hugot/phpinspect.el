@@ -97,14 +97,7 @@ useless metadata tokens."))
   (inline-quote (length (phpinspect-pctx-whitespace-before ,ctx))))
 
 (defmacro phpinspect-with-parse-context (ctx &rest body)
-  "Set the currently active parce context to CTX and execute body.
-
-If BODY signals an error, `phpinspect-pctx-cancel' is called in
-an attempt to revert all changes made to the metadata tree while
-parsing incrementally.
-
-The error signal is not intercepted and will still need to be
-handled by the code using this macro."
+  "Set the currently active parce context to CTX and execute body."
   (declare (indent 1))
   `(dlet ((phpinspect-parse-context ,ctx))
      (progn ,@body)))
