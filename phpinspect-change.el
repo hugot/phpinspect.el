@@ -94,12 +94,6 @@
         (message "WAT")
         point))))
 
-(defun phpi-change-post-position (change point)
-  (phpi-calculate-point
-   (phpi-change-delta change)
-   (phpi-change-prev-end change)
-   point))
-
 (defun phpi-change-pre-position (change point)
   (if (<= (phpi-change-end change) point)
       (- point (phpi-change-delta change))

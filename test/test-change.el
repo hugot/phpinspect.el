@@ -26,17 +26,6 @@
 
 (require 'phpinspect-change)
 
-(ert-deftest phpinspect-change-post-position ()
-  (let ((change (phpinspect-make-change
-                 :start 1
-                 :end 11
-                 :prev-length 21)))
-    (should (= 11 (phpi-change-post-position change 21)))
-    (should (= 11 (phpi-change-post-position change 15)))
-    (should (= 11 (phpi-change-post-position change 11)))
-    (should (= 10 (phpi-change-post-position change 10)))
-    (should (= 20 (phpi-change-post-position change 31)))))
-
 (ert-deftest phpinspect-change-pre-position ()
   (let ((change (phpinspect-make-change
                  :start 1
