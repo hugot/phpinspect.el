@@ -797,36 +797,6 @@ class TestClass
 	(should (equal '(:root (:comment))
 		           (phpinspect-buffer-parse buffer))))))
 
-;; (ert-deftest phpinspect-buffer-deletion-registration ()
-;;   "Check if buffer accuratly registers token deletions/alterations."
-
-;;   (with-temp-buffer
-;;     (let ((buffer (phpinspect-claim-buffer (current-buffer) (phpinspect--make-dummy-project))))
-
-;;       (insert "<?php aaa bbb ccc")
-
-;;       (should (equal '(:root (:word "aaa") (:word "bbb") (:word "ccc")) (phpinspect-buffer-parse buffer)))
-;;       (should-not (phpinspect-buffer--deletions buffer))
-
-;;       (should (length= (phpinspect-buffer--additions buffer) 4))
-
-;;       (goto-char (- (point-max) 5))
-;;       (insert "a")
-;;       (should (equal '(:root (:word "aaa") (:word "bbab") (:word "ccc")) (phpinspect-buffer-parse buffer)))
-
-;;       (should (length= (phpinspect-buffer--deletions buffer) 2))
-;;       (should (length= (phpinspect-buffer--additions buffer) 6))
-
-;;       (goto-char 6)
-;;       (insert "{")
-;;       (should (equal '(:root (:incomplete-block (:word "aaa") (:word "bbab") (:word "ccc")))
-;;                      (phpinspect-buffer-parse buffer)))
-;;       (should (length= (phpinspect-buffer--deletions buffer) 3))
-;;       (should (length= (phpinspect-buffer--additions buffer) 8))
-
-;;       (should (seq-every-p #'phpinspect-meta-p (phpinspect-buffer--additions buffer)))
-;;       (should (seq-every-p #'phpinspect-meta-p (phpinspect-buffer--deletions buffer))))))
-
 (ert-deftest phpinspect-buffer-parse-class-insertion ()
   (dlet ((phpi-shadow--run-sync t))
     (with-temp-buffer
