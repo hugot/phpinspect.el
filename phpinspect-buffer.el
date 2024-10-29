@@ -595,7 +595,7 @@ continuing execution."
   ;; for a shadow thread, which would be blocked while waiting for the
   ;; autoloader regardless.
   (phpinspect-project-await-autoload (phpinspect-buffer-project buffer))
-  (phpi-shadow-await-index-synced (phpinspect-buffer-shadow buffer)))
+  (phpi-shadow-await-index-synced (phpinspect-buffer-shadow buffer) t))
 
 (defun phpinspect-buffer-parse-map (buffer)
   (phpinspect-buffer-parse buffer)
@@ -705,9 +705,6 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
            (phpinspect-make-buffer :buffer buffer :-project project)))
 
       (phpinspect-make-shadow phpi-buffer)
-
-      ;(message "Shadow: %s" (not (not (phpinspect-buffer-shadow phpi-buffer))))
-
       (setq-local phpinspect-current-buffer phpi-buffer)
 
       (add-hook 'after-change-functions #'phpinspect-after-change-function nil t)
@@ -915,14 +912,35 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
 
     (setf (phpi-shadow--deletions shadow) nil)))
 
+(defun phpinspect-buffer--update-class-variable-fqn-type (buffer variable-meta type)
+  (when-let ((prop (cdr (phpinspect-buffer-get-index-for-token
+                          buffer (phpinspect-meta-token variable-meta))))
+             (base-name (phpinspect--type-base-name-sym type)))
+    (when (eq base-name (phpinspect--type-base-name-sym (phpi-prop-type prop)))
+      (setf (phpi-prop-type prop) type))))
+
+(defun phpinspect-buffer--index-use (buffer token-meta)
+  (let ((tokens
+         (if-let ((namespace (phpinspect-buffer-namespace-at-point
+                              buffer (phpinspect-meta-start token-meta))))
+             (phpinspect-meta-flatten namespace)
+           (hash-table-values (phpinspect-buffer--tokens buffer))))
+        (type (cdr (phpinspect--use-to-type-cons (phpinspect-meta-token token-meta)))))
+
+    (dolist (token tokens)
+      (phpi-progn
+       (pcase (phpinspect-meta-token token)
+         ((pred phpinspect-class-variable-p)
+          (phpinspect-buffer--update-class-variable-fqn-type buffer token type)))))))
+
 (defun phpi-shadow-process-additions (shadow)
   ;; Process newly parsed tokens
   (when-let ((additions (phpi-shadow--additions shadow))
              (buffer (phpi-shadow-origin shadow)))
     (maphash
-     (lambda (_token addition)
+     (lambda (token addition)
        (phpi-progn
-        (pcase (phpinspect-meta-token addition)
+        (pcase token
           ((pred phpinspect-class-declaration-p)
            (phpinspect-buffer--index-class-declaration buffer addition))
           ((pred phpinspect-function-p)
@@ -931,12 +949,14 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
            (phpinspect-buffer--index-trait-use buffer addition))
           ((pred phpinspect-this-p)
            (phpinspect-buffer--index-this buffer addition))
+          ((pred (phpinspect-use-p))
+           (phpinspect-buffer--index-use buffer addition))
           ((or (pred phpinspect-class-variable-p)
                (pred phpinspect-const-p))
            (phpinspect-buffer--index-class-variable buffer addition)))))
-     additions))
+     additions)
 
-    (setf (phpi-shadow--additions shadow) nil))
+    (setf (phpi-shadow--additions shadow) nil)))
 
 (defun phpi-shadow-update-project-index (shadow)
   (let ((change (phpi-shadow--last-change shadow)))

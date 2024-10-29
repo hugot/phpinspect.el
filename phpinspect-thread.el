@@ -105,7 +105,7 @@
        t))))
 
 (defun phpi-await-main-thread-nourished ()
-  (message "Waiting for the main thread to be nourished")
+  (phpinspect--log "Waiting for the main thread to be nourished")
   (when (phpi-main-thread-starving-p)
     (while
         (eq 'yes (phpi-condition-wait
