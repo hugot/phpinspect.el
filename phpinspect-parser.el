@@ -148,11 +148,6 @@ text at point and returns the resulting token."
         ;; Set point-offset-base for more efficient execution of
         ;; `phpinspect-meta-start' and related functions.
         (dlet ((phpinspect-meta--point-offset-base original-point))
-          ;; (while (and token-meta (phpinspect-taint-iterator-token-is-tainted-p taint-iterator token-meta))
-          ;;   (pp taint-iterator)
-          ;;   (message "finding child of %s" (phpinspect-meta-string token-meta))
-          ;;   (setq token-meta (phpinspect-meta-find-child-starting-at token-meta original-point)))
-
           (if (or (not token-meta)
                   (not (phpinspect--token-recyclable-p (phpinspect-meta-token token-meta)))
                   (phpinspect-root-p (phpinspect-meta-token token-meta))
@@ -308,32 +303,16 @@ is able to reuse an already parsed tree."
                            (result
                             ;; Look for an already parsted token at POINT to
                             ;; adopt into new tree.
-                            (or (phpinspect--recycle-token
-                                 context
-                                 change
-                                 start-position
-                                 (setq original-position
-                                       (phpi-change-pre-position change start-position))
-                                 (phpinspect-bmap-token-starting-at previous-bmap original-position)
-                                 tokens-rear
-                                 ,(if delimiter-predicate `(quote ,delimiter-predicate) 'nil)
-                                 continue-condition)
-                                ;; There is no token at POINT exactly. Attempt
-                                ;; to find any other adoptable token after
-                                ;; POINT.
-                                ;; (when-let
-                                ;;     ((token-after (phpinspect-bmap-token-starting-after previous-bmap original-position))
-                                ;;      (start (phpinspect-meta-start token-after))
-                                ;;      ((not (phpi-change-tainted-region-p
-                                ;;             change original-position (+ start (phpinspect-meta-width token-after)))))
-                                ;;      ;;(current-start (+ start-position (- start original-position))))
-                                ;;      (current-start (+ start (- original-position start-position))))
-                                ;;   ;; (message "YAAS: (%d,%d) '%s'" start current-start (buffer-substring current-start (point-max)))
-                                ;;   (phpinspect--recycle-token
-                                ;;    context change current-start start token-after tokens-rear
-                                ;;    ,(if delimiter-predicate `(quote ,delimiter-predicate) 'nil)))
-
-                                ))
+                            (phpinspect--recycle-token
+                             context
+                             change
+                             start-position
+                             (setq original-position
+                                   (phpi-change-pre-position change start-position))
+                             (phpinspect-bmap-token-starting-at previous-bmap original-position)
+                             tokens-rear
+                             ,(if delimiter-predicate `(quote ,delimiter-predicate) 'nil)
+                             continue-condition))
 
                            ;; `phpinspect--recycle-token' will return the symbol
                            ;; 'tainted' when the token that it tried to reuse
@@ -344,7 +323,6 @@ is able to reuse an already parsed tree."
 
                            ;; Re-using tokens was a success, update tokens-rear
                            ((setq tokens-rear result))))
-                      ;;(message "recycled")
 
                       ;; Skip over whitespace after so that we don't do a full
                       ;; run down all of the handlers during the next iteration

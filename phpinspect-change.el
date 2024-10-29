@@ -39,8 +39,6 @@
         (pre-change-length (phpi-change-prev-length change))
         (content (phpi-change-content change)))
 
-    ;;(message "Applying change: %s" content)
-
     (with-current-buffer buffer
       (delete-region start (+ start pre-change-length))
       (goto-char start)
@@ -101,55 +99,15 @@
    (phpi-change-delta change)
    (phpi-change-prev-end change)
    point))
-  ;; (if (> point (phpi-change-end change))
-  ;;     (if (> (- point (phpi-change-prev-end change))
-  ;;            (phpi-change-delta change))
-  ;;         (- point (phpi-change-delta change))
-  ;;       (phpi-change-end change))
-;;   point))
-
-;; (defun phpi-calculate-pre-point (delta end point)
-;;   (message "delta %s, prev-end %s, point %s" delta end point)
-;;   (let ((delta-region (if (< 0 delta)
-;;                           (phpinspect-make-region (- end delta) end)
-;;                         (phpinspect-make-region end (- end delta)))))
-;;     (message "delta region: %s" delta-region)
-    ;; (if (< ( delta-region) point)
-    ;;     (- point delta)
-
-
-    ;; (if (< (phpinspect-region-end delta-region) point)
-    ;;     (- point delta)
-
-
-    ;;         (if (< 0 delta)
-    ;;             (phpinspect-region-start delta-region)
-    ;;           point))
-    ;;     point))))
-
-    ;; (if (> 0 delta)
-    ;;     (if (< (phpinspect-region-end delta-region) point)
-    ;;         (- point delta)
-    ;;       (if (phpinspect-region-overlaps-point delta-region point)
-    ;;           end
-    ;;         point))
-    ;;   (if (< 0 delta)
-    ;;       (if (< (phpinspect-region-end delta-region) point)
-    ;;           (- point delta)
-    ;;         (if (< end point)
-    ;;             end
-    ;;           point))
-    ;;     point))))
 
 (defun phpi-change-pre-position (change point)
-;;  (message "Start %d" point)
   (if (<= (phpi-change-end change) point)
       (- point (phpi-change-delta change))
     (if (and (< 0 (phpi-change-delta change))
              (> (phpi-change-end change) point)
              (<= (phpi-change-prev-end change) point))
-        (progn ;;(message "JAAAA: %s voor %s" (phpi-change-prev-end change) point)
-               (phpi-change-prev-end change))
+        (progn
+          (phpi-change-prev-end change))
       point)))
 
 (defun phpi-change-overlaps-point (change point)
