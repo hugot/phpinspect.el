@@ -122,8 +122,8 @@ serious performance hits. Enable at your own risk (:")
 
       indexed)))
 
-(cl-defmethod phpinspect-project-add-index ((_project phpinspect-project) _index)
-  (cl-assert (not _index))
+(cl-defmethod phpinspect-project-add-index ((_project phpinspect-project) index)
+  (cl-assert (not index))
   (phpinspect--log "phpinspect-project-add-index: ignoring added nil index"))
 
 (cl-defmethod phpinspect-project-set-function
