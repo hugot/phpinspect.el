@@ -1,4 +1,4 @@
-;;; test-shadow.el --- Tests for phpinspect-shadow.el  -*- lexical-binding: t; -*-
+;;; test-change.el --- Tests for phpinspect-change.el  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2024  Hugo Thunnissen
 
@@ -44,7 +44,7 @@
                  :prev-length 21)))
     (should (= 31 (phpi-change-pre-position change 20)))
     (should (= 26 (phpi-change-pre-position change 15)))
-    (should (= 11 (phpi-change-pre-position change 11)))
+    (should (= 22 (phpi-change-pre-position change 11)))
     (should (= 10 (phpi-change-pre-position change 10)))
 
     (should (= 41 (phpi-change-pre-position change 30)))))
@@ -62,5 +62,5 @@
     (should (= 20 (phpi-change-pre-position change 30)))))
 
 
-(provide 'test-shadow)
-;;; test-shadow.el ends here
+(provide 'test-change)
+;;; test-change.el ends here

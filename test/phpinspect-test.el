@@ -336,6 +336,7 @@ class FlufferUpper
 (load-file (concat phpinspect-test-directory "/test-imports.el"))
 (load-file (concat phpinspect-test-directory "/test-suggest.el"))
 (load-file (concat phpinspect-test-directory "/test-completion.el"))
+(load-file (concat phpinspect-test-directory "/test-change.el"))
 (load-file (concat phpinspect-test-directory "/test-token-predicates.el"))
 
 
