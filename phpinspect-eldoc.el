@@ -27,6 +27,7 @@
 (require 'phpinspect-token-predicates)
 (require 'phpinspect-resolve)
 (require 'phpinspect-buffer)
+(require 'phpinspect-thread)
 
 (eval-when-compile
   (phpinspect--declare-log-group 'eldoc))
@@ -283,7 +284,17 @@ also `phpinspect-eldoc-query-execute'.")
 
     (remove nil responses)))
 
-(defun phpinspect-eldoc-function ()
+(defun phpinspect--eldoc-function-sync ()
+  (catch 'phpinspect-interrupted
+    (when-let ((resp (phpinspect-eldoc-query-execute
+                      (phpinspect-make-eldoc-query
+                       :buffer phpinspect-current-buffer
+                       :point (phpinspect--determine-completion-point)))))
+      (mapconcat #'phpinspect-eldoc-string resp "\n"))))
+
+(defvar-local phpinspect--eldoc-thread nil)
+
+(defun phpinspect-eldoc-function (callback)
   "An `eldoc-documentation-function` implementation for PHP files.
 
 Ignores `eldoc-argument-case` and `eldoc-echo-area-use-multiline-p`.
@@ -291,13 +302,12 @@ Ignores `eldoc-argument-case` and `eldoc-echo-area-use-multiline-p`.
 TODO:
  - Respect `eldoc-echo-area-use-multiline-p`
 "
-  (catch 'phpinspect-interrupted
-    (let ((resp (phpinspect-eldoc-query-execute
-                 (phpinspect-make-eldoc-query
-                  :buffer phpinspect-current-buffer
-                  :point (phpinspect--determine-completion-point)))))
-      (when resp
-        (mapconcat #'phpinspect-eldoc-string resp "\n")))))
+  (when phpinspect-current-buffer
+    (phpi-run-threaded "PHPInspect Eldoc"
+      (while-no-input
+        (let ((result (phpinspect--eldoc-function-sync)))
+          (funcall callback result))))
 
+    'async))
 
 (provide 'phpinspect-eldoc)

@@ -319,6 +319,10 @@ before the search is executed."
               (phpinspect-project-get-type-filepath project type 'index-new)))
         result))))
 
+(defun phpinspect-project-await-autoload (project)
+  (when-let ((autoload (phpinspect-project-autoload project)))
+    (phpinspect-autoloader-await-refresh autoload)))
+
 (cl-defmethod phpinspect-project-index-type-file
   ((project phpinspect-project) (type phpinspect--type))
   "Index the file that TYPE is expected to be defined in."

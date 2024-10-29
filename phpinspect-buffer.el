@@ -78,6 +78,10 @@ emacs buffer."
         (phpinspect--cache-get-project-create (phpinspect--get-or-create-global-cache)
                                               (phpinspect-current-project-root)))))
 
+(defun phpi-shadow-kill (shadow)
+  (phpi-thread-kill (phpi-shadow-thread shadow))
+  (kill-buffer (phpi-shadow-buffer shadow)))
+
 (defun phpinspect-buffer-tainted-p (buffer)
   "Whether or not BUFFER's current tree needs updating to incorporate edits."
   (not (phpi-shadow-synced-p (phpinspect-buffer-shadow buffer))))
@@ -187,7 +191,7 @@ tokens that have been deleted from a buffer."
                               (phpinspect-buffer-project buffer)
                               (car var))))
              (if-let ((token-meta (phpinspect-buffer-token-meta buffer token)))
-                 (phpi-typedef-delete-property-token-definition class (phpi-var-name (car var)) token-meta)
+                 (phpi-typedef-delete-property-token-definition class (phpi-var-name (cdr var)) token-meta)
                (phpi-typedef-delete-property class (cdr var))))))
         ((or (phpinspect-this-p token) (phpinspect-attrib-p token))
          (phpinspect-buffer--delete-dynamic-prop-index-reference buffer token))
@@ -237,9 +241,13 @@ tokens that have been deleted from a buffer."
     (phpi-typedef-delete-property-token-definition
      typedef (cadr ref) (phpinspect-meta-token (car (last ref))))))
 
-(cl-defmethod phpinspect-buffer-reset ((buffer phpinspect-buffer))
+(defun phpinspect-buffer-reset (buffer)
   "Clear all metadata stored in BUFFER."
+  (interactive (list phpinspect-current-buffer))
   (phpinspect-buffer--clear-query-cache buffer)
+
+  (phpi-shadow-kill (phpinspect-buffer-shadow buffer))
+  (phpinspect-make-shadow buffer)
 
   (setf (phpinspect-buffer-tree buffer) nil
         (phpinspect-buffer--tokens buffer) nil
@@ -523,7 +531,7 @@ DECLARATION must be an object of type `phpinspect-meta'."
 
 (defun phpinspect-buffer--index-class-variable (buffer var)
   (let ((class (phpinspect-buffer-find-token-ancestor-matching buffer var #'phpinspect-class-p))
-        scope static indexed comment-before)
+        scope static comment-before)
     (if (phpinspect-static-p (phpinspect-meta-token (phpinspect-meta-parent var)))
         ;; Variable is defined as [scope?] static [type?] $variable
         (progn
@@ -558,24 +566,24 @@ DECLARATION must be an object of type `phpinspect-meta'."
                  (typedef (phpinspect-buffer-get-typedef-for-class-token buffer class)))
 
 
-      (setq indexed
-            (phpinspect-make-property
-             (phpi-typedef-name typedef)
-             (if (phpinspect-const-p (phpinspect-meta-token var))
-                 (phpinspect--index-const-from-scope scope)
+      (when-let ((indexed
+                  (phpinspect-make-property
+                   (phpi-typedef-name typedef)
+                   (if (phpinspect-const-p (phpinspect-meta-token var))
+                       (phpinspect--index-const-from-scope scope)
 
-               (phpinspect--index-variable-from-scope
-                type-resolver
-                scope
-                (and (phpinspect-comment-p comment-before) comment-before)
-                static))))
+                     (phpinspect--index-variable-from-scope
+                      type-resolver
+                      scope
+                      (and (phpinspect-comment-p comment-before) comment-before)
+                      static)))))
 
-      (phpi-prop-add-definition-token indexed var)
-      (phpi-typedef-set-property typedef indexed)
+        (phpi-prop-add-definition-token indexed var)
+        (phpi-typedef-set-property typedef indexed)
 
-      (phpinspect-buffer-set-index-reference-for-token
-       buffer (phpinspect-meta-token var)
-       (cons (phpi-typedef-name typedef) indexed)))))
+        (phpinspect-buffer-set-index-reference-for-token
+         buffer (phpinspect-meta-token var)
+         (cons (phpi-typedef-name typedef) indexed))))))
 
 (cl-defmethod phpinspect-buffer-update-project-index ((buffer phpinspect-buffer))
   "Update project index using the last parsed token map of this
@@ -583,8 +591,11 @@ buffer. When `phpinspect-buffer-parse' has been executed before
 and a map is available from the previous parse, this is used. If
 none is available `phpinspect-buffer-parse' is called before
 continuing execution."
-
-  (phpi-shadow-await-index-synced (phpinspect-buffer-shadow buffer) t))
+  ;; Wait until project autoloader is ready, this is more efficient than waiting
+  ;; for a shadow thread, which would be blocked while waiting for the
+  ;; autoloader regardless.
+  (phpinspect-project-await-autoload (phpinspect-buffer-project buffer))
+  (phpi-shadow-await-index-synced (phpinspect-buffer-shadow buffer)))
 
 (defun phpinspect-buffer-parse-map (buffer)
   (phpinspect-buffer-parse buffer)
@@ -640,7 +651,7 @@ use."
                               (phpinspect-meta-end meta)))))
 
 (defun phpinspect-buffer-root-meta (buffer)
-  (phpi-shadow-await-synced (phpinspect-buffer-shadow buffer) t)
+  (phpi-shadow-await-synced (phpinspect-buffer-shadow buffer))
   (phpinspect-bmap-root-meta (phpinspect-buffer-map buffer)))
 
 (defun phpinspect-display-buffer-tree ()
@@ -677,10 +688,7 @@ use."
 
 (defun phpinspect-buffer-kill ()
   (when phpinspect-current-buffer
-    (kill-buffer
-     (phpinspect-buffer-shadow
-      (phpinspect-buffer-shadow
-       phpinspect-current-buffer)))))
+    (phpi-shadow-kill (phpinspect-buffer-shadow phpinspect-current-buffer))))
 
 (defun phpinspect-claim-buffer (buffer &optional project)
   "Setup an instance of `phpinspect-buffer' for BUFFER.
@@ -693,15 +701,19 @@ and adds `phpinspect-after-change-function' to buffer-local
 BUFFER must be a normal emacs buffer.
 If provided, PROJECT must be an instance of `phpinspect-project'."
   (with-current-buffer buffer
-    (setq-local phpinspect-current-buffer
-		        (phpinspect-make-buffer :buffer buffer :-project project))
-    (setf (phpinspect-buffer-shadow phpinspect-current-buffer)
-          (phpinspect-make-shadow phpinspect-current-buffer))
+    (let ((phpi-buffer
+           (phpinspect-make-buffer :buffer buffer :-project project)))
 
-    (add-hook 'after-change-functions #'phpinspect-after-change-function nil t)
-    (add-hook 'kill-buffer-hook #'phpinspect-buffer-kill)
+      (phpinspect-make-shadow phpi-buffer)
 
-    phpinspect-current-buffer))
+      ;(message "Shadow: %s" (not (not (phpinspect-buffer-shadow phpi-buffer))))
+
+      (setq-local phpinspect-current-buffer phpi-buffer)
+
+      (add-hook 'after-change-functions #'phpinspect-after-change-function nil t)
+      (add-hook 'kill-buffer-hook #'phpinspect-buffer-kill)
+
+      phpinspect-current-buffer)))
 
 
 ;;;;;;;;;; SHADOWING ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -867,25 +879,39 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
   (phpi-shadow-await-predicate shadow #'phpi-shadow-synced-p allow-interrupt))
 
 (defun phpi-shadow-await-index-synced (shadow &optional allow-interrupt)
-   (phpi-shadow-await-predicate shadow #'phpi-shadow-index-synced-p allow-interrupt))
+  (phpi-shadow-await-predicate shadow #'phpi-shadow-index-synced-p allow-interrupt))
+
+(defun phpi--handle-use-trait-deletion (buffer deletion)
+  (when-let ((class (seq-find (phpinspect-meta-token-predicate #'phpinspect-class-p)
+                              (phpinspect-buffer-tokens-enclosing-point
+                               buffer (phpinspect-meta-start deletion))))
+             (declaration (phpinspect-meta-find-first-child-matching-token
+                           class #'phpinspect-class-declaration-p)))
+    (phpinspect-buffer--index-class-declaration buffer declaration 'force)))
 
 (defun phpi-shadow-process-deletions (shadow)
-  (let ((buffer (phpi-shadow-origin shadow)))
+  (let ((buffer (phpi-shadow-origin shadow))
+        (additions (phpi-shadow--additions shadow)))
     ;; Process deleted tokens
     (dolist (deletion (phpi-shadow--deletions shadow))
       (phpi-progn
-       (pcase (phpinspect-meta-token deletion)
-         ((pred phpinspect--can-delete-buffer-index-for-token)
-          (phpinspect-buffer-delete-index-for-token buffer (phpinspect-meta-token deletion)))
-         ((pred phpinspect-use-trait-p)
-          (when-let ((class (seq-find (phpinspect-meta-token-predicate #'phpinspect-class-p)
-                                      (phpinspect-buffer-tokens-enclosing-point
-                                       buffer (phpinspect-meta-start deletion))))
-                     (declaration (phpinspect-meta-find-first-child-matching-token
-                                   class #'phpinspect-class-declaration-p)))
-            (phpinspect-buffer--index-class-declaration buffer declaration 'force))))
+       (let ((token (phpinspect-meta-token deletion)))
+         (if (gethash token additions)
+             ;; Token was deleted before it could be indexed, remove and
+             ;; continue
+             (remhash token additions)
 
-       (remhash (phpinspect-meta-token deletion) (phpinspect-buffer--tokens buffer))))
+           (progn
+             ;; Token was indexed but has been deleted, update index accordingly
+             (pcase (phpinspect-meta-token deletion)
+               ((pred phpinspect--can-delete-buffer-index-for-token)
+                (phpinspect-buffer-delete-index-for-token
+                 buffer (phpinspect-meta-token deletion)))
+
+               ((pred phpinspect-use-trait-p)
+                (phpi--handle-use-trait-deletion buffer deletion)))
+
+             (remhash (phpinspect-meta-token deletion) (phpinspect-buffer--tokens buffer)))))))
 
     (setf (phpi-shadow--deletions shadow) nil)))
 
@@ -934,9 +960,13 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
            (phpi-shadow--indexed-change shadow))))
 
 (defun phpi-shadow-make-job-queue (shadow)
-  (phpi-start-job-queue  (format " **phpinspect-shadow-thread**<%d>" (phpi-shadow-id shadow))
-    (lambda (job)
-      (phpi-shadow--handle-job shadow job))))
+  ;; Make sure that the thread uses shadow buffer as its current buffer. This
+  ;; prevents the user-edited buffer from becoming unkillable (buffers with
+  ;; active threads cannot be killed).
+  (with-current-buffer (phpi-shadow-buffer shadow)
+    (phpi-start-job-queue  (format " **phpinspect-shadow-thread**<%d>" (phpi-shadow-id shadow))
+      (lambda (job)
+        (phpi-shadow--handle-job shadow job)))))
 
 (defun phpinspect-make-shadow (origin)
   (cl-assert (phpinspect-buffer-p origin))
@@ -947,6 +977,8 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
                   :buffer (generate-new-buffer
                            (format " **phpinspect-shadow**<%d>" id))
                   :id id)))
+
+    (setf (phpinspect-buffer-shadow origin) shadow)
 
     ;; Copy buffer contents
     (with-current-buffer (phpi-shadow-buffer shadow)

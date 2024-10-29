@@ -45,10 +45,12 @@
 	      :type phpinspect--variable))
 
 (defun phpinspect-make-property (origin-type definition)
-  (phpinspect-make-property-generated
-   :name (phpinspect-intern-name (phpinspect--variable-name definition))
-   :origin-type origin-type
-   :definition definition))
+  ;; A property cannot have a nil name.
+  (when (phpinspect--variable-name definition)
+    (phpinspect-make-property-generated
+     :name (phpinspect-intern-name (phpinspect--variable-name definition))
+     :origin-type origin-type
+     :definition definition)))
 
 (defun phpi-prop-delete-definition-token (prop token)
   (setf (phpi-prop-definition-tokens prop)

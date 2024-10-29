@@ -105,7 +105,7 @@ class Thing
                      (setq-local phpinspect-current-buffer
                                  (phpinspect-claim-buffer (current-buffer) project))
                      (phpinspect-buffer-parse phpinspect-current-buffer)
-                     (phpinspect-eldoc-function))))))
+                     (phpinspect--eldoc-function-sync))))))
 
 (ert-deftest phpinspect-eldoc-function-for-static-method ()
   (phpinspect-purge-cache)
@@ -131,4 +131,4 @@ class Thing
                      (insert php-code)
                      (setq-local phpinspect-current-buffer
                                  (phpinspect-claim-buffer (current-buffer)))
-                     (phpinspect-eldoc-function))))))
+                     (phpinspect--eldoc-function-sync))))))

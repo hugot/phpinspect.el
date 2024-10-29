@@ -473,19 +473,20 @@ FILE-NAME does not contain any wildcards, instead of nil."
       (phpinspect--log "Number of autoload strategies in batch: %s" (length batch))
       (phpinspect-pipeline-emit-all batch))))
 
-
-(cl-defmethod phpinspect-autoloader-resolve ((autoloader phpinspect-autoloader)
-                                             (type-name (head phpinspect-name)))
-  ;; Wait for pending refresh if not running in main thread.
-  (unless (eq main-thread (current-thread))
-    (when (and (phpinspect-autoloader-refresh-thread autoloader)
-               (thread-live-p (phpinspect-autoloader-refresh-thread autoloader)))
+(defun phpinspect-autoloader-await-refresh (autoloader)
+  (when-let ((refresh-thread (phpinspect-autoloader-refresh-thread autoloader))
+             ((thread-live-p refresh-thread)))
+    (unless (eq main-thread (current-thread))
       (phpinspect--log
        "Pausing thread %s to await autoload refresh completion"
        (thread-name (current-thread)))
-      (thread-join (phpinspect-autoloader-refresh-thread autoloader))
+      (thread-join refresh-thread)
       (phpinspect--log "Autoload refresh completed, continuing waiting thread %s"
-                       (thread-name (current-thread)))))
+                       (thread-name (current-thread))))))
+
+(cl-defmethod phpinspect-autoloader-resolve ((autoloader phpinspect-autoloader)
+                                             (type-name (head phpinspect-name)))
+  (phpinspect-autoloader-await-refresh autoloader)
 
   (or (gethash type-name (phpinspect-autoloader-own-types autoloader))
       (gethash type-name (phpinspect-autoloader-types autoloader))))

@@ -513,6 +513,62 @@ public $banana; const CONSTANT = 0;
                                     (phpinspect--make-type :name "\\TestClass"))
                                    "banana")))))))
 
+(ert-deftest phpinspect-buffer-index-class-variable-incrementally ()
+    (with-temp-buffer
+    (let ((buffer (phpinspect-claim-buffer (current-buffer) (phpinspect--make-dummy-project))))
+      (insert "<?php class TestClass {
+public array $banana;
+}")
+
+      (phpinspect-buffer-update-project-index buffer)
+
+      (should (phpinspect--type= (phpinspect--make-type :name "\\array")
+                                 (phpi-var-type
+                                  (phpi-typedef-get-property
+                                   (phpinspect-project-get-typedef
+                                    (phpinspect-buffer-project buffer)
+                                    (phpinspect--make-type :name "\\TestClass"))
+                                   "banana"))))
+
+      (goto-char 45)
+      (insert "ra")
+      (insert "ma")
+      (phpinspect-buffer-parse buffer)
+      (insert "ma")
+      (phpinspect-buffer-parse buffer)
+
+      (phpinspect-buffer-update-project-index buffer)
+      (should-not (phpi-typedef-get-property
+                   (phpinspect-project-get-typedef
+                    (phpinspect-buffer-project buffer)
+                    (phpinspect--make-type :name "\\TestClass"))
+                   "banana"))
+
+      (should-not (phpi-typedef-get-property
+                   (phpinspect-project-get-typedef
+                    (phpinspect-buffer-project buffer)
+                    (phpinspect--make-type :name "\\TestClass"))
+                   "bananara"))
+
+      (should-not (phpi-typedef-get-property
+                   (phpinspect-project-get-typedef
+                    (phpinspect-buffer-project buffer)
+                    (phpinspect--make-type :name "\\TestClass"))
+                   "bananarama"))
+
+      (should (= 1 (length (phpi-typedef-get-properties
+                        (phpinspect-project-get-typedef
+                                    (phpinspect-buffer-project buffer)
+                                    (phpinspect--make-type :name "\\TestClass"))))))
+
+      (should (phpinspect--type= (phpinspect--make-type :name "\\array")
+                                 (phpi-var-type
+                                  (phpi-typedef-get-property
+                                   (phpinspect-project-get-typedef
+                                    (phpinspect-buffer-project buffer)
+                                    (phpinspect--make-type :name "\\TestClass"))
+                                   "bananaramama")))))))
+
 (ert-deftest phpinspect-buffer-index-typehinted-class-variables ()
   (with-temp-buffer
     (let ((buffer (phpinspect-claim-buffer

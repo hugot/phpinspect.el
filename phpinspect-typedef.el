@@ -437,8 +437,9 @@ them, which are then incorporated into DEF's properties."
       (setf (phpi-typedef-initial-index def) t)
 
       (let-alist index
-	(dolist (var (append .variables .constants .static-variables))
-	  (phpi-pcol-add pcol (phpinspect-make-property home-type var))))
+	    (dolist (var (append .variables .constants .static-variables))
+          (when-let ((prop (phpinspect-make-property home-type var)))
+	        (phpi-pcol-add pcol prop))))
 
       (phpi-typedef-update-extensions
        def `(,@(alist-get 'implements index)
@@ -462,8 +463,9 @@ them, which are then incorporated into DEF's properties."
 
 (cl-defmethod phpi-typedef-set-property ((def phpinspect-typedef)
                                          (var phpinspect--variable))
-  (phpi-typedef-set-property
-   def (phpinspect-make-property (phpi-typedef-name def) var)))
+  (when-let ((prop (phpinspect-make-property (phpi-typedef-name def) var)))
+
+    (phpi-typedef-set-property def prop)))
 
 (cl-defmethod phpi-typedef-delete-property ((def phpinspect-typedef)
 					    (name (head phpinspect-name))
@@ -487,11 +489,17 @@ them, which are then incorporated into DEF's properties."
 
 (cl-defmethod phpi-typedef-delete-property-token-definition
   ((def phpinspect-typedef) (prop-name string) token-meta)
+  (phpi-typedef-delete-property-token-definition
+   def (phpinspect-intern-name prop-name) token-meta))
+
+(cl-defmethod phpi-typedef-delete-property-token-definition
+  ((def phpinspect-typedef) (prop-name (head phpinspect-name)) token-meta)
   (when-let ((prop (phpi-typedef-get-property def prop-name)))
     (phpi-prop-delete-definition-token prop token-meta)
 
     (unless (phpi-prop-definition-tokens prop)
       (phpi-typedef-delete-property def prop))))
+
 
 (cl-defmethod phpi-typedef-get-properties ((def phpinspect-typedef))
   (seq-filter #'phpi-prop-vanilla-p
@@ -507,8 +515,13 @@ them, which are then incorporated into DEF's properties."
 
 (cl-defmethod phpi-typedef-get-property
   ((def phpinspect-typedef) (prop-name string))
+  (phpi-typedef-get-property def (phpinspect-intern-name prop-name)))
+
+(cl-defmethod phpi-typedef-get-property
+  ((def phpinspect-typedef) (prop-name (head phpinspect-name)))
   (phpi-pcol-get-active-property
-   (phpi-typedef-properties def) (phpinspect-intern-name prop-name)))
+   (phpi-typedef-properties def) prop-name))
+
 
 (defun phpi-typedef-get-dependencies (def)
   "Gets types that DEF directly depends on.

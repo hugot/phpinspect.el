@@ -144,8 +144,7 @@
   (add-hook 'completion-at-point-functions #'phpinspect-complete-at-point nil 'local)
 
 
-  (set (make-local-variable 'eldoc-documentation-function)
-       #'phpinspect-eldoc-function)
+  (add-to-list 'eldoc-documentation-functions #'phpinspect-eldoc-function)
 
   (make-local-variable 'eldoc-message-commands)
   (eldoc-add-command 'c-electric-paren)

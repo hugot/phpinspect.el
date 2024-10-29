@@ -71,7 +71,8 @@
 (defvar phpinspect--main-thread-starving (phpi-make-condition 'no))
 
 (defun phpi-thread-kill (thread)
-  (thread-signal thread 'phpinspect-kill-thread nil))
+  (when (thread-live-p thread)
+    (thread-signal thread 'phpinspect-kill-thread nil)))
 
 (defmacro phpi-run-threaded (thread-name &rest body)
   (declare (indent 1))
@@ -79,7 +80,8 @@
   `(make-thread
     (lambda ()
       (condition-case ,err-sym
-          (progn ,@body)
+          (let ((inhibit-quit t))
+            (progn ,@body))
         (phpinspect-kill-thread)
         (error
          (phpinspect-message
@@ -153,7 +155,8 @@ If current thread is the main thread, this function does nothing."
 
     (setf (phpi-job-queue-thread queue)
           (phpi-run-threaded (format "(job queue) %s" name)
-            (let ((ended nil))
+            (let ((ended nil)
+                  (inhibit-quit t))
               (catch 'phpi--break
                 (while t
                   (if-let ((job (phpinspect-queue-dequeue queue)))
