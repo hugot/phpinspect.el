@@ -1,0 +1,50 @@
+;;; test-buffer-indexation.el --- Tests for buffer indexation  -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2024  Hugo Thunnissen
+
+;; Author: Hugo Thunnissen <devel@hugot.nl>
+;; Keywords:
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;;
+
+;;; Code:
+
+(require 'phpinspect-buffer)
+(require 'phpinspect-test-env
+         (expand-file-name "phpinspect-test-env.el"
+                           (file-name-directory (macroexp-file-name))))
+
+(ert-deftest phpinspect-index-incomplete-class-const ()
+  "This is a functional test, to confirm that indexation is executed
+without errors being thrown."
+  (with-temp-buffer
+    (let ((buffer (phpinspect-claim-buffer (current-buffer) (phpinspect--make-dummy-project))))
+      (insert "class C { private ?\\DateTime $d; public function __construct() {}")
+      (phpinspect-buffer-update-project-index buffer)
+
+      (goto-char 10)
+      (insert " const ")
+
+      (message (buffer-string))
+      (phpinspect-buffer-update-project-index buffer)
+      (insert "a")
+      (phpinspect-buffer-update-project-index buffer))))
+
+
+(provide 'test-buffer-indexation)
+;;; test-buffer-indexation.el ends here

@@ -191,10 +191,11 @@ function (think \"new\" statements, return types etc.)."
      (when (listp ,list) (cadr ,list)))))
 
 (defun phpinspect--index-const-from-scope (scope)
-  (phpinspect--make-variable
-   :scope `(,(car scope))
-   :mutability `(,(caadr scope))
-   :name (phpinspect--safe-cadr (phpinspect--safe-cadr (phpinspect--safe-cadr scope)))))
+  (let ((const-block (cadr scope)))
+    (phpinspect--make-variable
+     :scope `(,(car scope))
+     :mutability `(,(car const-block))
+     :name (cadr (seq-find #'phpinspect-word-p (cdr const-block))))))
 
 (defun phpinspect--var-annotations-from-token (token)
   (seq-filter #'phpinspect-var-annotation-p token))

@@ -277,8 +277,8 @@ NAMESPACE may be nil, or a string with a namespace FQN."
         (concat self "<" (phpinspect--format-type-name (phpinspect--type-format-display-name type)) ">")
       self)))
 
-(cl-defmethod phpinspect--display-format-type-name (type)
-  (cl-assert (not type))
+(cl-defmethod phpinspect--display-format-type-name (_type)
+  (cl-assert (not _type))
 
   (phpinspect--display-format-type-name "unknown-type"))
 
