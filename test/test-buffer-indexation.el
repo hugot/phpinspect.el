@@ -40,7 +40,6 @@ without errors being thrown."
       (goto-char 10)
       (insert " const ")
 
-      (message (buffer-string))
       (phpinspect-buffer-update-project-index buffer)
       (insert "a")
       (phpinspect-buffer-update-project-index buffer))))
