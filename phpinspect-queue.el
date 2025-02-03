@@ -60,13 +60,15 @@
    (progn
      (phpinspect-make-queue-generated :subscription ,subscription))))
 
-(cl-defmethod phpinspect-queue-first ((queue phpinspect-queue))
-  (phpinspect-queue--first queue))
+(define-inline phpinspect-queue-first (queue)
+  (inline-quote (phpinspect-queue--first ,queue)))
 
-(cl-defmethod phpinspect-queue-last ((queue phpinspect-queue))
-  (or (phpinspect-queue--last queue) (phpinspect-queue--first queue)))
+(define-inline phpinspect-queue-last (queue)
+  (inline-letevals (queue)
+    (inline-quote
+     (or (phpinspect-queue--last ,queue) (phpinspect-queue--first ,queue)))))
 
-(cl-defmethod phpinspect-queue-enqueue ((queue phpinspect-queue) value &optional no-notify)
+(defun phpinspect-queue-enqueue (queue value &optional no-notify)
   "Add VALUE to the end of the queue that ITEM is part of."
   (let ((last (phpinspect-queue-last queue))
         (new-item (phpinspect-make-queue-item :value value)))
@@ -79,7 +81,7 @@
   (when (and (not no-notify) (phpinspect-queue-subscription queue))
     (funcall (phpinspect-queue-subscription queue))))
 
-(cl-defmethod phpinspect-queue-dequeue ((queue phpinspect-queue))
+(defun phpinspect-queue-dequeue (queue)
   "Remove the value at the front of the queue that ITEM is part of and return it."
   (let* ((first (phpinspect-queue-first queue))
          next value)
@@ -111,18 +113,15 @@ BODY can be any form."
            ,@body
            (setq ,item-sym (phpinspect-queue-item-next ,item-sym)))))))
 
-(cl-defmethod phpinspect-queue-find
-  ((queue phpinspect-queue) value comparison-func)
+(defun phpinspect-queue-find (queue value comparison-func)
   "Find VALUE in the queue that ITEM is part of using COMPARISON-FUNC."
   (catch 'found
     (phpinspect-doqueue (current-value queue)
       (when (funcall comparison-func current-value value)
         (throw 'found current-value)))))
 
-(cl-defmethod phpinspect-queue-enqueue-noduplicate
-  ((queue phpinspect-queue) value comparison-func)
-
-  (when (not (phpinspect-queue-find queue value comparison-func))
+(defun phpinspect-queue-enqueue-noduplicate (queue value comparison-func)
+  (unless (phpinspect-queue-find queue value comparison-func)
     (phpinspect-queue-enqueue queue value)))
 
 (provide 'phpinspect-queue)
