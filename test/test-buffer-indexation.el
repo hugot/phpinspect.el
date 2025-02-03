@@ -44,6 +44,13 @@ without errors being thrown."
       (insert "a")
       (phpinspect-buffer-update-project-index buffer))))
 
+(ert-deftest phpinspect-index-anonymous-class-return ()
+  "Confirm that anonymous classes can be parsed/indexed without errors.
+Does not test any related functionalities."
+  (with-temp-buffer
+    (let ((buffer (phpinspect-claim-buffer (current-buffer) (phpinspect--make-dummy-project))))
+      (insert "return new class() { private ?\\DateTime $d; public function __construct() {}")
+      (phpinspect-buffer-update-project-index buffer))))
 
 (provide 'test-buffer-indexation)
 ;;; test-buffer-indexation.el ends here

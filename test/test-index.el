@@ -416,6 +416,12 @@ public function doStuff()
           (should (phpi-method-return-type method))
           (should (phpinspect--type= type (phpi-method-return-type method))))))))
 
+(ert-deftest phpinspect-index-skip-anonymous-class ()
+  (should-not
+   (seq-filter
+    #'cdr
+    (cdr (phpinspect--index-tokens (phpinspect-parse-string "return new class() { public array $foo; };"))))))
+
 (ert-deftest phpinspect-index-nested-functions ()
   (with-temp-buffer
     (let* ((code "<php

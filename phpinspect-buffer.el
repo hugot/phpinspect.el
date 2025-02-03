@@ -429,27 +429,25 @@ DECLARATION must be an object of type `phpinspect-meta'."
     (unless (phpinspect-comment-p comment-before)
       (setq comment-before nil))
 
-    (pcase-let* ((`(,imports ,namespace-name)
-                  (phpinspect-buffer-get-index-context-for-token buffer class))
-                 (type-resolver (phpinspect--make-type-resolver
-                                 (phpinspect--uses-to-types imports)
-                                 (phpinspect-meta-token class)
-                                 namespace-name))
-                 (typedef (phpinspect-buffer-get-typedef-for-class-token buffer class))
-                 (indexed (phpinspect--index-function-from-scope
-                           type-resolver scope comment-before)))
+    (when-let ((typedef (phpinspect-buffer-get-typedef-for-class-token buffer class)))
+      (pcase-let* ((`(,imports ,namespace-name)
+                    (phpinspect-buffer-get-index-context-for-token buffer class))
+                   (type-resolver (phpinspect--make-type-resolver
+                                   (phpinspect--uses-to-types imports)
+                                   (phpinspect-meta-token class)
+                                   namespace-name))
+                   (indexed (phpinspect--index-function-from-scope
+                             type-resolver scope comment-before)))
 
-      (unless typedef (error "Unable to find typedef for class %s" (phpinspect-meta-string class)))
+        ;; Add function to class
+        (unless (phpinspect--function-anonymous-p indexed)
+          (if static
+              (phpi-typedef-set-static-method typedef indexed)
+            (phpi-typedef-set-method typedef indexed)))
 
-      ;; Add function to class
-      (unless (phpinspect--function-anonymous-p indexed)
-        (if static
-            (phpi-typedef-set-static-method typedef indexed)
-          (phpi-typedef-set-method typedef indexed)))
-
-      (phpinspect-buffer-set-index-reference-for-token
-       buffer (phpinspect-meta-token func)
-       (cons (phpi-typedef-name typedef) indexed)))))
+        (phpinspect-buffer-set-index-reference-for-token
+         buffer (phpinspect-meta-token func)
+         (cons (phpi-typedef-name typedef) indexed))))))
 
 (defun phpinspect-buffer--index-function (buffer func)
   (if-let ((class (phpinspect-buffer-find-token-ancestor-matching buffer func #'phpinspect-class-p)))
@@ -562,11 +560,10 @@ DECLARATION must be an object of type `phpinspect-meta'."
                   (phpinspect--make-type-resolver
                    (phpinspect--uses-to-types imports)
                    (phpinspect-meta-token class)
-                   namespace-name))
-                 (typedef (phpinspect-buffer-get-typedef-for-class-token buffer class)))
+                   namespace-name)))
 
-
-      (when-let ((indexed
+      (when-let ((typedef (phpinspect-buffer-get-typedef-for-class-token buffer class))
+                 (indexed
                   (phpinspect-make-property
                    (phpi-typedef-name typedef)
                    (if (phpinspect-const-p (phpinspect-meta-token var))

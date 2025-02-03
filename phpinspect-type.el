@@ -406,7 +406,15 @@ mutability of the variable")
     (cadr subtoken)))
 
 (defun phpinspect--index-class-declaration (decl type-resolver parent)
-  ;; Find out what the class extends or implements
+  "Parse DECL into semantically categorized types, resolved  using TYPE-RESOLVER.
+
+PARENT is expected to be the class token that DECL is located in.
+
+This function returns a list of 4 values which are in this order:
+- the class name (as a resolved type)
+- a list of types that the class extends (classes or interfaces)
+- a list of types that the class implements (interfaces)
+- A list of class names as encountered in the declaration token (used types)"
   (let (encountered-extends encountered-implements class-name
                             extends implements used-types)
     (dolist (word decl)

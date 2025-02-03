@@ -327,6 +327,8 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
                   (if static static-methods methods)))))
     (list static-methods methods)))
 
+(defvar phpinspect--anon-class-counter 0)
+
 (defun phpinspect--index-class (imports type-resolver location-resolver class &optional doc-block)
   "Create an alist with relevant attributes of a parsed class."
   (phpinspect--log "INDEXING CLASS")
@@ -354,6 +356,8 @@ SCOPE should be a scope token (`phpinspect-scope-p')."
     (pcase-setq `(,class-name ,extends ,implements ,used-types)
                 (phpinspect--index-class-declaration (cadr class) type-resolver class))
 
+    (unless class-name
+      (throw 'phpinspect--unnamed-class nil))
 
     (dolist (token (caddr class))
       (cond ((phpinspect-scope-p token)
@@ -493,10 +497,11 @@ NAMESPACE will be assumed the root namespace if not provided"
       (cond ((phpinspect-doc-block-p token)
              (setq comment-before token))
             ((phpinspect-class-p token)
-             (push (phpinspect--index-class
-                    imports (funcall type-resolver-factory imports token namespace)
-                    location-resolver token comment-before)
-                   indexed)
+             (when-let ((class (catch 'phpinspect--unnamed-class
+                                 (phpinspect--index-class
+                                  imports (funcall type-resolver-factory imports token namespace)
+                                  location-resolver token comment-before))))
+               (push class indexed))
              (setq comment-before nil))))
     indexed))
 
