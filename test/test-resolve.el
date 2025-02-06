@@ -193,6 +193,7 @@
                                    result))))))
 
 (ert-deftest phpinspect-resolve-type-from-context-static-method ()
+  (phpinspect-purge-cache)
   (with-temp-buffer
     (insert "
 class Thing
@@ -215,7 +216,6 @@ class Thing
          (project (phpinspect--make-dummy-project))
          (context (phpinspect-get-resolvecontext project bmap (point))))
 
-    (phpinspect-purge-cache)
     (phpinspect-project-add-index project index)
 
     (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
@@ -225,6 +225,8 @@ class Thing
                                  context)))))))
 
 (ert-deftest phpinspect-resolve-type-from-context-static-method-with-preceding-words ()
+      (phpinspect-purge-cache)
+
   (with-temp-buffer
     (insert "
 class Thing
@@ -246,7 +248,6 @@ class Thing
            (phpinspect-eldoc-word-width 100)
            (project (phpinspect--make-dummy-project))
            (context (phpinspect-get-resolvecontext project bmap (point))))
-      (phpinspect-purge-cache)
       (phpinspect-project-add-index project index)
 
       (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")

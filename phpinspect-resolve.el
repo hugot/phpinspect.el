@@ -257,42 +257,36 @@ value/type of ->bar must be derived from the type of $foo. So
                      (progn
                        (pop statement)
                        (setq type-before
-                             (or
                               (phpinspect-get-cached-project-typedef-method-type
                                resolvecontext
                                (funcall type-resolver type-before)
-                               (cadr attribute-word))
-                              type-before)))
+                               (cadr attribute-word))))
                    (setq type-before
-                         (or
-                          (phpinspect-get-cached-project-typedef-variable-type
-                           resolvecontext
-                           (funcall type-resolver type-before)
-                           (cadr attribute-word))
-                          type-before))))))
+                         (phpinspect-get-cached-project-typedef-variable-type
+                          resolvecontext
+                          (funcall type-resolver type-before)
+                          (cadr attribute-word)))))))
             ((phpinspect-static-attrib-p current-token)
              (let ((attribute-word (cadr current-token)))
-               (phpinspect--log "Found attribute word: %s" attribute-word)
-               (phpinspect--log "checking if next token is a list. Token: %s"
-                                (car statement))
                (when (phpinspect-word-p attribute-word)
                  (if (phpinspect-list-p (car statement))
                      (progn
                        (pop statement)
                        (setq type-before
-                             (or
                               (phpinspect-get-cached-project-typedef-static-method-type
                                resolvecontext
                                (funcall type-resolver type-before)
-                               (cadr attribute-word))
-                              type-before)))))))
+                               (cadr attribute-word))))))))
+            ((phpinspect-comment-p current-token))
             ((and type-before (phpinspect-array-p current-token))
              (setq type-before
-                   (or (phpinspect--type-contains type-before)
-                       type-before)))))
+                   (phpinspect--type-contains type-before)))
+            ((t (setq type-before nil)))))
     (phpinspect--log "Found derived type: %s" type-before)
     ;; Make sure to always return a FQN
-    (funcall type-resolver type-before)))
+    (if type-before
+        (funcall type-resolver type-before)
+      phpinspect--unknown-type)))
 
 (defun phpinspect-get-variable-type-in-block
     (resolvecontext variable-name php-block type-resolver &optional function-arg-list)
@@ -541,7 +535,6 @@ value/type."
                 type-resolver function-arg-list))
              (phpinspect--get-variable-type-in-block
               resolvecontext (cadar expression) php-block assignments type-resolver function-arg-list)))))
-
 
 (defun phpinspect-resolve-type-from-context (resolvecontext &optional type-resolver assume-derived)
   "Resolve the type that RESOLVECONTEXT's subject evaluates to.

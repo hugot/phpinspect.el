@@ -52,5 +52,82 @@ Does not test any related functionalities."
       (insert "return new class() { private ?\\DateTime $d; public function __construct() {}")
       (phpinspect-buffer-update-project-index buffer))))
 
+(ert-deftest phpinspect-index-after-fix-imports-deleted-use ()
+  (with-temp-buffer
+    (let ((buffer (phpinspect-claim-buffer
+                   (current-buffer) (phpinspect--make-dummy-project))))
+      (insert "<?php
+
+namespace Tests\\Unit;
+
+use App\\CIS\\Reports\\Functions\\ReferringItems;
+use App\\CIS\\Reports\\ReportState;
+use App\\CIS\\Reports\\TwigBuilder;
+use Database\\Seeders\\TreeSeeder;
+use League\\Tactician\\CommandBus;
+use Tests\\TestCase;
+
+class ReportTest extends TestCase
+{
+    private ReportState $reportState;
+    private TreeSeeder $treeSeeder;
+
+    private $foo;
+
+    public function setUp(): void
+    {
+        $this->bus = resolve(CommandBus::class);
+    }
+}")
+
+      (phpinspect-buffer-update-project-index buffer)
+
+      (phpinspect-fix-imports)
+      (phpinspect-buffer-update-project-index buffer))))
+
+(ert-deftest phpinspect-index-this ()
+  (with-temp-buffer
+    (let ((buffer (phpinspect-claim-buffer
+                   (current-buffer) (phpinspect--make-dummy-project))))
+
+      (insert "<?php
+
+namespace Z;
+
+class A
+{
+    private Barry $barry;
+
+    static function makeB(): \\B
+    {
+    }
+
+    function nananana()
+    {
+        $this->t = self::makeB();
+        $this->harry = $this->barry->getHarry();
+    }
+}")
+      (phpinspect-buffer-update-project-index buffer)
+
+      (let ((typedef (phpinspect-project-get-typedef
+                      (phpinspect-buffer-project buffer)
+                      (phpinspect--make-type :name "\\Z\\A")))
+            property)
+
+        (should typedef)
+        (should (setq property (phpi-typedef-get-property typedef "t")))
+
+        (should (phpinspect--type= (phpinspect--make-type :name "\\B")
+                                   (phpi-prop-type property)))
+
+        (should (setq property (phpi-typedef-get-property typedef "harry")))
+
+        (should (phpinspect--type= phpinspect--unknown-type (phpi-prop-type property)))))))
+
+
+
+
+
 (provide 'test-buffer-indexation)
 ;;; test-buffer-indexation.el ends here
