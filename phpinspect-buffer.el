@@ -911,10 +911,11 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
 
 (defun phpinspect-buffer--update-class-variable-fqn-type (buffer variable-meta type)
   (when-let ((prop (cdr (phpinspect-buffer-get-index-for-token
-                          buffer (phpinspect-meta-token variable-meta))))
-             (base-name (phpinspect--type-base-name-sym type)))
-    (when (eq base-name (phpinspect--type-base-name-sym (phpi-prop-type prop)))
-      (setf (phpi-prop-type prop) type))))
+                         buffer (phpinspect-meta-token variable-meta)))))
+    (let ((base-name (phpinspect--type-base-name-sym type)))
+      (when (and (phpi-prop-type prop)
+                 (eq base-name (phpinspect--type-base-name-sym (phpi-prop-type prop))))
+        (setf (phpi-prop-type prop) type)))))
 
 (defun phpinspect-buffer--index-use (buffer token-meta)
   (let ((tokens
