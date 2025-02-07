@@ -88,7 +88,7 @@ class ReportTest extends TestCase
 (ert-deftest phpinspect-index-this ()
   (with-temp-buffer
     (let ((buffer (phpinspect-claim-buffer
-                   (current-buffer) (phpinspect--make-dummy-project))))
+                   (current-buffer) (phpinspect--make-dummy-composer-project-with-code))))
 
       (insert "<?php
 
@@ -123,10 +123,15 @@ class A
 
         (should (setq property (phpi-typedef-get-property typedef "harry")))
 
-        (should (phpinspect--type= phpinspect--unknown-type (phpi-prop-type property)))))))
+        (should (phpinspect--type= phpinspect--unknown-type (phpi-prop-type property)))
 
+        ;; Adds import for "Barry"
+        (phpinspect-fix-imports)
+        (phpinspect-buffer-update-project-index buffer)
 
-
+        (should (setq property (phpi-typedef-get-property typedef "harry")))
+        (should (phpinspect--type= (phpinspect--make-type :name "\\App\\Harry")
+                                   (phpi-prop-type property)))))))
 
 
 (provide 'test-buffer-indexation)

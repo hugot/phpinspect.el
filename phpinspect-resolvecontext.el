@@ -219,10 +219,10 @@ accompanied by all of its enclosing tokens."
 
     resolvecontext)))
 
-(defun phpinspect-rctx-get-typedef (rctx class-fqn &optional no-enqueue)
+(defun phpinspect-rctx-get-typedef (rctx class-fqn &optional _ignored)
   (cl-assert (phpinspect--resolvecontext-p rctx))
   (let ((project (phpinspect--resolvecontext-project rctx)))
-    (phpinspect-project-get-typedef-extra-or-create project class-fqn no-enqueue)))
+    (phpinspect-project-get-typedef-extra-or-create project class-fqn 'no-enqueue)))
 
 (defun phpinspect-rctx-get-function-return-type (rctx function-name)
   (cl-assert (phpinspect--resolvecontext-p rctx))

@@ -60,6 +60,7 @@ emacs buffer."
   (-tokens nil)
   (last-change nil :type phpinspect-change)
   (token-index (make-hash-table :test 'eq :size 100 :rehash-size 1.5))
+  (reindex-after-import (make-hash-table :test 'eq :size 100 :rehash-size 1.5))
   (-project nil
             :type phpinspect-project))
 
@@ -259,8 +260,6 @@ tokens that have been deleted from a buffer."
 
         (phpinspect-buffer-token-index buffer)
         (make-hash-table :test 'eq :size 100 :rehash-size 1.5)))
-
-
 
 (defun phpinspect-buffer-state (buffer)
   (interactive (list (or phpinspect-current-buffer
@@ -504,6 +503,12 @@ DECLARATION must be an object of type `phpinspect-meta'."
                      (phpinspect-buffer-get-resolvecontext
                       buffer (phpinspect-meta-start statement-end)))))
 
+          ;; When type is unknown, a change of local imports could result in a
+          ;; properly resolved type. Register token for reindexation upon index
+          ;; change.
+          (when (phpinspect--type= phpinspect--unknown-type type)
+            (puthash (phpinspect-meta-token this) this (phpinspect-buffer-reindex-after-import buffer)))
+
           (if-let ((prop (phpi-typedef-get-property typedef accessor-name)))
               (progn
                 (setf (phpi-prop-type prop) type)
@@ -523,9 +528,6 @@ DECLARATION must be an object of type `phpinspect-meta'."
           (let ((index-ref (list (phpi-typedef-name typedef) accessor-name this accessor)))
             (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token this) index-ref)
             (phpinspect-buffer-set-index-reference-for-token buffer (phpinspect-meta-token accessor) index-ref)))))))
-
-
-
 
 (defun phpinspect-buffer--index-class-variable (buffer var)
   (let ((class (phpinspect-buffer-find-token-ancestor-matching buffer var #'phpinspect-class-p))
@@ -731,6 +733,14 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
   (-deletions nil :type list)
   (-additions (make-hash-table :test #'eq) :type hash-table))
 
+(cl-defstruct (phpinspect-index-context
+               (:constructor phpi-make-sidc)
+               (:conc-name phpi-sidc-))
+  (imports-changed nil
+                   :documentation
+                   "Set to `t' when new/deleted imports were encountered during
+indexation"))
+
 (defun phpi--append-token-metadata-to-hash-table (table metadata)
   (dolist (meta metadata)
     (puthash (phpinspect-meta-token meta) meta table)))
@@ -883,13 +893,33 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
                            class #'phpinspect-class-declaration-p)))
     (phpinspect-buffer--index-class-declaration buffer declaration 'force)))
 
-(defun phpi-shadow-process-deletions (shadow)
+(defun phpi-process-index-deletion (buffer deletion)
+  (pcase (phpinspect-meta-token deletion)
+    ((pred phpinspect--can-delete-buffer-index-for-token)
+     (phpinspect-buffer-delete-index-for-token
+      buffer (phpinspect-meta-token deletion)))
+
+    ((pred phpinspect-use-trait-p)
+     (phpi--handle-use-trait-deletion buffer deletion))))
+
+(defun phpi-shadow-process-deletions (shadow ctx)
+  "Process token deletions for SHADOW using CTX state.
+
+CTX should be an instance of `phpinspect-shadow-index-context'.
+SHADOW should be an instance of `phpinspect-shadow'."
   (let ((buffer (phpi-shadow-origin shadow))
         (additions (phpi-shadow--additions shadow)))
     ;; Process deleted tokens
     (dolist (deletion (phpi-shadow--deletions shadow))
       (phpi-progn
        (let ((token (phpinspect-meta-token deletion)))
+         ;; No need to reindex a deleted token
+         (remhash token (phpinspect-buffer-reindex-after-import buffer))
+
+         ;; An import was deleted, make context aware
+         (when (phpinspect-use-p token)
+           (setf (phpi-sidc-imports-changed ctx) t))
+
          (if (gethash token additions)
              ;; Token was deleted before it could be indexed, remove and
              ;; continue
@@ -897,14 +927,9 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
 
            (progn
              ;; Token was indexed but has been deleted, update index accordingly
-             (pcase (phpinspect-meta-token deletion)
-               ((pred phpinspect--can-delete-buffer-index-for-token)
-                (phpinspect-buffer-delete-index-for-token
-                 buffer (phpinspect-meta-token deletion)))
+             (phpi-process-index-deletion buffer deletion)
 
-               ((pred phpinspect-use-trait-p)
-                (phpi--handle-use-trait-deletion buffer deletion)))
-
+             ;; Delete token reference
              (remhash (phpinspect-meta-token deletion) (phpinspect-buffer--tokens buffer)))))))
 
     (setf (phpi-shadow--deletions shadow) nil)))
@@ -931,7 +956,11 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
          ((pred phpinspect-class-variable-p)
           (phpinspect-buffer--update-class-variable-fqn-type buffer token type)))))))
 
-(defun phpi-shadow-process-additions (shadow)
+(defun phpi-shadow-process-additions (shadow ctx)
+  "Process newly added tokens for SHADOW using CTX state.
+
+CTX should be an instance of `phpinspect-shadow-index-context'.
+SHADOW should be an instance of `phpinspect-shadow'."
   ;; Process newly parsed tokens
   (when-let ((additions (phpi-shadow--additions shadow))
              (buffer (phpi-shadow-origin shadow)))
@@ -948,7 +977,8 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
           ((pred phpinspect-this-p)
            (phpinspect-buffer--index-this buffer addition))
           ((pred (phpinspect-use-p))
-           (phpinspect-buffer--index-use buffer addition))
+           (phpinspect-buffer--index-use buffer addition)
+           (setf (phpi-sidc-imports-changed ctx) t))
           ((or (pred phpinspect-class-variable-p)
                (pred phpinspect-const-p))
            (phpinspect-buffer--index-class-variable buffer addition)))))
@@ -956,11 +986,29 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
 
     (setf (phpi-shadow--additions shadow) nil)))
 
+(defun phpi-process-reindex-after-import (buffer)
+  (let ((reindex-table (phpinspect-buffer-reindex-after-import buffer)))
+    ;; Reset reindex queue
+    (setf (phpinspect-buffer-reindex-after-import buffer)
+          (make-hash-table :test 'eq :size 100 :rehash-size 1.5))
+
+  (maphash
+   (lambda (token token-meta)
+     ;; reindexation is only supported for "this" tokens now
+     (when (phpinspect-this-p token)
+       (phpi-process-index-deletion buffer token-meta)
+       (phpinspect-buffer--index-this buffer token-meta)))
+   reindex-table)))
+
 (defun phpi-shadow-update-project-index (shadow)
-  (let ((change (phpi-shadow--last-change shadow)))
+  (let ((change (phpi-shadow--last-change shadow))
+        (ctx (phpi-make-sidc)))
     (when (phpinspect-buffer-project (phpi-shadow-origin shadow))
-      (phpi-shadow-process-deletions shadow)
-      (phpi-shadow-process-additions shadow)
+      (phpi-shadow-process-deletions shadow ctx)
+      (phpi-shadow-process-additions shadow ctx)
+
+      (when (phpi-sidc-imports-changed ctx)
+        (phpi-process-reindex-after-import (phpi-shadow-origin shadow)))
 
       (setf (phpi-shadow--indexed-change shadow) change))))
 

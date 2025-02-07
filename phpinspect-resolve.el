@@ -150,9 +150,6 @@ Destructively removes tokens from the end of ASSIGNMENT-TOKENS."
     (pop statement))
   statement)
 
-(defsubst phpinspect-get-cached-project-class (rctx class-fqn)
-  (phpinspect-project-get-typedef-or-extra (phpinspect--resolvecontext-project rctx) class-fqn))
-
 (defun phpinspect-get-cached-project-typedef-methods (rctx class-fqn &optional static)
     (phpinspect--log "Getting cached project class methods for %s"
                      class-fqn)
@@ -281,7 +278,7 @@ value/type of ->bar must be derived from the type of $foo. So
             ((and type-before (phpinspect-array-p current-token))
              (setq type-before
                    (phpinspect--type-contains type-before)))
-            ((t (setq type-before nil)))))
+            (t (setq type-before nil))))
     (phpinspect--log "Found derived type: %s" type-before)
     ;; Make sure to always return a FQN
     (if type-before

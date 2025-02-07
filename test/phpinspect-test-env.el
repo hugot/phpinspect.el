@@ -96,4 +96,12 @@
   (phpinspect-parse-file
    (concat phpinspect-test-php-file-directory "/" name ".php")))
 
+(ert-deftest phpinspect-test-env-dummy-project-indexation ()
+  (let ((project (phpinspect--make-dummy-composer-project-with-code))
+        typedef)
+
+    (should (setq typedef (phpinspect-project-get-typedef-create project (phpinspect--make-type :name "\\App\\Barry") 'no-enqueue)))
+    (should (phpi-typedef-get-methods typedef))))
+
+
 (provide 'phpinspect-test-env)
