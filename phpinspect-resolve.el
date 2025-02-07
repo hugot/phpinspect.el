@@ -162,7 +162,7 @@ Destructively removes tokens from the end of ASSIGNMENT-TOKENS."
           (phpi-typedef-get-methods class)))))
 
 (defsubst phpinspect-get-cached-project-typedef-method-type (rctx class-fqn method-name)
-  (let* ((class (phpinspect-rctx-get-typedef rctx class-fqn))
+  (let* ((class (phpinspect-rctx-get-typedef rctx class-fqn 'no-enqueue))
          (method))
     (when class
       (setq method
@@ -176,14 +176,14 @@ Destructively removes tokens from the end of ASSIGNMENT-TOKENS."
                    class-fqn variable-name)
   (let ((found-variable
          (phpi-typedef-get-property
-          (phpinspect-rctx-get-typedef rctx class-fqn)
+          (phpinspect-rctx-get-typedef rctx class-fqn 'no-enqueue)
           variable-name)))
     (when found-variable
       (phpi-var-type found-variable))))
 
 (defsubst phpinspect-get-cached-project-typedef-static-method-type
   (rctx class-fqn method-name)
-  (let* ((class (phpinspect-rctx-get-typedef rctx class-fqn))
+  (let* ((class (phpinspect-rctx-get-typedef rctx class-fqn 'no-enqueue))
          (method))
     (when class
       (setq method
@@ -247,7 +247,12 @@ value/type of ->bar must be derived from the type of $foo. So
     (phpinspect--log "Starting attribute type: %s" type-before)
     (while-let ((current-token (pop statement)))
       (phpinspect--log "Current derived statement token: %s" current-token)
-      (cond ((phpinspect-object-attrib-p current-token)
+      (cond ((not type-before)
+             ;; No type-before means there is no point in trying to derive
+             ;; anything any longer (can't derive from nil). Set statement to
+             ;; nil to end loop.
+             (setq statement nil))
+            ((phpinspect-object-attrib-p current-token)
              (let ((attribute-word (cadr current-token)))
                (when (phpinspect-word-p attribute-word)
                  (if (phpinspect-list-p (car statement))
