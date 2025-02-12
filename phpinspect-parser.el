@@ -145,6 +145,7 @@ text at point and returns the resulting token."
     (catch 'phpinspect--return
       ;; Use while loop instead of recursion for better performance.
       (while t
+        ;;(message "looping")
         ;; Set point-offset-base for more efficient execution of
         ;; `phpinspect-meta-start' and related functions.
         (dlet ((phpinspect-meta--point-offset-base original-point))
@@ -180,27 +181,43 @@ text at point and returns the resulting token."
               ;; Override point-offset-base again, but this time for
               ;; right-sibling
               (dlet ((phpinspect-meta--point-offset-base nil))
+                ;; Check if token is really eligible to recycle
                 (if-let (((not (and delimiter-predicate (funcall delimiter-predicate token))))
-
                          (right-sibling right-sibling)
                          ((setq phpinspect-meta--point-offset-base
                                 (+ original-point (- (phpinspect-meta-parent-offset right-sibling)
                                                      parent-offset))))
-                         ((not (phpi-change-tainted-region-p
-                                change current-end-position (+ delta (phpinspect-meta-start right-sibling)))))
+                         (right-sibling-start-position (+ delta (phpinspect-meta-start right-sibling)))
+
+                         ;; Skipped-over region was not tainted (no edits have taken place in the region)
+                         ((not (phpi-change-tainted-region-p change current-end-position right-sibling-start-position)))
+
+                         ;; Skipped-over region was only whitespace (if it
+                         ;; wasn't, some unparsed character sequence that might
+                         ;; now have meaning is in the region, and we don't want
+                         ;; to disregard that.)
+                         ((not (> (- right-sibling-start-position current-end-position)
+                                  (length (phpinspect-meta-whitespace-before right-sibling)))))
+                         ;; Skip over whitespace
                          ((progn
                             (goto-char (+ delta (phpinspect-meta-start right-sibling)))
                             (phpinspect-pctx-register-whitespace context (phpinspect-meta-whitespace-before right-sibling))
-
+                            ;; (message "point: %d, Looking at: '%s'"
+                            ;;          (point) (buffer-substring (point) (min (+ (point) 10) (point-max))))
                             (if continue-condition (funcall continue-condition) t))))
+                    (progn
                       ;;(message "using sibling %s" (phpinspect-meta-string right-sibling))
                       ;; There was a right sibling and it is eligible for
                       ;; re-use. Set token-meta and "recurse".
                       (setq first-iteration nil
                             token-meta right-sibling
                             point (+ delta (phpinspect-meta-start right-sibling))
-                            original-point (phpinspect-meta-start right-sibling))
+                            original-point (phpinspect-meta-start right-sibling)))
 
+                  ;;(message "EXITING")
+
+                  ;; Go to end of last recycled token
+                  (goto-char current-end-position)
                   ;; No eligible right sibling, break.
                   (throw 'phpinspect--return tokens-rear))))))))))
 

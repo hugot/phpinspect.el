@@ -1,6 +1,6 @@
 ;;; test-buffer-indexation.el --- Tests for buffer indexation  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024  Hugo Thunnissen
+;; Copyright (C) 2021-2023 Free Software Foundation, Inc.
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords:
