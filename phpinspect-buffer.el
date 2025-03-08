@@ -26,7 +26,6 @@
 (require 'phpinspect-thread)
 (require 'phpinspect-parser)
 (require 'phpinspect-bmap)
-(require 'phpinspect-edtrack)
 (require 'phpinspect-index)
 (require 'phpinspect-resolvecontext)
 (require 'phpinspect-resolve)
@@ -621,9 +620,6 @@ continuing execution."
    (phpinspect-buffer-shadow buffer)
    (phpi-change-create (phpinspect-buffer-buffer buffer)
                        start end pre-change-length)))
-
-  ;; (phpinspect-edtrack-register-edit
-  ;;  (phpinspect-buffer-edit-tracker buffer) start end pre-change-length))
 
 (defun phpinspect-buffer-tokens-enclosing-point (buffer point)
   "Return token metadata objects for tokens enclosing POINT in BUFFER."
