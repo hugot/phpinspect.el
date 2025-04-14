@@ -404,4 +404,7 @@ Type can be any of the token types returned by
          ;; terminator = incomplete.
          (not (or block terminator))))))
 
+(define-inline phpinspect-token-unexpected-p (token)
+  (inline-quote (phpinspect-token-type-p ,token :unexpected-keyword)))
+
 (provide 'phpinspect-token-predicates)

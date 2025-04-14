@@ -392,7 +392,7 @@ root token, in string form without \":\" prefix.")
                       assignment-operator whitespace scope-keyword
                       static-keyword const-keyword use-keyword
                       class-keyword interface-keyword trait-keyword enum-keyword
-                      function-keyword word terminator here-doc string
+                      function-keyword unexpected-keyword-in-function-body word terminator here-doc string
                       string-concatenator comment block)
               :type list
               :read-only t
@@ -513,25 +513,35 @@ parsing incrementally."
         (catch 'phpinspect--continue
           (let ((parser (symbol-value name))
                 body)
+            ;; Check if parser has properties required to dynamically generate a
+            ;; predicate case.
             (unless (or (and (phpinspect-parser-delimiter-condition parser)
                              (phpinspect-parser-delimiter-predicate parser))
                         (and (phpinspect-parser-delimiter-predicate parser)
                              (phpinspect-parser-recycle-only-delimited parser)))
               (throw 'phpinspect--continue nil))
 
+            ;; When the last subtoken of the token matches the delimiter
+            ;; predicate, the token is "complete" and eligible for re-use
             (setq body `(,(phpinspect-parser-delimiter-predicate parser) (car (last ,token-sym))))
 
+            ;; If the parser has a delimiter condition, it must be matched
+            ;; before checking the delimiter predicate.
             (when-let ((condition (phpinspect-parser-delimiter-condition parser)))
               (setq body `(if (,(phpinspect-parser-delimiter-condition parser) ,token-sym)
                               ,body
                             ,(not (phpinspect-parser-recycle-only-delimited parser)))))
 
+            ;; Only tokens that (could) have been parsed by this parser should
+            ;; be subjected to these conditions, so the `cond' condition must
+            ;; match the tokens lisp keyword with the tree keyword of the parser.
             (push `((eq (car ,token-sym) ,(intern (concat ":" (phpinspect-parser-tree-keyword parser))))
                     ,body)
                   cases))))
 
       `(defun ,predicate-name (,token-sym)
-         (cond ,@cases)))))
+         (and (not (phpinspect-token-unexpected-p ,token-sym))
+              (cond ,@cases))))))
 
 (eval-and-compile
   (defun phpinspect--get-parser-function-syms ()
@@ -573,6 +583,12 @@ parsing incrementally."
    (inline . t))
   (inline-quote (phpinspect-munch-token-without-attribs ,comma :comma)))
 
+(phpinspect-defhandler unexpected-keyword-in-function-body (word &rest _ignored)
+  "Handler for keywords that are valid in some cases, but not in function bodies."
+  ((regexp . "public\\|private\\|protected\\|readonly")
+   (inline . t))
+  (inline-quote (phpinspect-munch-token-without-attribs ,word :unexpected-keyword)))
+
 (phpinspect-defhandler word (word &rest _ignored)
   "Handler for bareword tokens"
   ((regexp . "[A-Za-z_\\][\\A-Za-z_0-9]*")
@@ -601,7 +617,7 @@ parsing incrementally."
   :tree-keyword "list"
   :handlers '(array tag equals list comma
                     attribute-reference static-attribute-reference variable assignment-operator
-                    whitespace function-keyword word terminator here-doc
+                    whitespace function-keyword unexpected-keyword-in-function-body word terminator here-doc
                     string string-concatenator comment block-without-scopes))
 
 (phpinspect-defhandler list (start-token max-point)
@@ -871,7 +887,7 @@ To parse trait use statements in class bodies, see
 (phpinspect-defparser const
   :tree-keyword "const"
   :recycle-only-delimited t
-  :handlers '(word comment assignment-operator string string-concatenator array terminator)
+  :handlers '(unexpected-keyword-in-function-body word comment assignment-operator string string-concatenator array terminator)
   :delimiter-predicate #'phpinspect-end-of-token-p)
 
 (phpinspect-defhandler const-keyword (start-token max-point)
@@ -895,7 +911,7 @@ To parse trait use statements in class bodies, see
   :tree-keyword "block"
   :handlers '(array tag equals string-concatenator list comma attribute-reference
                     static-attribute-reference variable
-                    assignment-operator whitespace function-keyword word
+                    assignment-operator whitespace function-keyword unexpected-keyword-in-function-body word
                     terminator here-doc string comment block-without-scopes))
 
 (phpinspect-defhandler block-without-scopes (start-token max-point)
@@ -1005,11 +1021,12 @@ Returns the consumed text string without face properties."
 
 (phpinspect-defparser class-declaration
   :tree-keyword "class-declaration"
-  :handlers '(comment extends-keyword implements-keyword comma word list terminator tag))
+  :handlers '(comment extends-keyword implements-keyword comma
+              unexpected-keyword-in-function-body word list terminator tag))
 
 (phpinspect-defparser declaration
   :tree-keyword "declaration"
-  :handlers '(comment word list terminator tag)
+  :handlers '(comment unexpected-keyword-in-function-body word list terminator tag)
   :recycle-only-delimited t
   :delimiter-predicate #'phpinspect-end-of-token-p)
 
@@ -1032,7 +1049,8 @@ Returns the consumed text string without face properties."
 
 (phpinspect-defparser scope-public
   :tree-keyword "public"
-  :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
+  :handlers '(function-keyword unexpected-keyword-in-function-body
+                               static-keyword const-keyword class-variable here-doc
                                string string-concatenator terminator tag comment
                                assignment-operator array word)
   :recycle-only-delimited t
@@ -1040,7 +1058,8 @@ Returns the consumed text string without face properties."
 
 (phpinspect-defparser scope-private
   :tree-keyword "private"
-  :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
+  :handlers '(function-keyword unexpected-keyword-in-function-body
+                               static-keyword const-keyword class-variable here-doc
                                string string-concatenator terminator tag comment
                                assignment-operator array word)
   :recycle-only-delimited t
@@ -1049,7 +1068,8 @@ Returns the consumed text string without face properties."
 (phpinspect-defparser scope-protected
   :tree-keyword "protected"
   :recycle-only-delimited t
-  :handlers '(function-keyword static-keyword const-keyword class-variable here-doc
+  :handlers '(function-keyword unexpected-keyword-in-function-body
+                               static-keyword const-keyword class-variable here-doc
                                string string-concatenator terminator tag comment
                                assignment-operator array word)
   :delimiter-predicate #'phpinspect--scope-terminator-p)
@@ -1069,7 +1089,7 @@ Returns the consumed text string without face properties."
 (phpinspect-defparser static
   :tree-keyword "static"
   :recycle-only-delimited t
-  :handlers '(comment function-keyword class-variable array word terminator tag)
+  :handlers '(comment function-keyword class-variable array unexpected-keyword-in-function-body word terminator tag)
   :delimiter-predicate #'phpinspect--static-terminator-p)
 
 (phpinspect-defhandler static-keyword (start-token max-point)
@@ -1088,8 +1108,9 @@ Returns the consumed text string without face properties."
 
 (phpinspect-defparser array
   :tree-keyword "array"
-  :handlers '(comment comma list here-doc string array variable
-                      attribute-reference static-attribute-reference word fat-arrow))
+  :handlers '(comment comma list here-doc string array variable attribute-reference
+                      static-attribute-reference unexpected-keyword-in-function-body
+                      word fat-arrow))
 
 (phpinspect-defhandler array (start-token max-point)
   "Handler for arrays, in the bracketet as well as the list notation"
@@ -1210,7 +1231,8 @@ the properties of the class"
                         assignment-operator whitespace scope-keyword
                         static-keyword const-keyword use-keyword class-keyword
                         interface-keyword trait-keyword enum-keyword
-                        function-keyword word terminator here-doc string string-concatenator
+                        function-keyword unexpected-keyword-in-function-body
+                        word terminator here-doc string string-concatenator
                         comment tag block))
 
 (defun phpinspect-parse-current-buffer ()

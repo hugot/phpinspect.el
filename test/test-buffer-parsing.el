@@ -38,8 +38,7 @@
         return $foo()->bar->baz;
     }
 
-    // FIXME: Make this test succeed with \"public\" uncommented
-    /* public */ function fooBar(RealTime $rt) {
+    public function fooBar(RealTime $rt) {
         // stuff
     }
 }")
