@@ -52,6 +52,7 @@
 ;;; Code:
 
 (require 'phpinspect-splayt)
+(require 'phpinspect-token-predicates)
 
 (eval-and-compile
   (defvar phpinspect-meta--point-offset-base nil
