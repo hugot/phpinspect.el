@@ -245,12 +245,34 @@ positions based on the parent)."
     (phpinspect-splayt-find-largest-before (phpinspect-meta-children (phpinspect-meta-parent meta))
                                            (phpinspect-meta-parent-offset meta))))
 
+(cl-defmethod phpinspect-meta-find-left-sibling-matching-token ((meta (head meta)) predicate)
+  (when-let ((parent (phpinspect-meta-parent meta)))
+    (catch 'phpinspect--return
+      (while (setq meta (phpinspect-splayt-find-largest-before (phpinspect-meta-children parent)
+                                                               (phpinspect-meta-parent-offset meta)))
+        (when (funcall predicate (phpinspect-meta-token meta))
+          (throw 'phpinspect--return meta))
+
+        (unless (phpinspect-comment-p (phpinspect-meta-token meta))
+          (throw 'phpinspect--return nil))))))
+
 (define-inline phpinspect-meta-find-right-sibling (meta)
   (inline-letevals (meta)
     (inline-quote
      (when (phpinspect-meta-parent ,meta)
        (phpinspect-splayt-find-smallest-after (phpinspect-meta-children (phpinspect-meta-parent ,meta))
                                               (phpinspect-meta-parent-offset ,meta))))))
+
+(cl-defmethod phpinspect-meta-find-right-sibling-matching-token ((meta (head meta)) predicate)
+  (when-let ((parent (phpinspect-meta-parent meta)))
+    (catch 'phpinspect--return
+      (while (setq meta (phpinspect-splayt-find-smallest-after (phpinspect-meta-children parent)
+                                                               (phpinspect-meta-parent-offset meta)))
+        (when (funcall predicate (phpinspect-meta-token meta))
+          (throw 'phpinspect--return meta))
+
+        (unless (phpinspect-comment-p (phpinspect-meta-token meta))
+          (throw 'phpinspect--return nil))))))
 
 (define-inline phpinspect-meta-find-overlapping-child (meta point)
   (inline-letevals (meta point)

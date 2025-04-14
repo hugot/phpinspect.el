@@ -42,7 +42,7 @@
 	    :type phpinspect-name)
   (definition-tokens nil)
   (definition nil
-	      :type phpinspect--variable))
+	          :type phpinspect--variable))
 
 (defun phpinspect-make-property (origin-type definition)
   ;; A property cannot have a nil name.

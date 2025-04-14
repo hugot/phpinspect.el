@@ -133,6 +133,71 @@ class A
         (should (phpinspect--type= (phpinspect--make-type :name "\\App\\Harry")
                                    (phpi-prop-type property)))))))
 
+(ert-deftest phpinspect-sync-property-type ()
+  (with-temp-buffer
+    (let ((buffer (phpinspect-claim-buffer
+                   (current-buffer) (phpinspect--make-dummy-composer-project-with-code))))
+
+      (insert "<?php
+
+namespace Example;
+
+use DateTime;
+
+class Sample
+{
+    private DateTime $date;
+
+    public function setDate(DateTime $date)
+    {
+        $this->date = $date;
+    }
+
+    public function getDate(): DateTime
+    {
+        return $this->date;
+    }
+}")
+      (phpinspect-buffer-update-project-index buffer)
+
+      (let ((typedef (phpinspect-project-get-typedef
+                      (phpinspect-buffer-project buffer)
+                      (phpinspect--make-type :name "\\Example\\Sample")))
+            property)
+
+        (should typedef)
+        (should (setq property (phpi-typedef-get-property typedef "date")))
+
+        (should (phpinspect--type= (phpinspect--make-type :name "\\DateTime")
+                                   (phpi-prop-type property)))
+
+        ;; Change the type of the property to DateTimeImmutable
+        (goto-char 70) ;; Position right after "private "
+        (delete-region 70 78) ;; Delete "DateTime"
+        (insert "\\DateTimeImmutable")
+        (phpinspect-buffer-update-project-index buffer)
+
+        (should (setq property (phpi-typedef-get-property typedef "date")))
+        (should (phpi-prop-type property))
+        (should (phpinspect--type= (phpinspect--make-type :name "\\DateTimeImmutable")
+                                   (phpi-prop-type property)))
+
+        ;; Change the type of the property to string
+        (goto-char 71) ;; Position right after "private "
+        (delete-region 71 89) ;; Delete "DateTimeImmutable"
+        (insert "string")
+        (phpinspect-buffer-update-project-index buffer)
+
+        (should (setq property (phpi-typedef-get-property typedef "date")))
+        (should (phpinspect--type= (phpinspect--make-type :name "\\string")
+                                   (phpi-prop-type property)))
+
+        ;; Remove the property
+        (goto-char 63) ;; Position right before "private string $date;"
+        (delete-region 63 82) ;; Delete "private string $date;"
+        (phpinspect-buffer-update-project-index buffer)
+
+        (should-not (phpi-typedef-get-property typedef "date"))))))
 
 (provide 'test-buffer-indexation)
 ;;; test-buffer-indexation.el ends here

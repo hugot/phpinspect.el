@@ -146,7 +146,7 @@ linked with."
 (define-inline phpinspect--can-delete-buffer-index-for-token (token)
   (inline-quote
    (phpinspect-token-type-p
-    ,token :class-declaration :function-declaration :const :class-variable :function)))
+    ,token :class-declaration :function-declaration :const :class-variable :function :word)))
 
 (cl-defmethod phpinspect-buffer-delete-index-for-token ((buffer phpinspect-buffer) token)
   "Delete index entities that were derived from TOKEN.
@@ -193,11 +193,23 @@ tokens that have been deleted from a buffer."
              (if-let ((token-meta (phpinspect-buffer-token-meta buffer token)))
                  (phpi-typedef-delete-property-token-definition class (phpi-var-name (cdr var)) token-meta)
                (phpi-typedef-delete-property class (cdr var))))))
+        ((phpinspect-word-p token)
+         (phpinspect-buffer--delete-word-index-reference buffer token))
         ((or (phpinspect-this-p token) (phpinspect-attrib-p token))
          (phpinspect-buffer--delete-dynamic-prop-index-reference buffer token))
         ((phpinspect-function-p token)
          (phpinspect-buffer--delete-function-index-reference buffer token))
         (t (error "Cannot delete index for token %s" token))))
+
+(defun phpinspect-buffer--delete-word-index-reference (buffer token)
+  (when-let ((index-ref (gethash token (phpinspect-buffer-token-index buffer))))
+    (cond ((and (phpinspect--type-p (car index-ref))
+                (phpinspect-property-p (cdr index-ref)))
+           (when-let ((typedef (phpinspect-project-get-typedef
+                       (phpinspect-buffer-project buffer)
+                       (car index-ref))))
+           ;; Unset property type
+           (phpi-typedef-set-property-type typedef (phpi-prop-name (cdr index-ref)) nil))))))
 
 (defun phpinspect-buffer--delete-function-index-reference (buffer token)
   (when-let ((func (gethash token (phpinspect-buffer-token-index buffer))))
@@ -581,7 +593,18 @@ DECLARATION must be an object of type `phpinspect-meta'."
 
         (phpinspect-buffer-set-index-reference-for-token
          buffer (phpinspect-meta-token var)
-         (cons (phpi-typedef-name typedef) indexed))))))
+         (cons (phpi-typedef-name typedef) indexed))
+
+        ;; Add index reference for typehint if present
+        (when-let ((type-word (phpinspect-meta-find-left-sibling-matching-token
+                               var #'phpinspect-word-p)))
+          (phpinspect-buffer-set-index-reference-for-token
+           buffer (phpinspect-meta-token type-word)
+           (cons (phpi-typedef-name typedef) indexed)))))))
+
+(defun phpinspect-buffer--index-prop-type-word (buffer word)
+  (let ((variable (phpinspect-meta-find-right-sibling-matching-token word #'phpinspect-class-variable-p)))
+    (phpinspect-buffer--index-class-variable buffer variable)))
 
 (cl-defmethod phpinspect-buffer-update-project-index ((buffer phpinspect-buffer))
   "Update project index using the last parsed token map of this
@@ -952,6 +975,17 @@ SHADOW should be an instance of `phpinspect-shadow'."
          ((pred phpinspect-class-variable-p)
           (phpinspect-buffer--update-class-variable-fqn-type buffer token type)))))))
 
+(defun phpi-word-is-prop-type-and-should-be-indexed-p (word-meta additions)
+  (and-let* (
+             ;; Word is inside a scope token
+             ((phpinspect-scope-p (phpinspect-meta-token (phpinspect-meta-parent word-meta))))
+
+             ;; Word is followed by a class variable
+             (var (phpinspect-meta-find-right-sibling-matching-token word-meta #'phpinspect-class-variable-p))
+
+             ;; Var is not already going to be indexed
+             ((not (gethash (phpinspect-meta-token var) additions))))))
+
 (defun phpi-shadow-process-additions (shadow ctx)
   "Process newly added tokens for SHADOW using CTX state.
 
@@ -975,6 +1009,9 @@ SHADOW should be an instance of `phpinspect-shadow'."
           ((pred (phpinspect-use-p))
            (phpinspect-buffer--index-use buffer addition)
            (setf (phpi-sidc-imports-changed ctx) t))
+          ((pred phpinspect-word-p)
+           (when (phpi-word-is-prop-type-and-should-be-indexed-p addition additions)
+             (phpinspect-buffer--index-prop-type-word buffer addition)))
           ((or (pred phpinspect-class-variable-p)
                (pred phpinspect-const-p))
            (phpinspect-buffer--index-class-variable buffer addition)))))

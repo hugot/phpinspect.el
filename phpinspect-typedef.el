@@ -456,6 +456,11 @@ them, which are then incorporated into DEF's properties."
   ((def phpinspect-typedef) (method-name (head phpinspect-name)) &optional tryhard)
   (phpi-mcol-get-return-type (phpi-typedef-static-methods def) method-name tryhard))
 
+(cl-defmethod phpi-typedef-set-property-type ((def phpinspect-typedef) prop-name type)
+  (phpi--typedef-edit def
+    (when-let ((prop (phpi-typedef-get-property def prop-name)))
+      (setf (phpi-prop-type prop) type))))
+
 (cl-defmethod phpi-typedef-set-property ((def phpinspect-typedef) (prop phpinspect-property))
   (phpi--typedef-edit def
     (phpi-pcol-add (phpi-typedef-properties def) prop)
@@ -468,8 +473,8 @@ them, which are then incorporated into DEF's properties."
     (phpi-typedef-set-property def prop)))
 
 (cl-defmethod phpi-typedef-delete-property ((def phpinspect-typedef)
-					    (name (head phpinspect-name))
-					    &optional origin-type)
+					                        (name (head phpinspect-name))
+					                        &optional origin-type)
   (phpi--typedef-edit def
     (phpi-pcol-delete-for-type
      (phpi-typedef-properties def) (phpi-typedef-name def) name)
@@ -486,7 +491,6 @@ them, which are then incorporated into DEF's properties."
   (phpi-typedef-delete-property
    def (phpinspect-intern-name (phpi-var-name prop))))
 
-
 (cl-defmethod phpi-typedef-delete-property-token-definition
   ((def phpinspect-typedef) (prop-name string) token-meta)
   (phpi-typedef-delete-property-token-definition
@@ -499,7 +503,6 @@ them, which are then incorporated into DEF's properties."
 
     (unless (phpi-prop-definition-tokens prop)
       (phpi-typedef-delete-property def prop))))
-
 
 (cl-defmethod phpi-typedef-get-properties ((def phpinspect-typedef))
   (seq-filter #'phpi-prop-vanilla-p

@@ -62,3 +62,54 @@
       (insert "$d")
       (insert ")")
       (should (equal (phpinspect-parse-string (buffer-string)) (phpinspect-buffer-parse buffer))))))
+
+(ert-deftest phpinspect-parse-nested-anonymous-functions-incrementally ()
+  (with-temp-buffer
+    (let ((buffer (phpinspect-claim-buffer (current-buffer) (phpinspect--make-dummy-project))))
+      (insert "<?php
+class ComplexParsing {
+    private $callback;
+
+    public function __construct() {
+        $this->callback = function($x) {
+            return function($y) use ($x) {
+                return $x + $y;
+            };
+        };
+    }
+
+    public function executeCallback($value) {
+        $inner = $this->callback($value);
+        return $inner(10);
+    }
+}")
+      (should (equal (phpinspect-parse-string (buffer-string)) (phpinspect-buffer-parse buffer)))
+
+      ;; Insert a new method with nested anonymous functions
+      (goto-char 175)
+      (insert "\n\n    public function nestedAnonymous() {\n")
+      (insert "        $nested = function($a) {\n")
+      (insert "            return function($b) use ($a) {\n")
+      (insert "                return function($c) use ($a, $b) {\n")
+      (insert "                    return $a + $b + $c;\n")
+      (insert "                };\n")
+      (insert "            };\n")
+      (insert "        };\n")
+      (insert "        return $nested(1)(2)(3);\n")
+      (insert "    }\n")
+
+      (should (equal (phpinspect-parse-string (buffer-string)) (phpinspect-buffer-parse buffer)))
+
+      ;; Modify the existing method to add another level of nesting
+      (goto-char 130)
+      (insert "            return function($z) use ($x, $y) {\n")
+      (insert "                return $x + $y + $z;\n")
+      (insert "            };\n")
+
+      (should (equal (phpinspect-parse-string (buffer-string)) (phpinspect-buffer-parse buffer)))
+
+      ;; Add a comment inside the nested anonymous function
+      (goto-char 200)
+      (insert " // This is a comment inside a nested anonymous function\n")
+
+      (should (equal (phpinspect-parse-string (buffer-string)) (phpinspect-buffer-parse buffer))))))
