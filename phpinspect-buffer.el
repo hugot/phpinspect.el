@@ -900,7 +900,7 @@ indexation"))
   (eq (phpi-condition-value (phpi-shadow--synced-change shadow))
       (phpi-condition-value (phpi-shadow--last-change shadow))))
 
-(defun phpi-shadow-await-synced (shadow &optional allow-interrupt)
+(defun phpi-shadow-await-synced (shadow &optional _allow-interrupt)
   (phpi-shadow-assert-live-p shadow)
   (unless (phpi-shadow-is-me-p shadow)
     (phpi-condition-wait (phpi-shadow--synced-change shadow)
@@ -910,7 +910,7 @@ indexation"))
                                     (phpi-condition-value (phpi-shadow--last-change shadow))))))))
   ;; (phpi-shadow-await-predicate shadow #'phpi-shadow-synced-p allow-interrupt))
 
-(defun phpi-shadow-await-index-synced (shadow &optional allow-interrupt)
+(defun phpi-shadow-await-index-synced (shadow &optional _allow-interrupt)
   (phpi-shadow-assert-live-p shadow)
 
   ;; First wait for last change to be synced

@@ -105,28 +105,13 @@
 (define-inline phpi-main-thread-starving-p ()
   (inline-quote
    (let ((starving (phpi--main-thread-starving-p)))
-     (when (eq 'yes starving)
-       (setf (phpi-condition-value phpinspect--main-thread-starving) starving)
-       t))))
-
-(defun phpi-await-main-thread-nourished ()
-  (phpinspect--log "Waiting for the main thread to be nourished")
-  (when (phpi-main-thread-starving-p)
-    (while
-        (eq 'yes (phpi-condition-wait
-                  phpinspect--main-thread-starving)))))
+     (setf (phpi-condition-value phpinspect--main-thread-starving) starving)
+     (if (eq 'yes starving)
+         t
+       nil))))
 
 (defun phpi-job-queue-end ()
   (signal 'phpinspect-job-queue-end nil))
-
-(defun phpi--notify-main-thread-nourished ()
-  (setf (phpi-condition-value phpinspect--main-thread-starving) 'no))
-
-(defvar phpinspect-main-thread-nourishment 0.01
-  "Amount of seconds to pause all threads when input is pending.")
-
-(defvar phpinspect-main-thread-nourishment-timer
-  (run-with-idle-timer phpinspect-main-thread-nourishment t #'phpi--notify-main-thread-nourished))
 
 (define-inline phpi-thread-yield ()
   "Like `thread-yield', but takes extra care not to starve the main thread.
@@ -134,9 +119,7 @@
 If current thread is the main thread, this function does nothing."
   (inline-quote
    (unless (eq main-thread (current-thread))
-     (if (phpi-main-thread-starving-p)
-         (phpi-await-main-thread-nourished)
-       (thread-yield)))))
+     (thread-yield))))
 
 (defmacro phpi-progn (&rest body)
   `(prog1

@@ -332,7 +332,8 @@ Returns list of `phpinspect--completion'."
               (dolist (strategy phpinspect-completion-strategies)
                 (when-let (region (phpinspect-comp-strategy-supports strategy query rctx))
                   ;; Check if using the cached completion list is possible.
-                  (if-let ((maybe-cache?)
+                  (if-let ((nil)
+                           (maybe-cache?)
                            ;; There is a previous list available
                            (last-list phpinspect--last-completion-list)
                            ;; The list had candidates in it
@@ -465,7 +466,7 @@ Returns list of `phpinspect--completion'."
        ('variable "<va> ")))))
 
 
-(defun phpinspect-complete-at-point ()
+(defun phpinspect--get-completion-at-point ()
   (catch 'phpinspect-interrupted
     (let ((comp-list (phpinspect-completion-query-execute (phpinspect--get-completion-query))))
 
@@ -503,5 +504,42 @@ Returns list of `phpinspect--completion'."
                                        (phpinspect--completion-kind comp)
                                      (phpinspect--log  "Unable to find matching completion for name %s" comp-name)
                                      nil))))))))
+
+(defun phpinspect-complete-at-point ()
+(let* ((buf (current-buffer))
+       result thread
+       (completion-ready nil)
+       (start (point))
+       (end (point)))
+
+  (setq thread (phpi-run-threaded "completion-at-point"
+                 (with-current-buffer buf
+                   (setq result (phpinspect--get-completion-at-point))
+                   (setq completion-ready t)
+                   (message "set result"))))
+
+  (message "STARTING WAIT")
+  (while (thread-live-p thread)
+    (message "waiting")
+    (sit-for 0.001))
+
+  (message "RESULT: %s" completion-ready)
+  (if completion-ready
+      (list start end result)
+    ;; Return a dummy completion table that will pass the try-completion test
+    (list start end '("") :exclusive 'no)))  )
+
+;; (let* ((buf (current-buffer))
+  ;;        result thread)
+
+  ;;   (setq thread (phpi-run-threaded "completion-at-point"
+  ;;                  (with-current-buffer buf
+  ;;                    (setq result (phpinspect--get-completion-at-point)))))
+
+  ;;   (while (thread-live-p thread)
+  ;;     (sit-for 0.005))
+
+  ;;   result))
+
 
 (provide 'phpinspect-completion)

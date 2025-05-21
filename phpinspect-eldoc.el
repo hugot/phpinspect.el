@@ -304,9 +304,8 @@ TODO:
 "
   (when phpinspect-current-buffer
     (phpi-run-threaded "PHPInspect Eldoc"
-      (While-no-input
         (let ((result (phpinspect--eldoc-function-sync)))
-          (funcall callback result))))
+          (funcall callback result)))
 
     'async))
 
