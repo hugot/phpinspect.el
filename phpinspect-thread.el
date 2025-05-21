@@ -51,16 +51,21 @@
   (setf (phpi-condition--value condition) value)
   (phpi-condition-notify condition))
 
-(defun phpi-condition-wait (condition)
+(defun phpi-condition-wait (condition &optional predicate)
   (let ((mx (phpi-condition--mx condition))
         (condvar (phpi-condition--condvar condition))
         result)
 
-    (while (not (setq result (phpi-condition--value condition)))
-      (with-mutex mx
-        (condition-wait condvar)))
+    (if predicate
+        (while (not (funcall predicate (setq result (phpi-condition--value condition))))
+          (with-mutex mx
+            (condition-wait condvar)))
 
-    (setf (phpi-condition--value condition) nil)
+      (let ((start-val (phpi-condition--value condition)))
+        (while (eq start-val (setq result (phpi-condition--value condition)))
+          (with-mutex mx
+            (condition-wait condvar)))))
+
     result))
 
 (defun phpi-make-condition (&optional value)
@@ -167,7 +172,8 @@ If current thread is the main thread, this function does nothing."
                           ;; If job queue end is signaled, exit after queue has
                           ;; been fully depleted.
                           (setq ended t)
-                          (unless (phpinspect-queue-first queue)
+                          (if (phpinspect-queue-first queue)
+                              (setq ended nil)
                             (throw 'phpi--break nil)))))
 
                     (if ended

@@ -304,7 +304,7 @@ TODO:
 "
   (when phpinspect-current-buffer
     (phpi-run-threaded "PHPInspect Eldoc"
-      (while-no-input
+      (While-no-input
         (let ((result (phpinspect--eldoc-function-sync)))
           (funcall callback result))))
 

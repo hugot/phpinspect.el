@@ -616,6 +616,7 @@ continuing execution."
   ;; for a shadow thread, which would be blocked while waiting for the
   ;; autoloader regardless.
   (phpinspect-project-await-autoload (phpinspect-buffer-project buffer))
+  (phpi-shadow-enqueue-task (phpinspect-buffer-shadow buffer) 'update-project-index)
   (phpi-shadow-await-index-synced (phpinspect-buffer-shadow buffer) t))
 
 (defun phpinspect-buffer-parse-map (buffer)
@@ -746,9 +747,9 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
   (queue nil :type phpinspect--queue)
   (thread nil :type thread)
   (id nil :type integer)
-  (-last-change nil)
-  (-synced-change nil)
-  (-indexed-change nil)
+  (-last-change (phpi-make-condition))
+  (-synced-change (phpi-make-condition))
+  (-indexed-change (phpi-make-condition))
   (-deletions nil :type list)
   (-additions (make-hash-table :test #'eq) :type hash-table))
 
@@ -830,7 +831,7 @@ indexation"))
       (phpi-shadow--set-buffer-map
        shadow (phpinspect-pctx-bmap pctx) (phpinspect-pctx-previous-bmap pctx))
 
-      (setf (phpi-shadow--synced-change shadow) change))))
+      (setf (phpi-condition-value (phpi-shadow--synced-change shadow)) change))))
 
 (defun phpi-shadow-parse-fresh (shadow)
   (with-current-buffer (phpi-shadow-buffer shadow)
@@ -851,7 +852,7 @@ indexation"))
         (phpi-shadow--set-buffer-map
          shadow (phpinspect-pctx-bmap pctx) nil)
 
-        (setf (phpi-shadow--synced-change shadow) 'parse-fresh)))))
+        (setf (phpi-condition-value (phpi-shadow--synced-change shadow)) 'parse-fresh)))))
 
 (defun phpinspect-visit-shadow-buffer (buffer)
   (interactive (list (or phpinspect-current-buffer
@@ -896,13 +897,32 @@ indexation"))
       (thread-yield))))
 
 (defun phpi-shadow-synced-p (shadow)
-  (eq (phpi-shadow--synced-change shadow) (phpi-shadow--last-change shadow)))
+  (eq (phpi-condition-value (phpi-shadow--synced-change shadow))
+      (phpi-condition-value (phpi-shadow--last-change shadow))))
 
 (defun phpi-shadow-await-synced (shadow &optional allow-interrupt)
-  (phpi-shadow-await-predicate shadow #'phpi-shadow-synced-p allow-interrupt))
+  (phpi-shadow-assert-live-p shadow)
+  (unless (phpi-shadow-is-me-p shadow)
+    (phpi-condition-wait (phpi-shadow--synced-change shadow)
+                         (lambda (change)
+                           (and change
+                                (eq change
+                                    (phpi-condition-value (phpi-shadow--last-change shadow))))))))
+  ;; (phpi-shadow-await-predicate shadow #'phpi-shadow-synced-p allow-interrupt))
 
 (defun phpi-shadow-await-index-synced (shadow &optional allow-interrupt)
-  (phpi-shadow-await-predicate shadow #'phpi-shadow-index-synced-p allow-interrupt))
+  (phpi-shadow-assert-live-p shadow)
+
+  ;; First wait for last change to be synced
+  (phpi-shadow-await-synced shadow)
+
+  ;; Now wait for last change to be indexed
+  (unless (phpi-shadow-is-me-p shadow)
+    (phpi-condition-wait (phpi-shadow--indexed-change shadow)
+                         (lambda (change)
+                           (and change
+                                (eq change
+                                    (phpi-condition-value (phpi-shadow--synced-change shadow))))))))
 
 (defun phpi--handle-use-trait-deletion (buffer deletion)
   (when-let ((class (seq-find (phpinspect-meta-token-predicate #'phpinspect-class-p)
@@ -1034,7 +1054,7 @@ SHADOW should be an instance of `phpinspect-shadow'."
    reindex-table)))
 
 (defun phpi-shadow-update-project-index (shadow)
-  (let ((change (phpi-shadow--last-change shadow))
+  (let ((change (phpi-condition-value (phpi-shadow--synced-change shadow)))
         (ctx (phpi-make-sidc)))
     (when (phpinspect-buffer-project (phpi-shadow-origin shadow))
       (phpi-shadow-process-deletions shadow ctx)
@@ -1043,7 +1063,7 @@ SHADOW should be an instance of `phpinspect-shadow'."
       (when (phpi-sidc-imports-changed ctx)
         (phpi-process-reindex-after-import (phpi-shadow-origin shadow)))
 
-      (setf (phpi-shadow--indexed-change shadow) change))))
+      (setf (phpi-condition-value (phpi-shadow--indexed-change shadow)) change))))
 
 (defun phpi-shadow--handle-job (shadow job)
   (phpi-progn
@@ -1055,8 +1075,8 @@ SHADOW should be an instance of `phpinspect-shadow'."
 
 (defun phpi-shadow-index-synced-p (shadow)
   (and (phpi-shadow-synced-p shadow)
-       (eq (phpi-shadow--synced-change shadow)
-           (phpi-shadow--indexed-change shadow))))
+       (eq (phpi-condition-value (phpi-shadow--synced-change shadow))
+           (phpi-condition-value (phpi-shadow--indexed-change shadow)))))
 
 (defun phpi-shadow-make-job-queue (shadow)
   ;; Make sure that the thread uses shadow buffer as its current buffer. This
@@ -1094,7 +1114,7 @@ SHADOW should be an instance of `phpinspect-shadow'."
 
 (defun phpi-shadow-enqueue-task (shadow task)
   (when (or (phpinspect-change-p task) (eq 'parse-fresh task))
-    (setf (phpi-shadow--last-change shadow) task))
+    (setf (phpi-condition-value (phpi-shadow--last-change shadow)) task))
 
   (if phpinspect--shadow-run-sync
       (phpi-shadow--handle-job shadow task)
