@@ -51,18 +51,44 @@
   "Creates a `phpinspect--completion` for a possible completion
 candidate. Candidates can be indexed functions and variables.")
 
-(cl-defstruct (phpinspect--completion-list
-               (:constructor phpinspect--make-completion-list))
+
+(cl-defstruct (phpi-comp-result
+               (:constructor phpi-make-comp-result))
   "Contains all data for a completion at point"
   (completion-start nil
                     :type integer)
   (completion-end nil
                   :type integer)
+  (query nil
+         :type phpinspect-completion-query)
+  (rctx nil
+        :type phpinspect--resolvecontext)
+  (strategy nil
+            :type list)
+
+  (-list nil
+        :type phpinspect--completion-list))
+
+(cl-defstruct (phpinspect--completion-list
+               (:constructor phpinspect--make-completion-list))
+  "Contains all data for a completion at point"
   (completions (make-hash-table :test #'equal :size 10000 :rehash-size 2)
                :type hash-table
                :documentation
                "A list of completion strings")
   (has-candidates nil))
+
+(defun phpi-comp-result-list (result)
+  (with-memoization (phpi-comp-result--list result)
+    (let ((clist (phpinspect--make-completion-list)))
+      (when (phpi-comp-result-strategy result)
+        (dolist (candidate (phpinspect-comp-strategy-execute
+                            (phpi-comp-result-strategy result)
+                            (phpi-comp-result-query result)
+                            (phpi-comp-result-rctx result)))
+          (phpinspect--completion-list-add clist (phpinspect--make-completion candidate))))
+
+      clist)))
 
 (cl-defgeneric phpinspect--completion-list-add
     (comp-list completion)
@@ -307,86 +333,40 @@ completion result.")
   "Execute QUERY.
 
 Returns list of `phpinspect--completion'."
-  (let* ((last-parameters phpinspect--last-completion-parameters)
-         ;; Check if caching is at all possible, before parsing the buffer. This
-         ;; needs to happen now, as tainted regions are removed from the taint
-         ;; pool after a buffer parse. We need the tainted region to determine
-         ;; if the only edit is one performed during completion.
-         (maybe-cache? (and
-                        last-parameters
-                        (phpinspect--completion-query-maybe-should-cache
-                         (phpinspect--completion-parameters-query last-parameters)
-                         query))))
+  (let* (result thread)
 
-    (let* ((buffer (phpinspect-completion-query-buffer query))
-           (point (phpinspect-completion-query-point query))
-           (buffer-map (phpinspect-buffer-parse-map buffer))
-           (rctx (phpinspect-get-resolvecontext
-                  (phpinspect-buffer-project buffer) buffer-map point))
-           (completion-list (phpinspect--make-completion-list)))
+    (setq thread
+          (phpi-run-threaded "completion"
+            (setq result
+                  (let* ((buffer (phpinspect-completion-query-buffer query))
+                         (point (phpinspect-completion-query-point query))
+                         (buffer-map (phpinspect-buffer-parse-map buffer))
+                         (rctx (phpinspect-get-resolvecontext
+                                (phpinspect-buffer-project buffer) buffer-map point)))
 
-      (phpinspect-buffer-update-project-index buffer)
+                    (catch 'phpinspect--return
+                      (dolist (strategy phpinspect-completion-strategies)
+                        (when-let (region (phpinspect-comp-strategy-supports strategy query rctx))
+                          (throw 'phpinspect--return
+                                 (phpi-make-comp-result
+                                  :completion-start (phpinspect-region-start region)
+                                  :completion-end (phpinspect-region-end region)
+                                  :rctx rctx
+                                  :query query
+                                  :strategy strategy)))))))))
 
-      (setq phpinspect--last-completion-list
-            (catch 'phpinspect--return
-              (dolist (strategy phpinspect-completion-strategies)
-                (when-let (region (phpinspect-comp-strategy-supports strategy query rctx))
-                  ;; Check if using the cached completion list is possible.
-                  (if-let ((nil)
-                           (maybe-cache?)
-                           ;; There is a previous list available
-                           (last-list phpinspect--last-completion-list)
-                           ;; The list had candidates in it
-                           ((phpinspect--completion-list-has-candidates last-list))
-                           ;; The subject of the last resolvecontext is the same
-                           ;; (so likely to evaluate to the same results).
-                           ((equal (butlast (phpinspect--resolvecontext-subject rctx))
-                                   (butlast (phpinspect--completion-parameters-subject
-                                             last-parameters))))
-                           ;; The completion strategy is the same as the last
-                           ;; one used.
-                           ((eq strategy
-                                (phpinspect--completion-parameters-strategy
-                                 last-parameters))))
-                      ;; We can safely use the cached list: All parameters used
-                      ;; for the last completion seem to match the current one.
-                      (progn
-                        ;; Update the region, this is necessary for
-                        ;; completion-at-point to determine what is being
-                        ;; completed.
-                        (setf (phpinspect--completion-list-completion-start last-list)
-                              (car region)
-                              (phpinspect--completion-list-completion-end last-list)
-                              (cadr region))
+    (let ((cancelled t))
+      (with-timeout (0.2)
+        (while-no-input
+          (while (and (thread-live-p thread) (not (input-pending-p t)))
+            (sleep-for 0.02))
+          (setq cancelled nil)))
 
-                        (throw 'phpinspect--return last-list))
-
-                    ;; We can't use the cached list, proceed executing the
-                    ;; strategy.
-                    (setf (phpinspect--completion-list-completion-start completion-list)
-                          (car region)
-                          (phpinspect--completion-list-completion-end completion-list)
-                          (cadr region))
-
-                    ;; update last used parameters
-                    (setq phpinspect--last-completion-parameters
-                          (phpinspect--make-completion-parameters
-                           :subject (phpinspect--resolvecontext-subject rctx)
-                           :strategy strategy
-                           :query query))
-
-                    (phpinspect--log "Found matching completion strategy. Executing...")
-                    (dolist (candidate (phpinspect-comp-strategy-execute strategy query rctx))
-                      (phpinspect--completion-list-add
-                       completion-list (phpinspect--make-completion candidate)))
-
-                    (throw 'phpinspect--return completion-list))))
-                ;; return empty list
-                completion-list))))
-
-  (phpinspect--log "Returning completion list %s" phpinspect--last-completion-list)
-  phpinspect--last-completion-list)
-
+      (if cancelled
+          (phpi-make-comp-result
+           :completion-start (point)
+           :completion-end (point))
+        result))))
 
 ;; FIXME: completions should be stored in an LRU cache keyed with object
 ;; pointers of the things they represent (variables/functions). Re-creating them
@@ -466,20 +446,20 @@ Returns list of `phpinspect--completion'."
        ('variable "<va> ")))))
 
 
-(defun phpinspect--get-completion-at-point ()
+(defun phpinspect-complete-at-point ()
   (catch 'phpinspect-interrupted
-    (let ((comp-list (phpinspect-completion-query-execute (phpinspect--get-completion-query))))
-
-      (and (phpinspect--completion-list-has-candidates comp-list)
-           (list (phpinspect--completion-list-completion-start comp-list)
-                 (phpinspect--completion-list-completion-end comp-list)
+    (when-let ((result (phpinspect-completion-query-execute (phpinspect--get-completion-query))))
+      (list (phpi-comp-result-completion-start result)
+            (phpi-comp-result-completion-end result)
                  (completion-table-dynamic (lambda (_)
-                                             (phpinspect--completion-list-strings comp-list)))
+                                             (phpinspect--completion-list-strings
+                                              (phpi-comp-result-list result))))
                  :affixation-function
                  (lambda (completions)
                    (let (affixated completion)
                      (dolist (comp completions)
-                       (setq completion (phpinspect--completion-list-get-metadata comp-list comp))
+                       (setq completion (phpinspect--completion-list-get-metadata
+                                         (phpi-comp-result-list result) comp))
                        (push (list comp (phpinspect--prefix-for-completion completion)
                                    (concat " " (phpinspect--completion-meta completion)))
                              affixated))
@@ -487,7 +467,7 @@ Returns list of `phpinspect--completion'."
                  :exit-function
                  (lambda (comp-name state)
                    (let ((comp (phpinspect--completion-list-get-metadata
-                                phpinspect--last-completion-list
+                                (phpi-comp-result-list result)
                                 comp-name)))
                      (when (and (eq 'finished state)
                                 (eq 'function (phpinspect--completion-kind comp)))
@@ -498,36 +478,33 @@ Returns list of `phpinspect--completion'."
                  :company-kind (lambda (comp-name)
                                  (let ((comp
                                         (phpinspect--completion-list-get-metadata
-                                         phpinspect--last-completion-list
+                                         (phpi-comp-result-list result)
                                          comp-name)))
                                    (if comp
                                        (phpinspect--completion-kind comp)
                                      (phpinspect--log  "Unable to find matching completion for name %s" comp-name)
-                                     nil))))))))
+                                     nil)))
+                 :exclusive (if (phpi-comp-result-strategy result) 'yes 'no)))))
 
-(defun phpinspect-complete-at-point ()
-(let* ((buf (current-buffer))
-       result thread
-       (completion-ready nil)
-       (start (point))
-       (end (point)))
+;; (defun phpinspect-complete-at-point ()
+;;   (phpinspect--get-completion-at-point))
 
-  (setq thread (phpi-run-threaded "completion-at-point"
-                 (with-current-buffer buf
-                   (setq result (phpinspect--get-completion-at-point))
-                   (setq completion-ready t)
-                   (message "set result"))))
+;;   (setq thread (phpi-run-threaded "completion-at-point"
+;;                  (with-current-buffer buf
+;;                    (setq result
+;;                    (setq completion-ready t)
+;;                    (message "set result"))))
 
-  (message "STARTING WAIT")
-  (while (thread-live-p thread)
-    (message "waiting")
-    (sit-for 0.001))
+;;   (message "STARTING WAIT")
+;;   (while (thread-live-p thread)
+;;     (message "waiting")
+;;     (sit-for 0.001))
 
-  (message "RESULT: %s" completion-ready)
-  (if completion-ready
-      (list start end result)
-    ;; Return a dummy completion table that will pass the try-completion test
-    (list start end '("") :exclusive 'no)))  )
+;;   (message "RESULT: %s" completion-ready)
+;;   (if completion-ready
+;;       (list start end result)
+;;     ;; Return a dummy completion table that will pass the try-completion test
+;;     (list start end '("") :exclusive 'no)))  )
 
 ;; (let* ((buf (current-buffer))
   ;;        result thread)

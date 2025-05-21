@@ -747,6 +747,7 @@ If provided, PROJECT must be an instance of `phpinspect-project'."
   (queue nil :type phpinspect--queue)
   (thread nil :type thread)
   (id nil :type integer)
+  (-index-waiting-thread nil)
   (-last-change (phpi-make-condition))
   (-synced-change (phpi-make-condition))
   (-indexed-change (phpi-make-condition))
@@ -866,7 +867,17 @@ indexation"))
     ('parse-fresh
      (phpi-shadow-parse-fresh shadow))
     ('update-project-index
-     (phpi-shadow-update-project-index shadow))
+     (let ((autoloader (phpinspect-project-autoload
+                        (phpinspect-buffer-project
+                         (phpi-shadow-origin shadow)))))
+       (if (phpinspect-autoloader-refreshing-p autoloader)
+           (unless (and-let* ((thread (phpi-shadow--index-waiting-thread shadow))
+                              ((thread-live-p thread))))
+             (setf (phpi-shadow--index-waiting-thread shadow)
+                   (phpi-run-threaded "shadow-index-notifier"
+                     (phpinspect-autoloader-await-refresh autoloader)
+                     (phpi-shadow-enqueue-task shadow 'update-project-index))))
+       (phpi-shadow-update-project-index shadow))))
     (_
      (phpinspect-message
       "Shadow thread received unsupported task type: %s"
@@ -902,6 +913,7 @@ indexation"))
 
 (defun phpi-shadow-await-synced (shadow &optional _allow-interrupt)
   (phpi-shadow-assert-live-p shadow)
+
   (unless (phpi-shadow-is-me-p shadow)
     (phpi-condition-wait (phpi-shadow--synced-change shadow)
                          (lambda (change)

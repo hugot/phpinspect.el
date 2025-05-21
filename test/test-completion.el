@@ -50,13 +50,13 @@ class Foo
     (let* ((query (phpinspect--get-completion-query))
            result)
 
-      (setq result (phpinspect-completion-query-execute query))
+      (setq result (phpi-comp-result-list (phpinspect-completion-query-execute query)))
       (should-not (phpinspect--completion-list-has-candidates result))
 
       (insert "F")
 
       (setq query (phpinspect--get-completion-query)
-            result (phpinspect-completion-query-execute query))
+            result (phpi-comp-result-list (phpinspect-completion-query-execute query)))
       (should-not (phpinspect--completion-list-has-candidates result)))))
 
 (ert-deftest phpinspect-complete-types-at-point ()
@@ -73,7 +73,7 @@ new ")
      (current-buffer) (phpinspect--make-dummy-composer-project-with-code))
 
     (let* ((query (phpinspect--get-completion-query))
-	       (completions (phpinspect-completion-query-execute query))
+	       (completions (phpi-comp-result-list (phpinspect-completion-query-execute query)))
            (types (phpinspect--completion-list-strings completions)))
 
 	  (should (length= types 6))
@@ -97,7 +97,7 @@ public ")
 
     (let* ((query (phpinspect--get-completion-query))
 	       (completions (phpinspect-completion-query-execute query))
-           (strings (phpinspect--completion-list-strings completions)))
+           (strings (phpinspect--completion-list-strings (phpi-comp-result-list completions))))
 
       (should strings))))
 
@@ -116,10 +116,9 @@ public function a() {} ")
      (current-buffer) (phpinspect--make-dummy-composer-project-with-code))
 
     (let* ((query (phpinspect--get-completion-query))
-	       (completions (phpinspect-completion-query-execute query))
-           (strings (phpinspect--completion-list-strings completions)))
+	       (completions (phpinspect-completion-query-execute query)))
 
-      (should-not strings))))
+      (should-not completions))))
 
 (ert-deftest phpinspect-dont-complete-within-comments ()
   (let ((cases (list "function a() { new // "
@@ -140,8 +139,6 @@ class A { ")
          (current-buffer) (phpinspect--make-dummy-composer-project-with-code))
 
         (let* ((query (phpinspect--get-completion-query))
-	           (completions (phpinspect-completion-query-execute query))
-               (strings (phpinspect--completion-list-strings completions)))
+	           (completions (phpinspect-completion-query-execute query)))
 
-          (should-not (phpinspect--completion-list-has-candidates completions))
-          (should-not strings))))))
+          (should-not completions))))))

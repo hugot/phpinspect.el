@@ -68,9 +68,9 @@
 
     result))
 
-(defun phpi-make-condition (&optional value)
+(defun phpi-make-condition (&optional value name)
   (let* ((mx (make-mutex))
-         (condvar (make-condition-variable mx)))
+         (condvar (make-condition-variable mx name)))
     (phpi--make-condition :-mx mx :-condvar condvar :-value value)))
 
 (defvar phpinspect--main-thread-starving (phpi-make-condition 'no))
@@ -119,7 +119,7 @@
 If current thread is the main thread, this function does nothing."
   (inline-quote
    (unless (eq main-thread (current-thread))
-     (thread-yield))))
+       (thread-yield))))
 
 (defmacro phpi-progn (&rest body)
   `(prog1
@@ -133,7 +133,7 @@ If current thread is the main thread, this function does nothing."
 
 (defun phpi-start-job-queue (name job-handler)
   (declare (indent 1))
-  (let* ((condition (phpi-make-condition))
+  (let* ((condition (phpi-make-condition nil (format "%s condition" name)))
          queue)
     (setq queue (phpi--make-job-queue
                  :subscription
@@ -143,7 +143,7 @@ If current thread is the main thread, this function does nothing."
 
     (setf (phpi-job-queue-thread queue)
           (phpi-run-threaded (format "(job queue) %s" name)
-            (let ((ended nil)
+            (let (ended
                   (inhibit-quit t))
               (catch 'phpi--break
                 (while t
@@ -155,14 +155,15 @@ If current thread is the main thread, this function does nothing."
                           ;; If job queue end is signaled, exit after queue has
                           ;; been fully depleted.
                           (setq ended t)
-                          (if (phpinspect-queue-first queue)
-                              (setq ended nil)
+                          (unless (phpinspect-queue-first queue)
                             (throw 'phpi--break nil)))))
-
                     (if ended
                         ;; End was signaled previously and the queue is empty. Exit.
                         (throw 'phpi--break nil)
-                      (phpi-condition-wait condition))))))))
+                      (progn
+                        (setf (phpi-condition--value condition)
+                              (phpinspect-queue-first queue))
+                        (phpi-condition-wait condition #'identity)))))))))
     queue))
 
 (defun phpi-job-queue-live-p (queue)
