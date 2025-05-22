@@ -32,9 +32,6 @@
 
 (phpinspect--declare-log-group 'completion)
 
-(defvar phpinspect--last-completion-list nil
-  "Used internally to save metadata about completion options
-  between company backend calls")
 
 (cl-defstruct (phpinspect--completion
                (:constructor phpinspect--construct-completion))
@@ -301,22 +298,6 @@ Completing words in a comment for example, is usually not useful."
         (- point (length (match-string 0)))
       point)))
 
-(defun phpinspect--completion-query-maybe-should-cache (last-query query)
-  (and last-query
-       (eq (phpinspect-completion-query-buffer last-query)
-           (phpinspect-completion-query-buffer query))
-       (let ((change (phpinspect-buffer-last-change
-                       (phpinspect-completion-query-buffer query)))
-             (atoms-start
-              (phpinspect-with-current-buffer (phpinspect-completion-query-buffer query)
-                (phpinspect--find-atoms-start (phpinspect-completion-query-point query)))))
-         (or (not change)
-             (and (<= atoms-start
-                      (phpinspect-completion-query-point last-query))
-                  (>= (phpi-change-end change)
-                      (phpinspect-completion-query-point last-query))
-                  (>= 1 (abs (- (phpinspect-completion-query-point query)
-                                (phpi-change-end change)))))))))
 
 (cl-defstruct (phpinspect--completion-parameters
                (:constructor phpinspect--make-completion-parameters))
@@ -324,10 +305,6 @@ Completing words in a comment for example, is usually not useful."
   (query nil)
   (subject nil)
   (strategy nil))
-
-(defvar phpinspect--last-completion-parameters nil
-  "Used internally to probe for opportunities to re-use the last
-completion result.")
 
 (cl-defmethod phpinspect-completion-query-execute ((query phpinspect-completion-query))
   "Execute QUERY.
@@ -355,13 +332,20 @@ Returns list of `phpinspect--completion'."
                                   :query query
                                   :strategy strategy)))))))))
 
+    ;; This construction seems to be necessary while running as
+    ;; completion-at-point function in the main thread. Using `sleep-for'
+    ;; instead of waiting for a condition variable or joining the thread will
+    ;; prevent scenarios in which emacs becomes unresponsive.
     (let ((cancelled t))
       (with-timeout (0.2)
         (while-no-input
-          (while (and (thread-live-p thread) (not (input-pending-p t)))
-            (sleep-for 0.02))
+          (while (thread-live-p thread)
+            (sleep-for 0.01))
           (setq cancelled nil)))
 
+      ;; If cancelled is non-nil, the completion query execution was interrupted
+      ;; before it could be completed due to the time limit or user
+      ;; input. Return an empty completion result.
       (if cancelled
           (phpi-make-comp-result
            :completion-start (point)
@@ -484,39 +468,11 @@ Returns list of `phpinspect--completion'."
                                        (phpinspect--completion-kind comp)
                                      (phpinspect--log  "Unable to find matching completion for name %s" comp-name)
                                      nil)))
+
+                 ;; Make non-exclusive if no strategy matched. A failure to
+                 ;; match could be due to a timeout while waiting for the buffer
+                 ;; to sync, in which case we don't want to have capf think that
+                 ;; the function cannot complete at point at all.
                  :exclusive (if (phpi-comp-result-strategy result) 'yes 'no)))))
-
-;; (defun phpinspect-complete-at-point ()
-;;   (phpinspect--get-completion-at-point))
-
-;;   (setq thread (phpi-run-threaded "completion-at-point"
-;;                  (with-current-buffer buf
-;;                    (setq result
-;;                    (setq completion-ready t)
-;;                    (message "set result"))))
-
-;;   (message "STARTING WAIT")
-;;   (while (thread-live-p thread)
-;;     (message "waiting")
-;;     (sit-for 0.001))
-
-;;   (message "RESULT: %s" completion-ready)
-;;   (if completion-ready
-;;       (list start end result)
-;;     ;; Return a dummy completion table that will pass the try-completion test
-;;     (list start end '("") :exclusive 'no)))  )
-
-;; (let* ((buf (current-buffer))
-  ;;        result thread)
-
-  ;;   (setq thread (phpi-run-threaded "completion-at-point"
-  ;;                  (with-current-buffer buf
-  ;;                    (setq result (phpinspect--get-completion-at-point)))))
-
-  ;;   (while (thread-live-p thread)
-  ;;     (sit-for 0.005))
-
-  ;;   result))
-
 
 (provide 'phpinspect-completion)
