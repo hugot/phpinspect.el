@@ -292,7 +292,7 @@ also `phpinspect-eldoc-query-execute'.")
                        :point (phpinspect--determine-completion-point)))))
       (mapconcat #'phpinspect-eldoc-string resp "\n"))))
 
-(defvar-local phpinspect--eldoc-thread nil)
+(defvar phpinspect--eldoc-thread nil)
 
 (defun phpinspect-eldoc-function (callback)
   "An `eldoc-documentation-function` implementation for PHP files.
@@ -303,9 +303,14 @@ TODO:
  - Respect `eldoc-echo-area-use-multiline-p`
 "
   (when phpinspect-current-buffer
-    (phpi-run-threaded "PHPInspect Eldoc"
-        (let ((result (phpinspect--eldoc-function-sync)))
-          (funcall callback result)))
+    (when (and phpinspect--eldoc-thread
+               (thread-live-p phpinspect--eldoc-thread))
+      (phpi-thread-kill phpinspect--eldoc-thread))
+
+    (setq phpinspect--eldoc-thread
+          (phpi-run-threaded "PHPInspect Eldoc"
+            (let ((result (phpinspect--eldoc-function-sync)))
+              (funcall callback result))))
 
     'async))
 
