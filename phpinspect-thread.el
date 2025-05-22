@@ -114,7 +114,7 @@
   (signal 'phpinspect-job-queue-end nil))
 
 (define-inline phpi-thread-yield ()
-  "Like `thread-yield', but takes extra care not to starve the main thread.
+  "Like `thread-yield', but takes extra care not to yield the main thread.
 
 If current thread is the main thread, this function does nothing."
   (inline-quote

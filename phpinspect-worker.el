@@ -34,14 +34,6 @@
 (eval-when-compile
   (phpinspect--declare-log-group 'worker))
 
-(defcustom phpinspect-worker-pause-time 1
-  "Number of seconds that `phpinspect-worker' should pause when
-user input is detected. A higher value means better
-responsiveness, at the cost of slower code indexation. On modern
-hardware this probably doesn't need to be tweaked."
-  :type 'number
-  :group 'phpinspect)
-
 (defvar phpinspect-worker nil
   "Contains the phpinspect worker that is used by all projects.")
 
@@ -59,11 +51,7 @@ hardware this probably doesn't need to be tweaked."
                     :type bool
                     :documentation
                     "Whether or not the thread should continue
-running. If this is nil, the thread is stopped.")
-  (skip-next-pause nil
-                   :type bool
-                   :documentation
-                   "Whether or not the thread should skip its next scheduled pause."))
+running. If this is nil, the thread is stopped."))
 
 (cl-defstruct (phpinspect-dynamic-worker
                (:constructor phpinspect-make-dynamic-worker-generated))
@@ -133,17 +121,12 @@ already present in the queue."
 (cl-defgeneric phpinspect-worker-make-thread-function (worker)
   "Create a function that can be used to start WORKER's thread.")
 
-(defun phpinspect--worker-pause ()
-  (let* ((mx (make-mutex))
-         (continue (make-condition-variable mx)))
-    (phpinspect-thread-pause phpinspect-worker-pause-time mx continue)))
-
 (cl-defmethod phpinspect-worker-make-thread-function ((worker phpinspect-worker))
   (lambda ()
     (let ((inhibit-quit t))
       (while (phpinspect-worker-continue-running worker)
         (condition-case err
-            (progn
+            (phpi-progn
               (phpinspect--log "Dequeueing next task")
               (let* ((task (phpinspect-queue-dequeue (phpinspect-worker-queue worker))))
                 (if task
@@ -155,16 +138,7 @@ already present in the queue."
                       (phpinspect-task-execute task worker))
                   ;; else: join with the main thread until wakeup is signaled
                   (phpinspect--log "No tasks, joining main thread")
-                  (thread-join main-thread)))
-
-              ;; Pause for a second after indexing something, to allow user input to
-              ;; interrupt the thread.
-              (when (or (phpinspect--input-pending-p)
-                        ;; Pause if quit-flag is set
-                        quit-flag
-                        (not (phpinspect-worker-skip-next-pause worker)))
-                (phpinspect--worker-pause))
-              (setf (phpinspect-worker-skip-next-pause worker) nil))
+                  (thread-join main-thread))))
           ;; This error is used to wake up the thread when new tasks are added
           ;; to the queue.
           (phpinspect-wakeup-thread)

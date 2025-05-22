@@ -32,21 +32,6 @@
 (defun phpinspect-pipeline-error-p (obj)
   (eq 'phpinspect-pipeline-error (car-safe obj)))
 
-(defcustom phpinspect-pipeline-pause-time 0.1
-  "Number of seconds to pause a pipeline thread when emacs receives
-user input. This is similar to `phpinspect-worker-pause-time',
-but pipelines are meant to run in bursts. For that reason, the
-default pause time for pipelines is lower to be a little more
-aggressive in hogging cpu time.
-
-Set this variable to a higher value if you experience a lot of
-jitter when editing during pipeline operations.  At the time of
-writing, pipelines are used to refresh the project
-index/autoloader and for the indexation of \"include\"
-directories."
-  :type 'number
-  :group 'phpinspect)
-
 (cl-defstruct (phpinspect-pipeline-end (:constructor phpinspect-make-pipeline-end))
   (value nil
          :type any)

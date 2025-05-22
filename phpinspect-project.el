@@ -402,7 +402,7 @@ before the search is executed."
        (phpinspect--type= (phpinspect-index-task-type task1) (phpinspect-index-task-type task2))))
 
 (cl-defmethod phpinspect-task-execute ((task phpinspect-index-task)
-                                       (worker phpinspect-worker))
+                                       (_worker phpinspect-worker))
   "Execute index TASK for WORKER."
   (let ((project (phpinspect-index-task-project task))
         (is-native-type (phpinspect--type-is-native
@@ -413,12 +413,7 @@ before the search is executed."
 
     (cond (is-native-type
            (phpinspect--log "Skipping indexation of native type %s as task"
-                            (phpinspect-index-task-type task))
-
-           ;; We can skip pausing when a native type is encountered
-           ;; and skipped, as we haven't done any intensive work that
-           ;; may cause hangups.
-           (setf (phpinspect-worker-skip-next-pause worker) t))
+                            (phpinspect-index-task-type task)))
           (t
            (let* ((type (phpinspect-index-task-type task))
                   (root-index (phpinspect-project-index-type-file project type)))

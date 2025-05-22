@@ -25,7 +25,7 @@
 
 ;; PHPInspect is a minor mode that provides code intelligence for PHP in Emacs.
 ;; At its core is a PHP parser implemented in Emacs Lisp.  PHPInspect comes with
-;; backends for `completion-at-point`, `company-mode` and `eldoc`.  A backend
+;; backends for `completion-at-point` and `eldoc`.  A backend
 ;; for `xref` (which provides go-to-definition functionality) is planned to be
 ;; implemented at a later date.
 ;;
@@ -137,10 +137,6 @@
    (lambda () (phpinspect-buffer-reset phpinspect-current-buffer)))
   (add-hook 'kill-buffer-hook #'phpinspect-unregister-current-buffer)
 
-  (when (featurep 'company)
-    (make-local-variable 'company-backends)
-    (add-to-list 'company-backends #'phpinspect-company-backend))
-
   (add-hook 'completion-at-point-functions #'phpinspect-complete-at-point nil 'local)
 
 
@@ -169,7 +165,6 @@ Reparses the entire buffer without token reuse."
   "Clean up the buffer environment for the mode to be disabled."
   (setq phpinspect-current-buffer nil)
   (kill-local-variable 'phpinspect--buffer-project)
-  (kill-local-variable 'company-backends)
   (kill-local-variable 'eldoc-documentation-function)
   (kill-local-variable 'eldoc-message-commands)
   (phpinspect-unregister-current-buffer))
@@ -198,10 +193,6 @@ in a buffer of one of the project files. Project root is detected with
 For completion see `phpinspect-complete-at-point' which is
 automatically added to `completion-at-point-functions' when
 phpinspect-mode is activated.
-
-For company users, there is also
-`phpinspect-company-backend'. This is automatically added to
-`company-backends' when company is detected.
 
 For eldoc see `phpinspect-eldoc-function'.
 
@@ -274,41 +265,8 @@ With a classic hook function:
 
     (add-hook \\='php-mode-hook #\\='my-php-personal-hook)
 
+;; end example configuration."
 
-Example configuration for `company-mode':
-
-    (defun my-php-personal-hook ()
-      ;; Assuming you already have company-mode enabled, these settings
-      ;; add some IDE-like flair to it. This is of course not required, do
-      ;; with it what you like.
-      (setq-local company-minimum-prefix-length 0)
-      (setq-local company-tooltip-align-annotations t)
-      (setq-local company-idle-delay 0.1)
-
-      ;; If you don't have company-mode enabled by default, uncomment this line:
-      ;; (company-mode)
-
-      ;; By default, phpinspect-mode adds itself as a backend to
-      ;; the `company-backends' of the current buffer. You can completely
-      ;; disable all other backends with the statement below.
-      (setq-local company-backends \\='(phpinspect-company-backend))
-
-      ;; Shortcut to add use statements for classes you use.
-      (define-key php-mode-map (kbd \"C-c u\") #\\='phpinspect-fix-imports)
-
-      ;; Shortcuts to quickly search/open files of PHP classes.
-      ;; You can make these local to php-mode, but making them global
-      ;; like this makes them work in other modes/filetypes as well, which
-      ;; can be handy when jumping between templates, config files and PHP code.
-      (global-set-key (kbd \"C-c a\") #\\='phpinspect-find-class-file)
-      (global-set-key (kbd \"C-c c\") #\\='phpinspect-find-own-class-file)
-
-      ;; Enable phpinspect-mode
-      (phpinspect-mode))
-
-    (add-hook \\='php-mode-hook #\\='my-php-personal-hook)
-
-    ;; End example configuration."
   :after-hook (phpinspect--mode-function)
   :keymap  (list (cons (kbd "C-c u") #'phpinspect-fix-imports)))
 
@@ -319,62 +277,6 @@ Example configuration for `company-mode':
     :buffer phpinspect-current-buffer
     :completion-point (phpinspect--determine-completion-point)
     :point (point))))
-
-(eval-when-compile
-  (declare-function company-begin-backend "company.el"))
-
-(defun phpinspect-company-backend (command &optional arg &rest _ignored)
-  "A company backend for PHP."
-  (interactive (list 'interactive))
-  (require 'company)
-  (cond
-   ((eq command 'interactive)
-    (company-begin-backend 'company-phpinspect-backend))
-   ((eq command 'prefix)
-    (cond ((looking-back "->[A-Za-z_0-9-]*" nil)
-           (let ((match (match-string 0)))
-             (substring match 2 (length match))))
-          ((looking-back "::[A-Za-z_0-9-]*" nil)
-           (let ((match (match-string 0)))
-             (substring match 2 (length match))))
-          ((looking-back "\\$[A-Za-z_0-9-]" nil)
-           (let ((match (match-string 0)))
-             (substring match 1 (length match))))
-          ((looking-back "[A-Za-z_0-9-]+" nil t)
-           (match-string 0))))
-   ((eq command 'post-completion)
-    (when (eq 'function (phpinspect--completion-kind
-                         (phpinspect--completion-list-get-metadata
-                          phpinspect--last-completion-list
-                          arg)))
-      (insert "(")))
-   ((eq command 'candidates)
-    (catch 'phpinspect-interrupted
-      (let ((completion-list (phpinspect--suggest-at-point))
-            (candidates))
-
-        (setq candidates
-              (seq-filter (lambda (completion)
-                            (when completion
-                              (string-match (concat "^" (regexp-quote arg))
-                                            completion)))
-                          (phpinspect--completion-list-strings
-                           completion-list)))
-        (setq phpinspect--last-completion-list completion-list)
-        candidates)))
-   ((eq command 'annotation)
-    (concat " " (phpinspect--completion-annotation
-                 (phpinspect--completion-list-get-metadata
-                  phpinspect--last-completion-list
-                  arg))))
-   ((eq command 'kind)
-    (phpinspect--completion-kind
-     (phpinspect--completion-list-get-metadata
-      phpinspect--last-completion-list
-      arg)))
-   ((eq command 'meta)
-    (phpinspect--completion-meta
-              (phpinspect--completion-list-get-metadata phpinspect--last-completion-list arg)))))
 
 (defsubst phpinspect-insert-file-contents (&rest args)
   "Call `phpinspect-insert-file-contents-function' with ARGS as arguments."
