@@ -23,129 +23,81 @@
 ;;; Code:
 
 
-;;(require 'profiler)
-;; (require 'phpinspect-parser)
-;; (require 'phpinspect-buffer)
+(require 'profiler)
+(require 'phpinspect-parser)
+(require 'phpinspect-buffer)
 
-;; (defun phpinspect-parse-current-buffer ()
-;;   (phpinspect-parse-buffer-until-point
-;;    (current-buffer)
-;;    (point-max)))
+(with-temp-buffer
+  (let* ((here (file-name-directory (macroexp-file-name)))
+         (benchmark-file (or (getenv "PHPINSPECT_BENCHMARK_FILE")
+                             (expand-file-name "Response.php" here)))
+         (buffer (phpinspect-claim-buffer (current-buffer) (phpinspect--make-project
+                                                            :root "/dev/null"
+                                                            :fs (phpinspect-make-virtual-fs)
+                                                            :autoload (phpinspect-make-autoloader
+                                                                       :fs (phpinspect-make-virtual-fs)
+                                                                       :project-root-resolver (lambda () "/dev/null"))
+                                                            :worker 'nil-worker)))
+         result)
 
+    (message "Incremental parse (warmup):")
+    (setq result (benchmark-run 1 (progn
+                                    (insert-file-contents benchmark-file)
+                                    (phpinspect-buffer-parse buffer))))
 
+    (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
 
-;; (let* ((here (file-name-directory (macroexp-file-name)))
-;;        (benchmark-file (or (getenv "PHPINSPECT_BENCHMARK_FILE")
-;;                            (expand-file-name "Response.php" here)))
-;;        buffer
-;;        result)
+    (message "Incremental parse:")
+    (setq result (benchmark-run 1 (phpinspect-buffer-parse buffer)))
 
+    (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
 
+    (garbage-collect)
+    (message "Incremental parse (no edits):")
+    (setq result (benchmark-run 1 (phpinspect-buffer-parse buffer)))
 
-;;   (with-temp-buffer
-;;     (insert-file-contents benchmark-file)
+    (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
+    (garbage-collect)
 
-;;     (message "Incremental parse (warmup):")
-;;     (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :bmap (phpinspect-make-bmap))
-;;       (setq result (benchmark-run 1 (phpinspect-parse-current-buffer))))
-
-;;     (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
-
-;;     (let ((bmap (phpinspect-make-bmap))
-;;           (bmap2 (phpinspect-make-bmap)))
-;;       (message "Incremental parse:")
-;;       (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :bmap bmap)
-;;         (setq result (benchmark-run 1 (phpinspect-parse-current-buffer))))
-
-;;       (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
-
-;;       (garbage-collect)
-;;       (message "Incremental parse (no edits):")
-;;       (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t
-;;                                                            :bmap bmap2
-;;                                                            :previous-bmap bmap
-;;                                                            :edtrack (phpinspect-make-edtrack))
-;;         (setq result (benchmark-run 1 (phpinspect-parse-current-buffer))))
-
-;;       (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
-;;       (garbage-collect)
-
-;;       (message "Incremental parse repeat (no edits):")
-;;       (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t
-;;                                                            :bmap (phpinspect-make-bmap)
-;;                                                            :previous-bmap bmap2
-;;                                                            :edtrack (phpinspect-make-edtrack))
-;;         (setq result (benchmark-run 1 (phpinspect-parse-current-buffer))))
-;;       (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
-
-;;       (garbage-collect)
-
-;;       (setq buffer (phpinspect-claim-buffer (current-buffer)))
-;;       (let ((edtrack (phpinspect-buffer-edit-tracker buffer))
-;;             (bmap (phpinspect-make-bmap))
-;;             (bmap-after (phpinspect-make-bmap)))
-;;         ;; Fresh
-;;         (phpinspect-with-parse-context (phpinspect-make-pctx :incremental t :bmap bmap)
-;;           (phpinspect-parse-current-buffer))
-
-;;         ;; (setq token-hits nil
-;;         ;;       token-misses nil)
-;;         (message "Incremental parse after buffer edit:")
-;;         ;; Removes closing curly brace of __construct
-;;         (goto-char 9062)
-;;         (delete-char -1)
-
-;;         (garbage-collect)
-;;         ;;        (profiler-start 'cpu)
-
-;;         ;;(phpinspect-edtrack-register-edit edtrack 9061 9061 1)
-;;         (phpinspect-with-parse-context (phpinspect-make-pctx :bmap bmap-after :incremental t :previous-bmap bmap :edtrack edtrack)
-;;           (setq result (benchmark-run 1 (phpinspect-parse-current-buffer))))
-
-;;         (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
-;;         (phpinspect-edtrack-clear edtrack)
-;;         (insert "{")
-
-;;         ;;(message "Hits: %s, Misses: %s" token-hits token-misses)
-
-;;         ;;(phpinspect-edtrack-register-edit edtrack 9061 9062 0)
-;;         ;; Mark region as edit without length deta
-;;         ;;(phpinspect-edtrack-register-edit edtrack 19552 19562 10)
-
-;;         (garbage-collect)
-
-;;         ;; (setq token-hits nil
-;;         ;;       token-misses nil)
+    (message "Incremental parse repeat (no edits):")
+    (setq result (benchmark-run 1 (phpinspect-buffer-parse buffer)))
+    (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
 
 
-;;         (message "Incremental parse after 2 more edits:")
-;;         (phpinspect-with-parse-context (phpinspect-make-pctx :bmap (phpinspect-make-bmap)
-;;                                                              :incremental t
-;;                                                              :previous-bmap bmap-after
-;;                                                              :edtrack edtrack)
-;;           (setq result (benchmark-run 1 (phpinspect-parse-current-buffer))))
+    (message "Incremental parse after buffer edit:")
 
-;;         (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
-;;         ;;(message "Hits: %s, Misses: %s" token-hits token-misses)
+    (garbage-collect)
 
-;;         ;; (save-current-buffer
-;;         ;;   (profiler-stop)
-;;         ;;   (profiler-report)
-;;         ;;   (profiler-report-write-profile (expand-file-name "profile.txt" here)))
+    (setq result (benchmark-run 1 (progn
+                                    ;; Removes closing curly brace of __construct
+                                    (goto-char 9062)
+                                    (delete-char -1)
+                                    (phpinspect-buffer-parse buffer))))
 
-;;         )))
+    (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
 
-;;   (with-temp-buffer
-;;     (insert-file-contents benchmark-file)
+    (garbage-collect)
 
-;;     (garbage-collect)
-;;     (message "Bare (no token reuse) parse (warmup):")
-;;     (setq result (benchmark-run 1 (phpinspect-parse-current-buffer)))
+    (message "Incremental parse after 2 more edits:")
 
-;;     (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
+    (setq result (benchmark-run 1 (progn
+                                    (insert "{")
+                                    (phpinspect-buffer-parse buffer))))
 
-;;     (garbage-collect)
-;;     (message "Bare (no token reuse) parse:")
-;;     (setq result (benchmark-run 1 (phpinspect-parse-current-buffer))))
 
-;;   (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result)))
+    (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
+
+    (with-temp-buffer
+     (insert-file-contents benchmark-file)
+
+     (garbage-collect)
+     (message "Bare (no token reuse) parse (warmup):")
+     (setq result (benchmark-run 1 (phpinspect-parse-current-buffer)))
+
+     (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))
+
+     (garbage-collect)
+     (message "Bare (no token reuse) parse:")
+     (setq result (benchmark-run 1 (phpinspect-parse-current-buffer))))
+
+    (message "Elapsed time: %f (%f in %d GC's)" (car result) (caddr result) (cadr result))))

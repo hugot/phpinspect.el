@@ -117,7 +117,7 @@
   (message "Elapsed time: %f (%f in %d GC's)"
            (car result) (caddr result) (cadr result)))
 
-(let ((arr (make-bool-vector 1000000 nil))
+(let ((arr (make-bool-vector 1000001 nil))
       result)
   (message "bool vector 1000000 insertions:")
   (garbage-collect)
