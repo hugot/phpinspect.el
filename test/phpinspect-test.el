@@ -123,9 +123,20 @@
       (should (phpinspect--type= (phpinspect--make-type :name "\\Thing")
                                  result)))))
 
+(ert-deftest phpinspect--find-assignment-ctxs-in-token-no-self-reference ()
+
+  (let* ((tokens (cadr
+                  (phpinspect-parse-string "{ $a = $b; $foo = 'abc'; $a = 'c'; if ($a = $b) { /* comment */ $a = $b; $something->doSomething(); $bla = $foo; } if (true) { $x = 34; $y = 99; $foo = $nr7; }}")))
+         (assignments (phpinspect--find-assignment-ctxs-in-token tokens)))
+    (dolist (assignment (cdr assignments))
+      (should-not (seq-find (lambda (actx)
+                              (eq (phpinspect--actx-tokens assignment)
+                                  (phpinspect--actx-tokens actx)))
+                            (phpinspect--actx-preceding-assignments assignment))))))
+
 (ert-deftest phpinspect--find-assignment-ctxs-in-token ()
   (let* ((tokens (cadr
-                  (phpinspect-parse-string "{ $foo = ['nr 1']; $bar = $nr2; if (true === ($foo = $nr3)) { $foo = $nr4; $notfoo = $nr5; if ([] === ($foo = [ $nr6 ])){ $foo = [ $nr7 ];}}}")))
+                  (phpinspect-parse-string "{ $foo = ['nr 1']; $bar = $nr2; if (true === ($foo = $nr3)) { $foo = $nr4; $notfoo = $nr5; if ([] === ($foo = [ $nr6 ])){ $foobar = /* comment */; $foo = [ $nr7 ]; $bar = }}}")))
          (expected '(((:variable "foo")
                       (:assignment "=")
                       (:array
@@ -152,7 +163,14 @@
                        (:string "nr 1")))))
          (assignments (phpinspect--find-assignment-ctxs-in-token tokens)))
 
-    (should (equal expected (mapcar #'phpinspect--actx-tokens assignments)))))
+    (should (equal expected (mapcar #'phpinspect--actx-tokens assignments)))
+
+    (dolist (assignment (cdr assignments))
+      (should-not (seq-find (lambda (actx)
+                              (eq (phpinspect--actx-tokens assignment)
+                                  (phpinspect--actx-tokens actx)))
+                            (phpinspect--actx-preceding-assignments assignment))))))
+
 
 
 (ert-deftest phpinspect-resolve-type-from-context ()
@@ -340,6 +358,7 @@ class FlufferUpper
 (load-file (concat phpinspect-test-directory "/test-completion.el"))
 (load-file (concat phpinspect-test-directory "/test-change.el"))
 (load-file (concat phpinspect-test-directory "/test-token-predicates.el"))
+(load-file (concat phpinspect-test-directory "/test-buffer-resolve.el"))
 
 
 (provide 'phpinspect-test)

@@ -64,6 +64,19 @@
   (preceding-assignments nil
                          :type list))
 
+(defun phpi--assignment-statement-p (statement)
+  (when (length> statement 2)
+    (let (assignment-found)
+      (catch 'phpi--return
+        (dolist (token statement)
+          (when (and assignment-found
+                     (phpinspect-not-comment-p token)
+                     (not (phpinspect-terminator-p token)))
+            (throw 'phpi--return t))
+
+          (when (phpinspect-maybe-assignment-p token)
+            (setq assignment-found t)))))))
+
 (defun phpinspect--find-assignment-ctxs-in-token (token &optional assignments-before var-annotations)
   (when (keywordp (car token))
     (setq token (cdr token)))
@@ -74,8 +87,9 @@
         assignments blocks-or-lists)
     (dolist (statement statements)
       (phpinspect--log "Finding assignment in statement '%s'" statement)
-      (when (seq-find #'phpinspect-maybe-assignment-p statement)
-        (phpinspect--log "Found assignment statement")
+
+      ;; Only add assignments which have more than 2 tokens, meaning
+      (when (phpi--assignment-statement-p statement)
         (push (phpinspect--make-assignment-context
                :annotations var-annotations
                :tokens statement
@@ -95,16 +109,16 @@
       (when (setq blocks-or-lists (seq-filter #'phpinspect-block-or-list-p statement))
         (dolist (block-or-list blocks-or-lists)
           (phpinspect--log "Found block or list %s" block-or-list)
-          (let ((local-assignments
-                 (phpinspect--find-assignment-ctxs-in-token
-                  block-or-list assignments-before var-annotations)))
-            (dolist (local-assignment (nreverse local-assignments))
-              (push local-assignment assignments))
+          (when-let ((local-assignments
+                      (phpinspect--find-assignment-ctxs-in-token
+                       block-or-list assignments-before var-annotations)))
+            (setq assignments (nconc local-assignments assignments))
             (setq assignments-before assignments)))))
 
     ;; return
     (phpinspect--log "Found assignments in token: %s" assignments)
     (phpinspect--log "Found statements in token: %s" statements)
+
     assignments))
 
 (defun phpinspect--find-assignment-by-predicate (assignment-ctxs predicate)
@@ -351,13 +365,14 @@ resolve types of function argument variables."
                      pattern-code (length assignments))
 
     (if (not last-assignment)
-        (when (and (= (length pattern-code) 2) (phpinspect-variable-p (cadr pattern-code)))
-          (let ((variable-name (cadadr pattern-code)))
-            (progn
-              (phpinspect--log "No assignments found for variable %s, checking function arguments: %s"
-                               variable-name function-arg-list)
-              (setq result (phpinspect-get-variable-type-in-function-arg-list
-                            variable-name type-resolver function-arg-list)))))
+        (progn
+          (when (and (= (length pattern-code) 2) (phpinspect-variable-p (cadr pattern-code)))
+            (let ((variable-name (cadadr pattern-code)))
+              (progn
+                (phpinspect--log "No assignments found for variable %s, checking function arguments: %s"
+                                 variable-name function-arg-list)
+                (setq result (phpinspect-get-variable-type-in-function-arg-list
+                              variable-name type-resolver function-arg-list))))))
 
       (setq result
             (phpinspect--interpret-expression-type-in-context
@@ -536,7 +551,9 @@ value/type."
                 (cadar expression)
                 type-resolver function-arg-list))
              (phpinspect--get-variable-type-in-block
-              resolvecontext (cadar expression) php-block assignments type-resolver function-arg-list)))))
+              resolvecontext (cadar expression) php-block
+              assignments type-resolver function-arg-list)))))
+
 
 (defun phpinspect-resolve-type-from-context (resolvecontext &optional type-resolver assume-derived)
   "Resolve the type that RESOLVECONTEXT's subject evaluates to.
@@ -564,10 +581,8 @@ type. (`phpinspect--type-p')"
   (let ((enclosing-tokens (seq-filter #'phpinspect-not-class-p
                                        (phpinspect--resolvecontext-enclosing-tokens
                                         resolvecontext)))
-        (enclosing-token)
-        (type))
+        enclosing-token type)
     (while (and enclosing-tokens (not type))
-      ;;(phpinspect--log "Trying to find type in %s" enclosing-token)
       (setq enclosing-token (pop enclosing-tokens))
 
       (let ((subject (phpinspect--resolvecontext-subject resolvecontext)))
@@ -579,7 +594,8 @@ type. (`phpinspect--type-p')"
                     ((phpinspect-namespace-p enclosing-token)
                      (phpinspect-interpret-expression-type-in-context
                       resolvecontext
-                      (or (phpinspect-namespace-block enclosing-token) enclosing-token)
+                      (or (phpinspect-namespace-block enclosing-token)
+                          enclosing-token)
                       type-resolver subject))
 
                     ((or (phpinspect-block-p enclosing-token)
