@@ -4,7 +4,7 @@
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience
-;; Version: 2.1.0
+;; Version: 3.0.0
 ;; Package-Requires: ((compat "29"))
 ;; URL: https://github.com/hugot/phpinspect.el
 
@@ -34,7 +34,18 @@
 
 ;;; News:
 
-;; Version 2.1.0
+;; Version 3.0.0
+
+;; - Reworked collaborative threading approach which should result in better
+;;   overall responsiveness.
+;; - Made parsing and indexation of buffer fully async and pro-active
+;;   using collaborative threads.
+;; - Removed company-mode backend (use capf instead)
+;; - Added tests, fixed various bugs and made incremental indexation
+;;   of buffer code more robust.
+;; - Implemented "classmap" autoload directive
+
+;; Version 3.0.0
 
 ;; - Implemented basic support for completion of keywords and type names
 ;; - Made completion of function names, type names and keywords context-aware so
