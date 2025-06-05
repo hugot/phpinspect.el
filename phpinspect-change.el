@@ -1,6 +1,6 @@
 ;;; phpinspect-change.el --- A structure that represents buffer changes  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024  Hugo Thunnissen
+;; Copyright (C) 2024-2025  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: languages

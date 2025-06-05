@@ -1,6 +1,6 @@
 ;;; test-suggest.el --- Unit tests for phpinspect-suggest.el  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021-2023 Free Software Foundation, Inc.
+;; Copyright (C) 2021-2025 Free Software Foundation, Inc.
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 

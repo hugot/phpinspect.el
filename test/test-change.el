@@ -1,6 +1,6 @@
 ;;; test-change.el --- Tests for phpinspect-change.el  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024  Hugo Thunnissen
+;; Copyright (C) 2024-2025  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords:

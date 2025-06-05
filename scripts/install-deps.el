@@ -1,6 +1,6 @@
 ;;; install-deps.el --- Install package dependencies  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023  Free Software Foundation, Inc
+;; Copyright (C) 2023-2025  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: script

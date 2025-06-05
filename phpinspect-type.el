@@ -1,6 +1,6 @@
 ;;; phpinspect-type.el --- Data structures that represent phpinspect types  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021-2023  Free Software Foundation, Inc
+;; Copyright (C) 2021-2025  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 ;; Keywords: php, languages, tools, convenience

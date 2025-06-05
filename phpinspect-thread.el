@@ -1,6 +1,6 @@
 ;;; phpinspect-thread.el --- Threading functions for phpinspect  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024  Hugo Thunnissen
+;; Copyright (C) 2024-2025  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <devel@hugot.nl>
 

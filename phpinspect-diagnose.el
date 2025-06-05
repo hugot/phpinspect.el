@@ -1,6 +1,6 @@
 ;;; phpinspect-diagnose.el --- Diagnose problems in phpinspect's internal state  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024  Hugo Thunnissen
+;; Copyright (C) 2024-2025  Free Software Foundation, Inc
 
 ;; Author: Hugo Thunnissen <hugo@yournextconcepts.com>
 ;; Keywords: languages
